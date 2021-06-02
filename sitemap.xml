@@ -2,13 +2,6 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   
   <url>
-    <loc>https://xiaobubuya.github.io/hello-world/</loc>
-    
-    <lastmod>2021-06-02</lastmod>
-    
-  </url>
-  
-  <url>
     <loc>https://xiaobubuya.github.io/SVM/</loc>
     
     <lastmod>2021-06-02</lastmod>
@@ -480,6 +473,13 @@
   </url>
   
   <url>
+    <loc>https://xiaobubuya.github.io/tags/Java%E5%9F%BA%E7%A1%80/</loc>
+    <lastmod>2021-06-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
     <loc>https://xiaobubuya.github.io/tags/Rabbitmq/</loc>
     <lastmod>2021-06-02</lastmod>
     <changefreq>daily</changefreq>
@@ -494,14 +494,7 @@
   </url>
   
   <url>
-    <loc>https://xiaobubuya.github.io/tags/Java%E5%9F%BA%E7%A1%80/</loc>
-    <lastmod>2021-06-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.6</priority>
-  </url>
-  
-  <url>
-    <loc>https://xiaobubuya.github.io/tags/shiro-jwt/</loc>
+    <loc>https://xiaobubuya.github.io/tags/SRS/</loc>
     <lastmod>2021-06-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
@@ -515,14 +508,14 @@
   </url>
   
   <url>
-    <loc>https://xiaobubuya.github.io/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/</loc>
+    <loc>https://xiaobubuya.github.io/tags/shiro-jwt/</loc>
     <lastmod>2021-06-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
   </url>
   
   <url>
-    <loc>https://xiaobubuya.github.io/tags/%E5%A4%9A%E7%BA%BF%E7%A8%8B/</loc>
+    <loc>https://xiaobubuya.github.io/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/</loc>
     <lastmod>2021-06-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
@@ -536,14 +529,7 @@
   </url>
   
   <url>
-    <loc>https://xiaobubuya.github.io/tags/SRS/</loc>
-    <lastmod>2021-06-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.6</priority>
-  </url>
-  
-  <url>
-    <loc>https://xiaobubuya.github.io/tags/Mybatis%E6%B3%A8%E8%A7%A3sql%E8%AF%AD%E5%8F%A5%E6%8B%BC%E6%8E%A5/</loc>
+    <loc>https://xiaobubuya.github.io/tags/%E5%A4%9A%E7%BA%BF%E7%A8%8B/</loc>
     <lastmod>2021-06-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
@@ -551,6 +537,13 @@
   
   <url>
     <loc>https://xiaobubuya.github.io/tags/kafka/</loc>
+    <lastmod>2021-06-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
+    <loc>https://xiaobubuya.github.io/tags/Mybatis%E6%B3%A8%E8%A7%A3sql%E8%AF%AD%E5%8F%A5%E6%8B%BC%E6%8E%A5/</loc>
     <lastmod>2021-06-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
