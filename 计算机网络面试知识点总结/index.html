@@ -1,0 +1,284 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="计算机网络面试知识点总结"><meta name="keywords" content="计算机网络"><meta name="author" content="xiaobubuya"><meta name="copyright" content="xiaobubuya"><title>计算机网络面试知识点总结 | xiaobubuyaのBlog</title><link rel="shortcut icon" href="/melody-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.9.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css?version=1.9.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="x-dns-prefetch-control" content="on"><link rel="dns-prefetch" href="https://cdn.jsdelivr.net"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.css"><script src="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.js" defer></script><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><script src="https://v1.hitokoto.cn/?encode=js&amp;charset=utf-8&amp;select=.footer_custom_text" defer></script><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: {"appId":"X2MTDP5JXS","apiKey":"b740a5c5a0afcfdb46cd9dde3f3da169","indexName":"xiaobubuya","hits":{"per_page":10},"languages":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}.","hits_stats":"${hits} results found in ${time} ms"}},
+  localSearch: undefined,
+  copy: {
+    success: 'Copy successfully',
+    error: 'Copy error',
+    noSupport: 'The browser does not support'
+  },
+  hexoVersion: '5.4.0'
+} </script><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="xiaobubuyaのBlog" type="application/atom+xml">
+</head><body><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div id="sidebar" data-display="true"><div class="toggle-sidebar-info text-center"><span data-toggle="Toggle article">Toggle site</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">Catalog</div><div class="sidebar-toc__progress"><span class="progress-notice">You've read</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C%E9%9D%A2%E8%AF%95%E7%9F%A5%E8%AF%86%E7%82%B9%E6%80%BB%E7%BB%93"><span class="toc-number">1.</span> <span class="toc-text">计算机网络面试知识点总结</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86"><span class="toc-number">1.1.</span> <span class="toc-text">1. 基础知识</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-1-3%E7%A7%8D%E5%B8%B8%E8%A7%81%E7%9A%84%E8%AE%A1%E7%AE%97%E6%9C%BA%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%E5%88%92%E5%88%86"><span class="toc-number">1.1.1.</span> <span class="toc-text">1.1 3种常见的计算机体系结构划分</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-2-%E5%B8%B8%E8%A7%81%E7%9A%84%E7%BD%91%E7%BB%9C%E5%8D%8F%E8%AE%AE"><span class="toc-number">1.1.2.</span> <span class="toc-text">1.2 常见的网络协议</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-%E7%BD%91%E9%99%85%E5%8D%8F%E8%AE%AEIP"><span class="toc-number">1.2.</span> <span class="toc-text">2. 网际协议IP</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-IP%E9%A6%96%E9%83%A8"><span class="toc-number">1.2.1.</span> <span class="toc-text">2.1 IP首部</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-IP%E5%9C%B0%E5%9D%80"><span class="toc-number">1.2.2.</span> <span class="toc-text">2.2 IP地址</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E5%88%92%E5%88%86%E5%AD%90%E7%BD%91"><span class="toc-number">1.2.3.</span> <span class="toc-text">2.3 划分子网</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-4-ARP%E5%8D%8F%E8%AE%AE%E4%B8%8ERARP%E5%8D%8F%E8%AE%AE"><span class="toc-number">1.2.4.</span> <span class="toc-text">2.4 ARP协议与RARP协议</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-5-ICMP%EF%BC%88Internet%E6%8E%A7%E5%88%B6%E6%8A%A5%E6%96%87%E5%8D%8F%E8%AE%AE%EF%BC%89"><span class="toc-number">1.2.5.</span> <span class="toc-text">2.5 ICMP（Internet控制报文协议）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-6-ping%E7%A8%8B%E5%BA%8F"><span class="toc-number">1.2.6.</span> <span class="toc-text">2.6 ping程序</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-TCP%E5%8D%8F%E8%AE%AE"><span class="toc-number">1.3.</span> <span class="toc-text">3. TCP协议</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-TCP%E6%9C%8D%E5%8A%A1%E7%9A%84%E7%89%B9%E7%82%B9"><span class="toc-number">1.3.1.</span> <span class="toc-text">3.1 TCP服务的特点</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-TCP%E7%9A%84%E9%A6%96%E9%83%A8"><span class="toc-number">1.3.2.</span> <span class="toc-text">3.2 TCP的首部</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-3-TCP%E8%BF%9E%E6%8E%A5%E7%9A%84%E5%BB%BA%E7%AB%8B%E4%B8%8E%E7%BB%88%E6%AD%A2%E8%BF%87%E7%A8%8B"><span class="toc-number">1.3.3.</span> <span class="toc-text">3.3 TCP连接的建立与终止过程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-4-%E4%BD%BF%E7%94%A8UDP%E5%92%8CTCP%E7%9A%84%E5%9C%BA%E6%99%AF"><span class="toc-number">1.3.4.</span> <span class="toc-text">3.4 使用UDP和TCP的场景</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-%E8%B6%85%E6%96%87%E6%9C%AC%E4%BC%A0%E9%80%81%E5%8D%8F%E8%AE%AEHTTP"><span class="toc-number">1.4.</span> <span class="toc-text">4. 超文本传送协议HTTP</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E6%B5%8F%E8%A7%88%E7%BD%91%E9%A1%B5%E7%9A%84%E8%BF%87%E7%A8%8B"><span class="toc-number">1.4.1.</span> <span class="toc-text">4.1 浏览网页的过程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-%E7%BB%9F%E4%B8%80%E8%B5%84%E6%BA%90%E5%AE%9A%E4%BD%8D%E7%AC%A6URL"><span class="toc-number">1.4.2.</span> <span class="toc-text">4.2 统一资源定位符URL</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-HTTP%E8%AF%B7%E6%B1%82%E6%8A%A5%E6%96%87"><span class="toc-number">1.4.3.</span> <span class="toc-text">4.3 HTTP请求报文</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#HTTP%E5%93%8D%E5%BA%94%E6%8A%A5%E6%96%87"><span class="toc-number">1.4.4.</span> <span class="toc-text">HTTP响应报文</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-DNS%E5%9F%9F%E5%90%8D%E7%B3%BB%E7%BB%9F"><span class="toc-number">1.5.</span> <span class="toc-text">5. DNS域名系统</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-%E5%9B%A0%E7%89%B9%E7%BD%91%E7%9A%84%E5%9F%9F%E5%90%8D%E7%BB%93%E6%9E%84"><span class="toc-number">1.5.1.</span> <span class="toc-text">5.1 因特网的域名结构</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-%E5%9F%9F%E5%90%8D%E6%9C%8D%E5%8A%A1%E5%99%A8"><span class="toc-number">1.5.2.</span> <span class="toc-text">5.2 域名服务器</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-3-%E5%9F%9F%E5%90%8D%E7%9A%84%E8%A7%A3%E6%9E%90%E8%BF%87%E7%A8%8B"><span class="toc-number">1.5.3.</span> <span class="toc-text">5.3 域名的解析过程</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-%E9%9D%A2%E8%AF%95%E9%A2%98%E7%B2%BE%E9%80%89"><span class="toc-number">1.6.</span> <span class="toc-text">6. 面试题精选</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BE%8B%E9%A2%981%EF%BC%9ATCP%E5%92%8CUDP%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB%EF%BC%9F"><span class="toc-number">1.6.1.</span> <span class="toc-text">例题1：TCP和UDP有什么区别？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BE%8B%E9%A2%982%EF%BC%9ATCP%E7%9A%84%E5%8F%AF%E9%9D%A0%E6%80%A7%E5%A6%82%E4%BD%95%E4%BF%9D%E8%AF%81%EF%BC%9F"><span class="toc-number">1.6.2.</span> <span class="toc-text">例题2：TCP的可靠性如何保证？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BE%8B%E9%A2%983%EF%BC%9A%E5%9C%A8%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%AD%E8%BE%93%E5%85%A5www-baidu-com%E5%90%8E%E6%89%A7%E8%A1%8C%E7%9A%84%E5%85%A8%E9%83%A8%E8%BF%87%E7%A8%8B"><span class="toc-number">1.6.3.</span> <span class="toc-text">例题3：在浏览器中输入www.baidu.com后执行的全部过程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BE%8B%E9%A2%984%EF%BC%9A%E7%89%9B%E5%AE%A2%E7%BD%91%E7%94%B1%E4%BA%8E%E8%AE%BF%E9%97%AE%E5%AE%A2%E6%88%B7%E9%87%8F%E7%9A%84%E5%A2%9E%E9%95%BF-%E5%8E%9F%E6%9D%A5%E7%9A%84%E6%9C%8D%E5%8A%A1%E5%99%A8%E4%B8%8D%E8%B6%B3%E4%BB%A5%E7%BB%B4%E6%8C%81%E8%AF%B7%E6%B1%82-%E7%BB%8F%E5%B8%B8%E5%8F%91%E7%94%9F%E5%AE%95%E6%9C%BA%E7%9A%84%E7%AA%81%E5%8F%91%E6%83%85%E5%86%B5-%E5%9B%A0%E6%AD%A4%E4%B8%BA%E4%BA%86%E8%A7%A3%E5%86%B3%E8%BF%99%E4%B8%AA%E9%97%AE%E9%A2%98-CEO%E5%86%B3%E5%AE%9A%E6%96%B0%E5%A2%9E%E5%8A%A0%E5%87%A0%E5%8F%B0%E6%9C%8D%E5%8A%A1%E5%99%A8-%E9%82%A3%E4%B9%88%E9%97%AE%E9%A2%98%E6%98%AF%E8%BF%99%E4%BA%9B%E6%8E%A5%E5%85%A5WEB%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%AC%AC%E4%B8%80%E6%AC%A1%E8%A2%AB%E8%AE%BF%E9%97%AE%E5%88%B0%E6%97%B6%EF%BC%8C%E4%B8%8D%E5%90%8C%E5%8D%8F%E8%AE%AE%E7%9A%84%E5%8F%91%E7%94%9F%E9%A1%BA%E5%BA%8F%E6%98%AF%E4%B8%8B%E9%9D%A2%E4%B8%AD%E7%9A%84%EF%BC%88ARP-gt-DNS-gt-HTTP%EF%BC%89%E3%80%82"><span class="toc-number">1.6.4.</span> <span class="toc-text">例题4：牛客网由于访问客户量的增长,原来的服务器不足以维持请求,经常发生宕机的突发情况,因此为了解决这个问题,CEO决定新增加几台服务器,那么问题是这些接入WEB服务器第一次被访问到时，不同协议的发生顺序是下面中的（ARP -&gt; DNS -&gt; HTTP）。</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BE%8B%E9%A2%985%EF%BC%9A%E5%B0%86%E4%B8%80%E4%B8%AAC%E7%B1%BB%E7%BD%91%E7%BB%9C%E5%88%92%E5%88%86%E4%B8%BA3%E4%B8%AA%E5%AD%90%E7%BD%91%EF%BC%8C%E6%AF%8F%E4%B8%AA%E5%AD%90%E7%BD%91%E6%9C%80%E5%B0%91%E8%A6%81%E5%AE%B9%E7%BA%B355%E5%8F%B0%E4%B8%BB%E6%9C%BA%EF%BC%8C%E4%BD%BF%E7%94%A8%E7%9A%84%E5%AD%90%E7%BD%91%E6%8E%A9%E7%A0%81%E6%98%AF%EF%BC%9F%EF%BC%882017%E4%B9%90%E8%A7%86%E5%AE%9E%E4%B9%A0%E7%94%9F%EF%BC%89"><span class="toc-number">1.6.5.</span> <span class="toc-text">例题5：将一个C类网络划分为3个子网，每个子网最少要容纳55台主机，使用的子网掩码是？（2017乐视实习生）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BE%8B%E9%A2%985%EF%BC%9AIP%E8%B7%AF%E7%94%B1%E8%A1%A8%E5%8C%85%E6%8B%AC%E5%93%AA%E5%87%A0%E9%A1%B9%E5%86%85%E5%AE%B9%EF%BC%9F"><span class="toc-number">1.6.6.</span> <span class="toc-text">例题5：IP路由表包括哪几项内容？</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#7-%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C%E9%9D%A2%E8%AF%95%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98"><span class="toc-number">1.7.</span> <span class="toc-text">7.计算机网络面试常见问题</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#1%E3%80%81%E7%AE%80%E5%8D%95%E4%BB%8B%E7%BB%8D%E4%B8%80%E4%B8%8BHTTP%E7%9A%84%E9%95%BF%E8%BF%9E%E6%8E%A5%E5%92%8C%E7%9F%AD%E8%BF%9E%E6%8E%A5"><span class="toc-number">1.7.0.1.</span> <span class="toc-text">1、简单介绍一下HTTP的长连接和短连接?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#2%E3%80%81%E7%AE%80%E8%BF%B0%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C%E4%B8%AD%E7%9A%84%E4%B8%83%E5%B1%82%E6%A8%A1%E5%9E%8B"><span class="toc-number">1.7.0.2.</span> <span class="toc-text">2、简述计算机网络中的七层模型?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#3%E3%80%81%E5%B8%B8%E8%A7%81%E7%9A%84HTTP%E7%8A%B6%E6%80%81%E7%A0%81%E6%9C%89%E5%93%AA%E4%BA%9B"><span class="toc-number">1.7.0.3.</span> <span class="toc-text">3、常见的HTTP状态码有哪些?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#4%E3%80%81TCP%E7%9A%84%E4%B8%89%E6%AC%A1%E6%8F%A1%E6%89%8B%E8%BF%87%E7%A8%8B-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%9A%E9%87%87%E7%94%A8%E4%B8%89%E6%AC%A1%E6%8F%A1%E6%89%8B%EF%BC%8C%E8%8B%A5%E9%87%87%E7%94%A8%E4%BA%8C%E6%AC%A1%E6%8F%A1%E6%89%8B%E5%8F%AF%E4%BB%A5%E5%90%97"><span class="toc-number">1.7.0.4.</span> <span class="toc-text">4、TCP的三次握手过程?为什么会采用三次握手，若采用二次握手可以吗?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#5%E3%80%81%E8%AF%B7%E7%AE%80%E8%BF%B0%E4%B8%80%E4%B8%8BTCP%E7%9A%84%E4%B8%89%E6%AC%A1%E6%8F%A1%E6%89%8B%E5%92%8C%E5%9B%9B%E6%AC%A1%E6%8C%A5%E6%89%8B%E5%8D%8F%E8%AE%AE"><span class="toc-number">1.7.0.5.</span> <span class="toc-text">5、请简述一下TCP的三次握手和四次挥手协议?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#6%E3%80%81TCP%E5%92%8CUDP%E7%9B%B8%E5%85%B3%E7%9A%84%E5%8D%8F%E8%AE%AE%E5%88%86%E5%88%AB%E6%9C%89%E5%93%AA%E4%BA%9B"><span class="toc-number">1.7.0.6.</span> <span class="toc-text">6、TCP和UDP相关的协议分别有哪些?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#7%E3%80%81TCP%E5%92%8CUDP%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB"><span class="toc-number">1.7.0.7.</span> <span class="toc-text">7、TCP和UDP有什么区别?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#8%E3%80%81Post%E5%92%8CGet%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB"><span class="toc-number">1.7.0.8.</span> <span class="toc-text">8、Post和Get有什么区别?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#9%E3%80%81%E5%9C%A8%E6%B5%8F%E8%A7%88%E5%99%A8%E4%B8%AD%E8%BE%93%E5%85%A5www-baidu-com%E5%90%8E%E6%89%A7%E8%A1%8C%E7%9A%84%E5%85%A8%E9%83%A8%E8%BF%87%E7%A8%8B"><span class="toc-number">1.7.0.9.</span> <span class="toc-text">9、在浏览器中输入www.baidu.com后执行的全部过程?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#10%E3%80%81cookie-%E5%92%8Csession-%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB"><span class="toc-number">1.7.0.10.</span> <span class="toc-text">10、cookie 和session 有什么区别?</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#11%E3%80%81HTTP%E4%B8%8D%E4%BF%9D%E5%AD%98%E7%94%A8%E6%88%B7%E7%8A%B6%E6%80%81%E7%9A%84%E5%8D%8F%E8%AE%AE%EF%BC%8C%E5%A6%82%E4%BD%95%E4%BF%9D%E6%8C%81%E7%94%A8%E6%88%B7%E7%8A%B6%E6%80%81%EF%BC%9F"><span class="toc-number">1.7.0.11.</span> <span class="toc-text">11、HTTP不保存用户状态的协议，如何保持用户状态？</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#12%E3%80%81cookie%E8%A2%AB%E7%A6%81%E7%94%A8%E6%80%8E%E4%B9%88%E5%8A%9E%EF%BC%9F"><span class="toc-number">1.7.0.12.</span> <span class="toc-text">12、cookie被禁用怎么办？</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#13%E3%80%81TCP-%E5%A6%82%E4%BD%95%E4%BF%9D%E9%9A%9C%E6%95%B0%E6%8D%AE%E5%8C%85%E6%9C%89%E6%95%88"><span class="toc-number">1.7.0.13.</span> <span class="toc-text">13、TCP 如何保障数据包有效</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#14%E3%80%81HTTPS-%E5%92%8C-HTTP-%E7%9A%84%E5%8C%BA%E5%88%AB"><span class="toc-number">1.7.0.14.</span> <span class="toc-text">14、HTTPS 和 HTTP 的区别</span></a></li></ol></li></ol></li></ol></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img02/%E5%A4%B4%E5%83%8F.jpg"></div><div class="author-info__name text-center">xiaobubuya</div><div class="author-info__description text-center">命数如织，当为磐石</div><div class="follow-button"><a target="_blank" rel="noopener" href="https://github.com/xiaobubuya">Follow Me</a></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">Articles</span><span class="pull-right">57</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">Tags</span><span class="pull-right">22</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">Categories</span><span class="pull-right">6</span></a></div><hr><div class="author-info-links"><div class="author-info-links__title text-center">Links</div><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/gallery">Gallery</a><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/slides">Slides</a></div></div></div><div id="content-outer"><div id="top-container" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">xiaobubuyaのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> Search</span></a></span></div><div id="post-info"><div id="post-title">计算机网络面试知识点总结</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2020-12-31</time><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E9%9D%A2%E8%AF%95/">面试</a><div class="post-meta-wordcount"><span>Word count: </span><span class="word-count">11.6k</span><span class="post-meta__separator">|</span><span>Reading time: 35 min</span></div></div></div></div><div class="layout" id="content-inner"><article id="post"><div class="article-container" id="post-content"><h1 id="计算机网络面试知识点总结"><a href="#计算机网络面试知识点总结" class="headerlink" title="计算机网络面试知识点总结"></a>计算机网络面试知识点总结</h1><h2 id="1-基础知识"><a href="#1-基础知识" class="headerlink" title="1. 基础知识"></a>1. 基础知识</h2><h3 id="1-1-3种常见的计算机体系结构划分"><a href="#1-1-3种常见的计算机体系结构划分" class="headerlink" title="1.1 3种常见的计算机体系结构划分"></a>1.1 3种常见的计算机体系结构划分</h3><p>OSI分层（7层）：物理层、数据链路层、网络层、传输层、会话层、表示层、应用层。<br>TCP/IP分层（4层）：网络接口层、网际层、运输层、应用层。<br>五层协议（5层）：物理层、数据链路层、网络层、运输层、应用层。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/53611-6372b2b829bf2820.png" alt=""></p>
+<p>每一层的作用如下：</p>
+<ul>
+<li>物理层：激活、维持、关闭通信端点之间的机械特性、电气特性、功能特性以及过程特性。该层为上层协议提供了一个传输数据的物理媒体。物理层的任务就是<strong>透明地传送比特流</strong>。</li>
+<li>数据链路层：数据链路层在不可靠的物理介质上提供可靠的传输。该层的作用包括：物理地址寻址、数据的成帧、流量控制、数据的检错、重发等。</li>
+<li>网络层：网络层负责对子网间的数据包进行路由选择。此外，网络层还可以实现拥塞控制、网际互连等功能。</li>
+<li>传输层：构的最高层，直接<strong>为用户的应用进程提供服务</strong>。</li>
+<li>运输层的任务是<strong>负责向两个主机中进程之间的通信提供服务</strong>。由于一个主机可同时运行多个进程，因此运输层具有复用和分用的功能。复用是指多个应用层进程可同时使用运输层的服务，分用是指运输层把收到的信息分别交付给应用层中的相应进程。</li>
+<li>应用层：为操作系统或网络应用程序提供访问网络服务的接口。</li>
+</ul>
+<h3 id="1-2-常见的网络协议"><a href="#1-2-常见的网络协议" class="headerlink" title="1.2 常见的网络协议"></a>1.2 常见的网络协议</h3><p>网络层</p>
+<ul>
+<li>IP协议：网际协议</li>
+<li>ICMP协议：Internet控制报文协议</li>
+<li>ARP协议:地址解析协议</li>
+<li>RARP协议：逆地址解析协议</li>
+</ul>
+<p>传输层</p>
+<ul>
+<li>UDP协议：用户数据报协议</li>
+<li>TCP协议：传输控制协议</li>
+</ul>
+<p>应用层</p>
+<ul>
+<li>FTP：文件传送协议</li>
+<li>Telenet：远程登录协议</li>
+<li>DNS：域名解析协议</li>
+<li>POP3：邮局协议</li>
+<li>HTTP协议</li>
+<li>SMTP：简单邮件传送协议</li>
+<li>SNMP：简单网络管理协议</li>
+<li>TFTP：简单文件传送协议</li>
+</ul>
+<h2 id="2-网际协议IP"><a href="#2-网际协议IP" class="headerlink" title="2. 网际协议IP"></a>2. 网际协议IP</h2><p>IP协议的特点</p>
+<ul>
+<li><strong>不可靠</strong>：并不保证IP数据报能成功地到达目的地。如果发生某种错误，如某个路由器暂时用完了缓冲区，IP有一个简单的错误处理算法：丢弃该数据报，然后发送ICMP消息报给信源端。任何可靠性必须由上层提供（如TCP）。</li>
+<li><strong>无连接</strong>：IP并不维护任何关于后续数据报的状态消息，每个连接都是独立的。这也说明，IP数据报可以不按发送顺序接收。</li>
+</ul>
+<h3 id="2-1-IP首部"><a href="#2-1-IP首部" class="headerlink" title="2.1 IP首部"></a>2.1 IP首部</h3><p>普通的IP首部长20个字节（不包含选项字段），包含协议版本号、首部长度、总长度、唯一标识、TTL、首部检验和、源IP地址和目的IP地址。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/53611-aaa5ffa98abeb59d.jpg" alt=""></p>
+<ul>
+<li>通过首部长度和总长度字段就可以知道IP数据报中数据内容的起始位置和长度。</li>
+<li>TTL生存时间字段设置了数据报可以经过的最多路由器数。初始值由源主机设置，一旦经过一个处理它的路由器，其值就减一；当该字段的值为0时，数据报就被丢弃。</li>
+<li>首部检验和字段是根据IP首部计算的检验和码（ICMP、UDP、TCP检验和同时覆盖了首部和数据部分）。</li>
+<li>如果长度超过了MTU，则要进行分片，根据IP头部的格式，有一个16位的标识，分片的时候会把这个标识复制到所有的分片中去，也就是说同一个IP的分片，他们的标识是一样的；然后3bit标志中有一位是表示是否最后一片，除了最后一片为0，其它片这个标识位都为1；修改IP的长度为分片中实际数据的长度；片偏移量是该片偏移原始数据的位置。 接收端根据 标识，是否为最后一片，各个片的长度，偏移量就可以把分片的包重新组装起来。</li>
+</ul>
+<h3 id="2-2-IP地址"><a href="#2-2-IP地址" class="headerlink" title="2.2 IP地址"></a>2.2 IP地址</h3><p>IP地址一般有网络号和主机号组成（D类和E类无此分法）。网络号标志主机（或路由器）所连接到的网络，主机号则标志该网络下的主机或路由器。</p>
+<p>由于一个路由器至少应当连接到两个网络（这样它才能将IP数据报从一个网络转发到另一个网络），因此一个路由器至少应当有两个不同的IP地址。路由器只根据目的站的IP地址的网络号进行路由选择。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/53611-7532225bfcde2721.png" alt=""></p>
+<p>上图中的A类、B类、C类地址都是单播地址（一对一通信），是最常用的。网络号字段的最前面有1-4位的类别位。其中有两个特殊的IP地址，<strong>主机号全为0的IP地址代表网络地址，主机号全为1的IP地址为广播地址。当向某个网络的广播地址发送消息时，该网络内的所有主机都能收到该广播消息。</strong></p>
+<p>A类地址：以0开头，第一个字节范围：0~127；<br>B类地址：以10开头，第一个字节范围：128~191；<br>C类地址：以110开头，第一个字节范围：192~223；<br>D类地址：以1110开头，第一个字节范围为224~239；</p>
+<p>3个特殊的IP地址</p>
+<ul>
+<li><strong>255.255.255.255</strong><br>该IP地址指的是受限的广播地址。受限广播地址与一般广播地址（直接广播地址）的区别在于，受限广播地址之只能用于本地网络，路由器不会转发以受限广播地址为目的地址的分组；一般广播地址既可在本地广播，也可跨网段广播。例如：主机192.168.1.1/30上的直接广播数据包后，另外一个网段192.168.1.5/30也能收到该数据报；若发送受限广播数据报，则不能收到。</li>
+<li><strong>0.0.0.0</strong><br>常用于寻找自己的IP地址，例如在我们的RARP，BOOTP和DHCP协议中，若某个未知IP地址的无盘机想要知道自己的IP地址，它就以255.255.255.255为目的地址，向本地范围（具体而言是被各个路由器屏蔽的范围内）的服务器发送IP请求分组。</li>
+<li><strong>127.0.0.1</strong><br>127.0.0.0/8被用作回环地址，回环地址表示本机的地址，常用于对本机的测试，用的最多的是127.0.0.1。</li>
+</ul>
+<h3 id="2-3-划分子网"><a href="#2-3-划分子网" class="headerlink" title="2.3 划分子网"></a>2.3 划分子网</h3><p>划分子网的方法是从主机号借用若干个位作为子网号subnet-id，而主机号host-id 也就相应减少了若干个位。于是两级IP地址在本单位内部就变为三级IP地址：网络号、子网号和主机号。</p>
+<p>IP地址 ::= {&lt;网络号&gt;, &lt;子网号&gt;, &lt;主机号&gt;}</p>
+<p>子网对外部路由器来说隐藏了内部网络组织的细节，在外部看来，不同子网的主机仍属于同一个网络。</p>
+<p>凡是从其他网络发送给本单位某个主机的IP数据报，仍然是根据IP数据报的目的网络号net-id，先找到连接在本单位网络上的路由器。然后此路由器在收到 IP 数据报后，再按目的网络号 net-id 和子网号 subnet-id 找到目的子网。最后就将 IP 数据报直接交付目的主机。</p>
+<p>如何正确地区分子网号和主机号是一个问题，这可以通过<strong>子网掩码</strong>来确定。将<strong>网络号和子网号全设为1</strong>的IP地址为子网掩码。给定IP地址和子网掩码以后，主机就可以确定IP数据报的目的地是本子网的主机，本网络中其他子网的主机，还是其他网络的主机。</p>
+<h3 id="2-4-ARP协议与RARP协议"><a href="#2-4-ARP协议与RARP协议" class="headerlink" title="2.4 ARP协议与RARP协议"></a>2.4 ARP协议与RARP协议</h3><p>RAP为IP地址到对应硬件地址之间提供动态映射；RARP则相反。RAP高效运行的关键是由于每个主机上都有一个RAP高速缓存，来存放最近Internet地址到硬件地址之间的映射记录。</p>
+<p>ARP协议的工作原理</p>
+<ol>
+<li>首先，每个主机都会在自己的ARP缓冲区中建立一个ARP列表，以表示IP地址和MAC地址之间的对应关系。</li>
+<li>当源主机要发送数据时，首先检查ARP列表中是否有对应IP地址的目的主机 MAC地址，如果有，则直接发送数据，如果没有，就向本网段的所有主机发送ARP数据包，该数据包包括的内容有源主机IP地址、源主机MAC地址、目的主机的IP地址。</li>
+<li>当本网络的所有主机收到该ARP数据包时，首先检查数据包中的IP地址是否是自己的IP地址，如果不是，则忽略该数据包，如果是，则首先从数据包中取出源主机的IP和MAC地址写入到ARP列表中，如果已经存在，则覆盖，然后将自己的MAC 地址写入ARP响应包中，告诉源主机自己是它想要找的MAC地址。</li>
+<li>源主机收到ARP响应包后。将目的主机的IP和MAC地址写入ARP列表，并利用此信息发送数据。如果源主机一直没有收到 ARP响应数据包，表示ARP查询失败。</li>
+</ol>
+<h3 id="2-5-ICMP（Internet控制报文协议）"><a href="#2-5-ICMP（Internet控制报文协议）" class="headerlink" title="2.5 ICMP（Internet控制报文协议）"></a>2.5 ICMP（Internet控制报文协议）</h3><p>ICMP是IP层的一个组成部分，它传递差错报文以及其他需要注意的信息。ICMP报文是在IP数据报内部（IP首部+ICMP报文）被传输的。ICMP报文由类型字段、代码字段、检验和和其他字节组成，前两个字段决定了ICMP报文的类型。</p>
+<p><strong>ICMP地址掩码请求</strong>，用于无盘系统在引导过程中获取自己自己的子网掩码。该ICMP报文的类型字段为17或18，代码字段为0，并返回32位子网掩码。</p>
+<p><strong>ICMP端口不可达差错</strong>，如果收到一份UDP数据报而目的端口与某个正在使用的进程不相符，那么UDP返回一个ICMP不可达报文。ICMP报文必须包括生成差错报文的数据报IP首部，还必须至少包括跟在该IP首部后面的前8个字节。</p>
+<h3 id="2-6-ping程序"><a href="#2-6-ping程序" class="headerlink" title="2.6 ping程序"></a>2.6 ping程序</h3><p>ping程序的目的是为了测试另一台主机是否可达。该程序发送一份ICMP回显请求报文给主机，并等待返回ICMP回显应答。它只利用ICMP回显请求和回显应答报文，而不经过传输层。</p>
+<p>ping 127.0.0.1环回地址时，如果不能ping通说明当前机器的TCP/IP协议栈有问题，127本身是一个虚接口，任何时候都是直接上交到内核中处理的。</p>
+<p>ping 192.168.1.X 本机的以太网地址，则是测试本机的网络适配器(就是网卡啦)，一般是以太网驱动程序。<br>ping这两个地址时你会发现，但使用wireshark抓包时，是没有ICMP的回显请求发出的，这说明这两个ping程序是不会发送到网络中的（只在局域网中）。</p>
+<p>ping 同一网段中的网络地址，不通则说明网络线路出现了故障，如果网络中还存在路由器，则应该先ping路由器在本网络的地址，不通则是本机和路由器之间的线路有问题。通了，则再ping路由器所在目标计算机网络所在网段的端口IP地址，不通则说明了路由器出现了故障，通了就再ping目标主机的IP地址。</p>
+<p>如果ping <a target="_blank" rel="noopener" href="https://link.jianshu.com/?t=http://www.baidu.com">www.baidu.com</a>等网络地址ping不通时，则说明本机的DNS服务器设置错误。</p>
+<h2 id="3-TCP协议"><a href="#3-TCP协议" class="headerlink" title="3. TCP协议"></a>3. TCP协议</h2><h3 id="3-1-TCP服务的特点"><a href="#3-1-TCP服务的特点" class="headerlink" title="3.1 TCP服务的特点"></a>3.1 TCP服务的特点</h3><p>TCP提供一种<strong>面向连接的、可靠的字节流服务</strong>。面向连接意味着应用程序在使用TCP协议之前，必须先建立TCP连接。在传送数据完毕后，必须释放已经建立的TCP连接。TCP通过以下方式来提供可靠性：</p>
+<ul>
+<li>应用数据被分割成TCP认为最适合发送的数据块。</li>
+<li>超时重传。当TCP发出一个段后，它启动一个定时器，等待目的端确认收到这个报文段。如果不能及时收到确认，将重发这个报文段。</li>
+<li>当TCP收到发自TCP连接另一端的数据后，他将发送一个确认。该确认通常将推迟几分之一秒。</li>
+<li>TCP将保持他首部和数据的检验和。</li>
+<li>由于IP数据报的到达可能会失序，因此TCP报文段的到达也可能失序。如有必要，TCP将对收到的数据进行重新排序，并以正确的顺序交付给应用层。</li>
+<li>既然IP数据报会发生重复，TCP的接收端必须丢弃重复的数据。</li>
+<li>流量控制。防止较快主机致使较慢主机的缓冲区溢出。</li>
+</ul>
+<h3 id="3-2-TCP的首部"><a href="#3-2-TCP的首部" class="headerlink" title="3.2 TCP的首部"></a>3.2 TCP的首部</h3><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/53611-da2d1badf7d86d0f.png" alt=""></p>
+<p>TCP虽然是面向字节流的，但TCP传送的数据单元却是报文段。一个TCP报文段分为首部和数据两部分，而TCP的全部功能都体现在它首部中各字段的作用。因此，只有弄清TCP首部各字段的作用才能掌握TCP的工作原理。TCP报文首部固定部分各字段的意义如下：</p>
+<ol>
+<li><strong>源端口和目的端口</strong><br>各占两字节，分别写入源端口号和目的端口号。TCP的分用也是通过端口实现的。</li>
+<li><strong>报文段序号</strong><br>占4字节。在一个TCP连接中传送的字节流中的每一个字节都按顺序编号。整个要传送的字节流的起始序号必须在连接建立时设置，首部中的序号字段值则是指本报文所发送的数据的第一个字节的序号。</li>
+<li><strong>确认号</strong><br>期望收到对方下一个报文段的第一个数据字节的序号。若确认号为N，则表明到序号N-1为止的所有数据都已正确收到。</li>
+<li><strong>数据偏移</strong><br>指出TCP报文段的数据起始处距离TCP报文段的起始处有多远，实际上指出了TCP报文段的首部长度。</li>
+<li><strong>6个控制位</strong><br>确认ACK：TCP规定，在连接建立后所有传送的报文段都必须把ACK置1。<br>复位RST：当RST=1时，表明TCP连接中出现严重错误，必须释放连接，然后再重新建立运输连接。<br>同步SYN：在连接建立时用来同步序号。当SYN=1而ACK=0时，表明这是一个连接请求报文段。对方若同意建立连接，则应在响应的报文段中使用SYN=1和ACK=1.<br>终止FIN：用来释放一个连接。当FIN=1时，表明此报文段的发送方的数据已发送完毕，并要求释放运输连接。</li>
+<li><strong>窗口</strong><br>窗口字段明确指出了现在允许对方发送的数据量，该值经常在动态变化着。例如，设确认号是701，窗口字段是1000。这就表明从701算起，发送此报文段的一方还有接收1000个字节数据的接收缓存空间。</li>
+</ol>
+<h3 id="3-3-TCP连接的建立与终止过程"><a href="#3-3-TCP连接的建立与终止过程" class="headerlink" title="3.3 TCP连接的建立与终止过程"></a>3.3 TCP连接的建立与终止过程</h3><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/53611-a0756c435d1df0ef.jpg" alt=""></p>
+<p><strong>三次握手</strong><br>第一次握手：客户端发送syn包(syn=x)到服务器，并进入SYN_SEND状态，等待服务器确认；<br>第二次握手：服务器收到syn包，必须确认客户的SYN（ack=x+1），同时自己也发送一个SYN包（syn=y），即SYN+ACK包，此时服务器进入SYN_RECV状态；<br>第三次握手：客户端收到服务器的SYN＋ACK包，向服务器发送确认包ACK(ack=y+1)，此包发送完毕，客户端和服务器进入ESTABLISHED状态，完成三次握手。<br>握手过程中传送的包里不包含数据，三次握手完毕后，客户端与服务器才正式开始传送数据。理想状态下，TCP连接一旦建立，在通信双方中的任何一方主动关闭连接之前，TCP 连接都将被一直保持下去。</p>
+<p><strong>四次握手</strong><br>与建立连接的“三次握手”类似，断开一个TCP连接则需要“四次握手”。<br>第一次挥手：主动关闭方发送一个FIN，用来关闭主动方到被动关闭方的数据传送，也就是主动关闭方告诉被动关闭方：我已经不会再给你发数据了(当然，在fin包之前发送出去的数据，如果没有收到对应的ack确认报文，主动关闭方依然会重发这些数据)，但是，此时主动关闭方还可以接受数据。<br>第二次挥手：被动关闭方收到FIN包后，发送一个ACK给对方，确认序号为收到序号+1。<br>第三次挥手：被动关闭方发送一个FIN，用来关闭被动关闭方到主动关闭方的数据传送，也就是告诉主动关闭方，我的数据也发送完了，不会再给你发数据了。（与SYN相同，一个FIN占用一个序号）。<br>第四次挥手：主动关闭方收到FIN后，发送一个ACK给被动关闭方，确认序号为收到序号+1，至此，完成四次挥手。</p>
+<p><strong>TCP的半关闭</strong><br>TCP提供了连接的一端在结束它的发送后还能接收来自另一端数据的能力，这就是半关闭。为了使用这一特性，编程接口必须为应用程序提供一中方式来说明“我们已经完成了数据传送，因此发送一个文件结束（FIN）给另一端，但我还想接收另一端的数据，直到它给我发送文件结束FIN”。</p>
+<p><strong>2MSL等待状态</strong><br>TIME_WAIT状态也称为2MSL等待状态。每个具体TCP实现必须选择一个报文段最大生存时间MSL，它是任何报文段被丢弃前在网络内的最长时间（RFC指出其为2min，实现中常用值还有30s和1min）。当TCP执行一个主动关闭，并发回最后一个ACK，该连接必须在TIME_WAIT状态停留的2倍的MSL；这样可让TCP再次发送最后的ACK以防这个ACK丢失（另一方超时并重发最后的FIN）。</p>
+<h3 id="3-4-使用UDP和TCP的场景"><a href="#3-4-使用UDP和TCP的场景" class="headerlink" title="3.4 使用UDP和TCP的场景"></a>3.4 使用UDP和TCP的场景</h3><p>UDP的典型应用：实时性，不需要重传机制，局域网（本身网络稳定性高）</p>
+<ul>
+<li>UDP适合于这样的进程：需要简单的请求-响应通信，而较少考虑流量控制和差错控制。对于需要传送成块数据的进程（如FTP）则不适合使用UDP。</li>
+<li>UDP适合于具有内部流量控制和差错控制机制的进程，如简单文件传输协议TFTP。</li>
+<li>对多播来说，UDP是一个合适的传输协议。</li>
+<li>UDP常用于交互实时应用，以避免接收报文之间的不一致延时。</li>
+<li>UDP可用于管理进程，如SNMP。</li>
+</ul>
+<p><strong>TCP对应的协议</strong>：</p>
+<ol>
+<li>FTP：定义了文件传输协议，使用21端口。常说某某计算机开了FTP服务便是启动了文件传输服务。下载文件，上传主页，都要用到FTP服务。</li>
+<li>Telnet：它是一种用于远程登陆的端口，用户可以以自己的身份远程连接到计算机上，通过这种端口可以提供一种基于DOS模式下的通信服务。如以前的BBS是-纯字符界面的，支持BBS的服务器将23端口打开，对外提供服务。</li>
+<li>SMTP：定义了简单邮件传送协议，现在很多邮件服务器都用的是这个协议，用于发送邮件。如常见的免费邮件服务中用的就是这个邮件服务端口，所以在电子邮件设置-中常看到有这么SMTP端口设置这个栏，服务器开放的是25号端口。</li>
+<li>POP3：它是和SMTP对应，POP3用于接收邮件。通常情况下，POP3协议所用的是110端口。也是说，只要你有相应的使用POP3协议的程序（例如Fo-xmail或Outlook），就可以不以Web方式登陆进邮箱界面，直接用邮件程序就可以收到邮件（如是163邮箱就没有必要先进入网易网站，再进入自己的邮-箱来收信）。</li>
+<li>HTTP协议：是从Web服务器传输超文本到本地浏览器的传送协议。</li>
+</ol>
+<p><strong>UDP对应的协议</strong>：</p>
+<ol>
+<li>DNS：用于域名解析服务，将域名地址转换为IP地址。DNS用的是53号端口。<br><strong>DNS工作原理</strong>：当DNS客户机需要在程序中使用名称时，它会查询DNS服务器来解析该名称。客户机发送的每条查询信息包括三条信息：包括：指定的DNS域名，指定的查询类型，DNS域名的指定类别。该应用一般不直接为用户使用，而是为其他应用服务，如HTTP，SMTP等在其中需要完成主机名到IP地址的转换。</li>
+<li>SNMP：简单网络管理协议，使用161号端口，是用来管理网络设备的。由于网络设备很多，无连接的服务就体现出其优势。</li>
+<li>TFTP(Trival File Transfer Protocal)，简单文件传输协议，该协议在熟知端口69上使用UDP服务。</li>
+</ol>
+<h2 id="4-超文本传送协议HTTP"><a href="#4-超文本传送协议HTTP" class="headerlink" title="4. 超文本传送协议HTTP"></a>4. 超文本传送协议HTTP</h2><p>HTTP是一个属于应用层的面向对象的协议，由于其简捷、快速的方式，适用于分布式超媒体信息系统。HTTP协议的主要特点可概括如下：</p>
+<ul>
+<li>支持客户/服务器模式。</li>
+<li>简单快速：客户向服务器请求服务时，只需传送请求方法和路径。请求方法常用的有GET、HEAD、POST。每种方法规定了客户与服务器联系的类型不同。由于HTTP协议简单，使得HTTP服务器的程序规模小，因而通信速度很快。</li>
+<li>灵活：HTTP允许传输任意类型的数据对象。正在传输的类型由Content-Type加以标记。</li>
+<li>无连接：无连接的含义是限制每次连接只处理一个请求。服务器处理完客户的请求，并收到客户的应答后，即断开连接。采用这种方式可以节省传输时间。</li>
+<li>无状态：HTTP协议是无状态协议。无状态是指协议对于事务处理没有记忆能力。缺少状态意味着如果后续处理需要前面的信息，则它必须重传，这样可能导致每次连接传送的数据量增大。另一方面，在服务器不需要先前信息时它的应答就较快。</li>
+</ul>
+<h3 id="4-1-浏览网页的过程"><a href="#4-1-浏览网页的过程" class="headerlink" title="4.1 浏览网页的过程"></a>4.1 浏览网页的过程</h3><p>浏览网页的过程其实就是浏览器作为一个浏览的“客户端”，向服务器端发送了 一次请求，把服务器端的文件“抓”到本地，再进行解释、展现。</p>
+<ul>
+<li>使用统一资源定位符URL来标志万维网上的各种文档，并使每一个文档在整个因特网的范围内具有唯一的标识符URL。</li>
+<li>通过超文本传送协议HTTP来实现万维网上各种连接，使用TCP连接进行可靠的传送。</li>
+<li>使用超文本标记语言HTML使得网页设计者可以很方便地用链接从本页面的某处链接到任意网页，并在自己主机屏幕上显示。</li>
+</ul>
+<h3 id="4-2-统一资源定位符URL"><a href="#4-2-统一资源定位符URL" class="headerlink" title="4.2 统一资源定位符URL"></a>4.2 统一资源定位符URL</h3><p>URL是用来表示从因特网上得到的资源位置和访问这些资源的方法。URL给资源的位置提供一种抽象的识别方法，并用这种方法给资源定位。只要能够对资源定位，系统就可以对资源进行各种操作，如存取、更新、替换和查找其属性。URL相当于一个文件名在网络范围的扩展。因此，URL是与因特网相连的机器上的任何可访问对象的指针。由于访问不同对象使用的协议不同，URL还能之处读取某个对象时所使用的协议。URL的一般形式为：</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">&lt;协议&gt;://&lt;主机&gt;:&lt;端口&gt;/&lt;路径&gt;</span><br></pre></td></tr></table></figure>
+<p>协议是指用哪种协议获取该万维网文档，如http，ftp；主机是指该网络文档所在主机的域名；端口和路径有时可以省略。对万维网的网点访问使用HTTP协议，HTTP的默认端口号是80，通常可省略。若在省略文件的路径，则URL就指到因特网上的某个主页。如： <a target="_blank" rel="noopener" href="https://link.jianshu.com/?t=http://www.baidu.com">www.baidu.com</a>。</p>
+<h3 id="4-3-HTTP请求报文"><a href="#4-3-HTTP请求报文" class="headerlink" title="4.3 HTTP请求报文"></a>4.3 HTTP请求报文</h3><p>HTTP规定在HTTP客户与HTTP服务器之间的每次交互，都由一个ASCII码串构成的请求和一个“MIME-like”的响应组成，HTTP报文通常都使用TCP连接传送。HTTP有两类报文：请求报文（从客户向服务器发送请求报文）和响应报文（从服务器到客户的回答）。HTTP请求报文和响应报文都是由三部分组成，两种报文格式的区别就是开始行不同。</p>
+<ol>
+<li><strong>开始行</strong> 用于区分是请求报文还是响应报文。开始行在两种报文中分别叫<strong>请求行</strong>和<strong>状态行</strong>。</li>
+<li><strong>首部行</strong> 用来说明浏览器或报文主题的一些信息。</li>
+<li><strong>实体主体</strong> 在请求报文中一般不用该字段，而在响应报文中也可能没有该字段。</li>
+</ol>
+<p>请求行只有三个内容，即<strong>方法、请求资源URL和HTTP的版本</strong>。下表给出了请求报文中常用的几种方法。<br>GET：请求读取由URL所标志的信息。<br>POST：给服务器添加信息（如注释）。<br>HEAD：请求获取由Request-URI所标识的资源的响应消息报头。<br>PUT：在给定的URL下存储一个文档。<br>DELETE：删除给定的URL所标志的资源。</p>
+<p>GET方法，在浏览器的地址栏中输入网址的方式访问网页时，浏览器采用GET方法向服务器获取资源。POST方法要求被请求服务器接受附在请求后面的数据，常用于提交表单。POST与GET的区别如下：</p>
+<ul>
+<li>Get是从服务器上获取数据，Post是向服务器传送数据。</li>
+<li>Get是把参数数据队列加到提交表单的Action属性所指向的URL中，值和表单内各个字段一一对应，在URL中可以看到。</li>
+<li>Get传送的数据量小，不能大于2KB；post传送的数据量较大，一般被默认为不受限制。</li>
+<li>根据HTTP规范，GET用于信息获取，而且应该是安全的和幂等的。</li>
+<li>所谓安全的意味着该操作用于获取信息而非修改信息。换句话说，GET 请求一般不应产生副作用。就是说，它仅仅是获取资源信息，就像数据库查询一样，不会修改，增加数据，不会影响资源的状态。</li>
+<li>幂等的意味着对同一URL的多个请求应该返回同样的结果。</li>
+</ul>
+<figure class="highlight ruby"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">GET <span class="symbol">http:</span>/<span class="regexp">/www.bilibili.com/video</span><span class="regexp">/douga.html  HTTP/</span><span class="number">1.1</span></span><br></pre></td></tr></table></figure>
+<p>下面是一个请求报文的例子</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/53611-ec8d7daf1793749a.png" alt=""></p>
+<p>请求报文</p>
+<h3 id="HTTP响应报文"><a href="#HTTP响应报文" class="headerlink" title="HTTP响应报文"></a>HTTP响应报文</h3><p>在接收和解释请求消息后，服务器返回一个HTTP响应消息。HTTP响应也是由三个部分组成，分别是：状态行、消息报头、响应正文。状态行格式如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HTTP-Version Status-Code Reason-Phrase CRLF</span><br></pre></td></tr></table></figure>
+<p>其中，HTTP-Version表示服务器HTTP协议的版本；Status-Code表示服务器发回的响应状态代码；Reason-Phrase表示状态代码的文本描述。</p>
+<p>状态代码有三位数字组成，第一个数字定义了响应的类别，且有五种可能取值：<br>1xx：指示信息—表示请求已接收，继续处理<br>2xx：成功—表示请求已被成功接收、理解、接受<br>3xx：重定向—要完成请求必须进行更进一步的操作<br>4xx：客户端错误—请求有语法错误或请求无法实现<br>5xx：服务器端错误—服务器未能实现合法的请求</p>
+<p>常见状态代码、状态描述、说明：</p>
+<figure class="highlight jsx"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">200</span> OK      <span class="comment">//客户端请求成功</span></span><br><span class="line"><span class="number">400</span> Bad Request  <span class="comment">//客户端请求有语法错误，不能被服务器所理解</span></span><br><span class="line"><span class="number">401</span> Unauthorized <span class="comment">//请求未经授权，这个状态代码必须和WWW-Authenticate报头域一起使用 </span></span><br><span class="line"><span class="number">403</span> Forbidden  <span class="comment">//服务器收到请求，但是拒绝提供服务</span></span><br><span class="line"><span class="number">404</span> Not Found  <span class="comment">//请求资源不存在，eg：输入了错误的URL</span></span><br><span class="line"><span class="number">500</span> Internal Server <span class="built_in">Error</span> <span class="comment">//服务器发生不可预期的错误</span></span><br><span class="line"><span class="number">503</span> Server Unavailable  <span class="comment">//服务器当前不能处理客户端的请求，一段时间后可能恢复正常</span></span><br></pre></td></tr></table></figure>
+<h2 id="5-DNS域名系统"><a href="#5-DNS域名系统" class="headerlink" title="5. DNS域名系统"></a>5. DNS域名系统</h2><p>DNS是一中用于TCP/IP应用程序的分布式数据库，它提供域名到IP地址的转换。举例来说，如果你要访问域名math.stackexchange.com，首先要通过DNS查出它的IP地址是151.101.129.69 。</p>
+<h3 id="5-1-因特网的域名结构"><a href="#5-1-因特网的域名结构" class="headerlink" title="5.1 因特网的域名结构"></a>5.1 因特网的域名结构</h3><p>因特网在命名时采用的是层次树状结构的命名方法。任何一个连接在因特网上的主机或路由器，都有一个唯一的层次结构的名字，即域名(domain name)。每一个域名都是有标号(label)序列组成，而各标号之间用点(小数点)隔开。如mail.cctv.com，这是中央电视台用于手法电子邮件的计算机的域名，它由三个标号组成，其中标号com是顶级域名，标号cctv是二级域名，标号mail是三级域名。</p>
+<h3 id="5-2-域名服务器"><a href="#5-2-域名服务器" class="headerlink" title="5.2 域名服务器"></a>5.2 域名服务器</h3><p>如果采用上述的树状结构，每一个节点都采用一个域名服务器，这样会使得域名服务器的数量太多，使域名服务器系统的运行效率降低。所以在DNS中，采用划分区的方法来解决。</p>
+<p>一个服务器所负责管辖(或有权限)的范围叫做区(zone)。各单位根据具体情况来划分自己管辖范围的区。但在一个区中的所有节点必须是能够连通的。每一个区设置相应的权限域名服务器，用来保存该区中的所有主机到域名IP地址的映射。总之，DNS服务器的管辖范围不是以“域”为单位，而是以“区”为单位。区是DNS服务器实际管辖的范围。区 &lt;= 域。</p>
+<p>因特网上的DNS服务器也是按照层次安排的。每一个域名服务器只对域名体系中的一部分进行管辖。根据域名服务器所起的作用，可以把域名服务器划分为下面四种不同的类型。</p>
+<ul>
+<li>根域名服务器：最高层次的，也是最重要的域名服务器。所有的根域名服务器都知道所有的顶级域名服务器的域名和IP地址。不管是哪一个本地域名服务器，若要对因特网上任何一个域名进行解析，只要自己无法解析，就首先求助根域名服务器。假定所有的根域名服务器都瘫痪了，那么整个DNS系统就无法工作。很多情况下，根域名服务器并不直接把待查询的域名直接解析出IP地址，而是告诉本地域名服务器下一步应当找哪一个顶级域名服务器进行查询。</li>
+<li>顶级域名服务器：负责管理在该顶级域名服务器注册的二级域名。</li>
+<li>权限域名服务器：负责一个“区”的域名服务器。</li>
+<li>本地域名服务器：本地服务器不属于下图的域名服务器的层次结构，但是它对域名系统非常重要。当一个主机发出DNS查询请求时，这个查询请求报文就发送给本地域名服务器。</li>
+</ul>
+<h3 id="5-3-域名的解析过程"><a href="#5-3-域名的解析过程" class="headerlink" title="5.3 域名的解析过程"></a>5.3 域名的解析过程</h3><p>主机向本地域名服务器的查询一般都是采用递归查询。所谓递归查询就是：如果主机所询问的本地域名服务器不知道被查询的域名的IP地址，那么本地域名服务器就以DNS客户的身份，向其它根域名服务器继续发出查询请求报文(即替主机继续查询)，而不是让主机自己进行下一步查询。因此，递归查询返回的查询结果或者是所要查询的IP地址，或者是报错，表示无法查询到所需的IP地址。</p>
+<p>本地域名服务器向根域名服务器的查询的迭代查询。迭代查询的特点：当根域名服务器收到本地域名服务器发出的迭代查询请求报文时，要么给出所要查询的IP地址，要么告诉本地服务器：“你下一步应当向哪一个域名服务器进行查询”。然后让本地服务器进行后续的查询。根域名服务器通常是把自己知道的顶级域名服务器的IP地址告诉本地域名服务器，让本地域名服务器再向顶级域名服务器查询。顶级域名服务器在收到本地域名服务器的查询请求后，要么给出所要查询的IP地址，要么告诉本地服务器下一步应当向哪一个权限域名服务器进行查询。最后，知道了所要解析的IP地址或报错，然后把这个结果返回给发起查询的主机。</p>
+<p>下面举一个例子演示整个查询过程：<br>假定域名为m.xyz.com的主机想知道另一个主机y.abc.com的IP地址。例如，主机m.xyz.com打算发送邮件给y.abc.com。这时就必须知道主机y.abc.com的IP地址。下面是上图a的几个查询步骤：</p>
+<ol>
+<li>主机m.abc.com先向本地服务器dns.xyz.com进行递归查询。</li>
+<li>本地服务器采用迭代查询。它先向一个根域名服务器查询。</li>
+<li>根域名服务器告诉本地服务器，下一次应查询的顶级域名服务器dns.com的IP地址。</li>
+<li>本地域名服务器向顶级域名服务器dns.com进行查询。</li>
+<li>顶级域名服务器dns.com告诉本地域名服务器，下一步应查询的权限服务器dns.abc.com的IP地址。</li>
+<li>本地域名服务器向权限域名服务器dns.abc.com进行查询。</li>
+<li>权限域名服务器dns.abc.com告诉本地域名服务器，所查询的主机的IP地址。</li>
+<li>本地域名服务器最后把查询结果告诉m.xyz.com。</li>
+</ol>
+<p>整个查询过程共用到了8个UDP报文。</p>
+<p>为了提高DNS查询效率，并减轻服务器的负荷和减少因特网上的DNS查询报文数量，在域名服务器中广泛使用了高速缓存，用来存放最近查询过的域名以及从何处获得域名映射信息的记录。例如，在上面的查询过程中，如果在m.xyz.com的主机上不久前已经有用户查询过y.abc.com的IP地址，那么本地域名服务器就不必向根域名服务器重新查询y.abc.com的IP地址，而是直接把告诉缓存中存放的上次查询结果(即y.abc.com的IP地址)告诉用户。</p>
+<h2 id="6-面试题精选"><a href="#6-面试题精选" class="headerlink" title="6. 面试题精选"></a>6. 面试题精选</h2><h3 id="例题1：TCP和UDP有什么区别？"><a href="#例题1：TCP和UDP有什么区别？" class="headerlink" title="例题1：TCP和UDP有什么区别？"></a>例题1：TCP和UDP有什么区别？</h3><p>TCP是传输控制协议，提供的是面向连接、可靠的字节流服务。当客户和服务器批次交换数据前，必须建立TCP连接之后才能传输数据。TCP提供超时重传、丢弃重复数据、流量控制等功能，保证数据能从一端传到另一端。</p>
+<p>UDP是用户数据报协议，是一个简单的面向数据报的运输层协议。UDP不提供可靠性，不保证数据能够到达目的地。由于UDP在传输数据前不用在客户和服务器之间建立连接，且没有超时重传等机制，故而传输速度很快。</p>
+<h3 id="例题2：TCP的可靠性如何保证？"><a href="#例题2：TCP的可靠性如何保证？" class="headerlink" title="例题2：TCP的可靠性如何保证？"></a>例题2：TCP的可靠性如何保证？</h3><p>TCP的可靠性是通过顺序编号和确认（ACK）来实现的。</p>
+<h3 id="例题3：在浏览器中输入www-baidu-com后执行的全部过程"><a href="#例题3：在浏览器中输入www-baidu-com后执行的全部过程" class="headerlink" title="例题3：在浏览器中输入www.baidu.com后执行的全部过程"></a>例题3：在浏览器中输入<a target="_blank" rel="noopener" href="https://link.jianshu.com/?t=http://www.baidu.com">www.baidu.com</a>后执行的全部过程</h3><ol>
+<li>客户端浏览器通过DNS解析到<a target="_blank" rel="noopener" href="https://link.jianshu.com/?t=http://www.baidu.com">www.baidu.com</a>的IP地址220.181.27.48，通过这个IP地址找到客户端到服务器的路径。客户端浏览器发起一个HTTP会话到220.161.27.48，然后通过TCP进行封装数据包，输入到网络层。</li>
+<li>在客户端的传输层，把HTTP会话请求分成报文段，添加源和目的端口，如服务器使用80端口监听客户端的请求，客户端由系统随机选择一个端口如5000，与服务器进行交换，服务器把相应的请求返回给客户端的5000端口。然后使用IP层的IP地址查找目的端。</li>
+<li>客户端的网络层不用关系应用层或者传输层的东西，主要做的是通过查找路由表确定如何到达服务器，期间可能经过多个路由器，这些都是由路由器来完成的工作，我不作过多的描述，无非就是通过查找路由表决定通过那个路径到达服务器。</li>
+<li>客户端的链路层，包通过链路层发送到路由器，通过邻居协议查找给定IP地址的MAC地址，然后发送ARP请求查找目的地址，如果得到回应后就可以使用ARP的请求应答交换的IP数据包现在就可以传输了，然后发送IP数据包到达服务器的地址。</li>
+</ol>
+<h3 id="例题4：牛客网由于访问客户量的增长-原来的服务器不足以维持请求-经常发生宕机的突发情况-因此为了解决这个问题-CEO决定新增加几台服务器-那么问题是这些接入WEB服务器第一次被访问到时，不同协议的发生顺序是下面中的（ARP-gt-DNS-gt-HTTP）。"><a href="#例题4：牛客网由于访问客户量的增长-原来的服务器不足以维持请求-经常发生宕机的突发情况-因此为了解决这个问题-CEO决定新增加几台服务器-那么问题是这些接入WEB服务器第一次被访问到时，不同协议的发生顺序是下面中的（ARP-gt-DNS-gt-HTTP）。" class="headerlink" title="例题4：牛客网由于访问客户量的增长,原来的服务器不足以维持请求,经常发生宕机的突发情况,因此为了解决这个问题,CEO决定新增加几台服务器,那么问题是这些接入WEB服务器第一次被访问到时，不同协议的发生顺序是下面中的（ARP -&gt; DNS -&gt; HTTP）。"></a>例题4：牛客网由于访问客户量的增长,原来的服务器不足以维持请求,经常发生宕机的突发情况,因此为了解决这个问题,CEO决定新增加几台服务器,那么问题是这些接入WEB服务器第一次被访问到时，不同协议的发生顺序是下面中的（ARP -&gt; DNS -&gt; HTTP）。</h3><p>解析：当你给WEB服务器接上网线的时候，它会自动发送一条ARP信息，使得接入网关能找的到它；网关上会形成一条MAC地址到IP地址的映射记录。如用户在浏览器中输入域名，如本地DNS缓存中没有，必然会进行一次DNS查询，以确定该域名的IP地址。获得DNS对应的IP地址以后，使用HTTP协议访问web服务器（不考虑TCP三次握手建立连接的阶段）。</p>
+<h3 id="例题5：将一个C类网络划分为3个子网，每个子网最少要容纳55台主机，使用的子网掩码是？（2017乐视实习生）"><a href="#例题5：将一个C类网络划分为3个子网，每个子网最少要容纳55台主机，使用的子网掩码是？（2017乐视实习生）" class="headerlink" title="例题5：将一个C类网络划分为3个子网，每个子网最少要容纳55台主机，使用的子网掩码是？（2017乐视实习生）"></a>例题5：将一个C类网络划分为3个子网，每个子网最少要容纳55台主机，使用的子网掩码是？（2017乐视实习生）</h3><p>答：255.255.255.192</p>
+<h3 id="例题5：IP路由表包括哪几项内容？"><a href="#例题5：IP路由表包括哪几项内容？" class="headerlink" title="例题5：IP路由表包括哪几项内容？"></a>例题5：IP路由表包括哪几项内容？</h3><p>IP路由表通常包括三项内容，他们是<strong>子网掩码、目的网络地址、到目的网络路径上“下一个”路由器的地址</strong>。</p>
+<h2 id="7-计算机网络面试常见问题"><a href="#7-计算机网络面试常见问题" class="headerlink" title="7.计算机网络面试常见问题"></a>7.计算机网络面试常见问题</h2><h4 id="1、简单介绍一下HTTP的长连接和短连接"><a href="#1、简单介绍一下HTTP的长连接和短连接" class="headerlink" title="1、简单介绍一下HTTP的长连接和短连接?"></a>1、简单介绍一下HTTP的长连接和短连接?</h4><p>HTTP的长连接和短连接本质上是TCP长连接和短连接。</p>
+<p>在HTTP/1.0中，默认使用的是短连接。也就是说，浏览器和服务器每进行一次HTTP操作，就建立一次连接，但任务结束就中断连接</p>
+<p>但从 HTTP/1.1起，默认使用长连接，用以保持连接特性。使用长连接的HTTP协议，会在响应头有加入这行代码：</p>
+<figure class="highlight css"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Connection:keep-alive</span><br></pre></td></tr></table></figure>
+<h4 id="2、简述计算机网络中的七层模型"><a href="#2、简述计算机网络中的七层模型" class="headerlink" title="2、简述计算机网络中的七层模型?"></a>2、简述计算机网络中的七层模型?</h4><h4 id="3、常见的HTTP状态码有哪些"><a href="#3、常见的HTTP状态码有哪些" class="headerlink" title="3、常见的HTTP状态码有哪些?"></a>3、常见的HTTP状态码有哪些?</h4><p>1开头，表示请求正在处理；</p>
+<p>2开头，表示请求被成功处理完毕；</p>
+<p>3开头，重定向，要完成的请求需要附加操作。</p>
+<p>4开头：客户端错误，请求有语法错误或请求无法实现。</p>
+<p>5开头：服务器端错误</p>
+<p>301：永久重定向，浏览器自动定向到新url。</p>
+<p>302：临时重定向，重定向表示页面移动只是暂时的。</p>
+<p>401：当前请求需要用户验证</p>
+<p>404：请求的网址不存在</p>
+<p>500： 服务器端未知错误无法处理请求</p>
+<p>503： 服务器停机维护或超负荷，暂无法处理请求</p>
+<h4 id="4、TCP的三次握手过程-为什么会采用三次握手，若采用二次握手可以吗"><a href="#4、TCP的三次握手过程-为什么会采用三次握手，若采用二次握手可以吗" class="headerlink" title="4、TCP的三次握手过程?为什么会采用三次握手，若采用二次握手可以吗?"></a>4、TCP的三次握手过程?为什么会采用三次握手，若采用二次握手可以吗?</h4><h4 id="5、请简述一下TCP的三次握手和四次挥手协议"><a href="#5、请简述一下TCP的三次握手和四次挥手协议" class="headerlink" title="5、请简述一下TCP的三次握手和四次挥手协议?"></a>5、请简述一下TCP的三次握手和四次挥手协议?</h4><h4 id="6、TCP和UDP相关的协议分别有哪些"><a href="#6、TCP和UDP相关的协议分别有哪些" class="headerlink" title="6、TCP和UDP相关的协议分别有哪些?"></a>6、TCP和UDP相关的协议分别有哪些?</h4><p>TCP：FTP（文件传输协议），HTTP（超文本传输协议），HTTPS，SSH，SMTP（发送电子邮件）。</p>
+<p>UDP：DHCP（动态配置IP地址），NTP协议（网络时间协议）</p>
+<h4 id="7、TCP和UDP有什么区别"><a href="#7、TCP和UDP有什么区别" class="headerlink" title="7、TCP和UDP有什么区别?"></a>7、TCP和UDP有什么区别?</h4><p>UDP可供不可靠交付，传输数据前不需要建立连接，远程主机收到报文后也不需要确认。一般用于即时通信。首部字节8个。</p>
+<p>TCP提供可靠交付，传输数据前必须建立连接，传输结束要释放连接。用于文件传输，邮件传输。在数据传递过程中，有确认、窗口、重传和拥塞控制机制，开销较大。首部字节20-60个。</p>
+<h4 id="8、Post和Get有什么区别"><a href="#8、Post和Get有什么区别" class="headerlink" title="8、Post和Get有什么区别?"></a>8、Post和Get有什么区别?</h4><p>get提交的参数会放在URL之后，可能存在安全问题一般用于获取资源信息。post参数在请求主体中，并且参数不会被保留，更安全，主要用于修改服务器资源。</p>
+<p>get只支持URL编码，post支持多种编码格式。get提交的数据大小有限制，而post方法没有限制。get在浏览器回退时是无害的，post会再次提交请求。</p>
+<h4 id="9、在浏览器中输入www-baidu-com后执行的全部过程"><a href="#9、在浏览器中输入www-baidu-com后执行的全部过程" class="headerlink" title="9、在浏览器中输入www.baidu.com后执行的全部过程?"></a>9、在浏览器中输入www.baidu.com后执行的全部过程?</h4><p>（1）DNS解析，通过DNS服务器解析域名找到对应IP地址</p>
+<p>（2）TCP连接，找到IP地址后向Web服务器发起TCP连接请求，三次握手建立连接后，浏览器便可以将HTTP请求数据发送给服务器。</p>
+<p>（3）发送HTTP请求，HTTP协议是建立在TCP协议之上的应用层协议，本质是在建立的TCP连接中，按照HTTP协议标准发送一个索要网页的请求。cookies会随着请求发送给服务器。</p>
+<p>（4）处理请求并返回，服务器获取到客户端的HTTP请求后，会根据HTTP请求的内容获取相应的文件，并将文件发送给浏览器。</p>
+<p>（5）浏览器渲染，浏览器根据响应开始显示界面，首先解析HTML文件构建DOM树，然后解析CSS文件构建渲染树，最后浏览器布局渲染树并将其绘制在屏幕上。</p>
+<p>（6）断开连接，客户端和服务器四次挥手终止TCP连接。</p>
+<h4 id="10、cookie-和session-有什么区别"><a href="#10、cookie-和session-有什么区别" class="headerlink" title="10、cookie 和session 有什么区别?"></a>10、cookie 和session 有什么区别?</h4><p>Cookie只能存储ASCII码字符串，而Session则可以存储任何类型的数据。Cookie存储在浏览器中会被恶意查看，Session存储在SessionStorage中（服务器上？redis？）。单个cookie数据大小不能超过4k，cookie的数量也有限制。</p>
+<h4 id="11、HTTP不保存用户状态的协议，如何保持用户状态？"><a href="#11、HTTP不保存用户状态的协议，如何保持用户状态？" class="headerlink" title="11、HTTP不保存用户状态的协议，如何保持用户状态？"></a>11、HTTP不保存用户状态的协议，如何保持用户状态？</h4><p>HTTP是一种无状态协议，不保存请求和相应之间的通信状态。主要通过session和cookie机制来保存。Session的主要作用就是通过服务端记录用户状态。大部分情况下，我没都是通过在Cookie中附加一个Session ID来跟中Session。</p>
+<h4 id="12、cookie被禁用怎么办？"><a href="#12、cookie被禁用怎么办？" class="headerlink" title="12、cookie被禁用怎么办？"></a>12、cookie被禁用怎么办？</h4><p>此时无法使用Cookie保存用户信息，只能用session，可以将Session id作为url的参数进行传递。</p>
+<h4 id="13、TCP-如何保障数据包有效"><a href="#13、TCP-如何保障数据包有效" class="headerlink" title="13、TCP 如何保障数据包有效"></a>13、TCP 如何保障数据包有效</h4><p>1、校验和：发送的数据包的二进制相加然后取反，目的是检测数据在传输过程中的任何变化。</p>
+<p>2、确认应答+序列号： TCP给发送的每一个包进行编号，接收方对数据包进行排序，把有序数据传送给应用层。</p>
+<p>3、超时重传：当TCP发出一个段后，它启动一个定时器<strong>，</strong>等待目的端确认收到这个报文段。如果不能及时收到一个确认，将重发这个报文段。</p>
+<p>4、流量控制：当接收方来不及处理发送方的数据，能提示发送方降低发送的速率，防止包丢失。TCP使用的流量控制协议是可变大小的滑动窗口协议。</p>
+<p>5、拥塞控制：当网络拥塞时，减少数据的发送</p>
+<h4 id="14、HTTPS-和-HTTP-的区别"><a href="#14、HTTPS-和-HTTP-的区别" class="headerlink" title="14、HTTPS 和 HTTP 的区别"></a>14、HTTPS 和 HTTP 的区别</h4><p>HTTP协议以明文方式发送内容，数据未加密，HTTPS数据传输过程中是加密的，安全性较好。</p>
+<p>HTTP和HTTPS使用的是完全不同的连接方式，用的端口也不一样，前者是80端口，后者是443端口。</p>
+<p>HTTPS需要数字认证机构申请证书，需要一定费用</p>
+<p>HTTP页面响应速度更快，HTTPS还需要经历一个SSL协商过程。</p>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">Author: </span><span class="post-copyright-info"><a href="mailto:undefined">xiaobubuya</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">Link: </span><span class="post-copyright-info"><a href="https://xiaobubuya.github.io/计算机网络面试知识点总结/">https://xiaobubuya.github.io/计算机网络面试知识点总结/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">Copyright Notice: </span><span class="post-copyright-info">All articles in this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless stating additionally.</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/">计算机网络</a></div><div class="social-share pull-right" data-disabled="facebook"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/css/share.min.css"><script src="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/js/social-share.min.js"></script><nav id="pagination"><div class="prev-post pull-left"><a href="/SVM/"><i class="fa fa-chevron-left">  </i><span>SVM</span></a></div><div class="next-post pull-right"><a href="/%E8%8B%B1%E8%AF%AD%E5%B0%8F%E4%BD%9C%E6%96%87/"><span>英语小作文</span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer class="footer-bg" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div class="layout" id="footer"><div class="copyright">&copy;2020 - 2021 By xiaobubuya</div><div class="framework-info"><span>Driven - </span><a target="_blank" rel="noopener" href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>Theme - </span><a target="_blank" rel="noopener" href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="footer_custom_text">hitokoto</div><div class="busuanzi"><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-animate@latest/velocity.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-ui-pack@latest/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.9.0"></script><script src="/js/fancybox.js?version=1.9.0"></script><script src="/js/sidebar.js?version=1.9.0"></script><script src="/js/copy.js?version=1.9.0"></script><script src="/js/fireworks.js?version=1.9.0"></script><script src="/js/transition.js?version=1.9.0"></script><script src="/js/scroll.js?version=1.9.0"></script><script src="/js/head.js?version=1.9.0"></script><script src="/js/search/algolia.js"></script><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  CommonHTML: {
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "HTML-CSS": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "SVG": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  }
+});
+</script><script type="text/x-mathjax-config">MathJax.Hub.Queue(function() {
+  var all = MathJax.Hub.getAllJax(), i;
+  for (i=0; i < all.length; i += 1) {
+    all[i].SourceElement().parentNode.className += ' has-jax';
+  }
+});
+</script><script src="https://cdn.jsdelivr.net/npm/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>if(/Android|webOS|iPhone|iPod|iPad|BlackBerry/i.test(navigator.userAgent)) {
+  $('#nav').addClass('is-mobile')
+  $('footer').addClass('is-mobile')
+  $('#top-container').addClass('is-mobile')
+}</script><div class="search-dialog" id="algolia-search"><div class="search-dialog__title" id="algolia-search-title">Algolia</div><div id="algolia-input-panel"><div id="algolia-search-input"></div></div><hr><div id="algolia-search-results"><div id="algolia-hits"></div><div id="algolia-pagination"></div><div id="algolia-stats"></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>

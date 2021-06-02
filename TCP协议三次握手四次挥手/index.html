@@ -1,0 +1,94 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="TCP协议三次握手四次挥手"><meta name="keywords" content="计算机网络"><meta name="author" content="xiaobubuya"><meta name="copyright" content="xiaobubuya"><title>TCP协议三次握手四次挥手 | xiaobubuyaのBlog</title><link rel="shortcut icon" href="/melody-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.9.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css?version=1.9.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="x-dns-prefetch-control" content="on"><link rel="dns-prefetch" href="https://cdn.jsdelivr.net"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.css"><script src="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.js" defer></script><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><script src="https://v1.hitokoto.cn/?encode=js&amp;charset=utf-8&amp;select=.footer_custom_text" defer></script><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: {"appId":"X2MTDP5JXS","apiKey":"b740a5c5a0afcfdb46cd9dde3f3da169","indexName":"xiaobubuya","hits":{"per_page":10},"languages":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}.","hits_stats":"${hits} results found in ${time} ms"}},
+  localSearch: undefined,
+  copy: {
+    success: 'Copy successfully',
+    error: 'Copy error',
+    noSupport: 'The browser does not support'
+  },
+  hexoVersion: '5.4.0'
+} </script><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="xiaobubuyaのBlog" type="application/atom+xml">
+</head><body><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div id="sidebar" data-display="true"><div class="toggle-sidebar-info text-center"><span data-toggle="Toggle article">Toggle site</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">Catalog</div><div class="sidebar-toc__progress"><span class="progress-notice">You've read</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#TCP%E4%B8%89%E6%AC%A1%E6%8F%A1%E6%89%8B"><span class="toc-number">1.</span> <span class="toc-text">TCP三次握手</span></a></li><li class="toc-item toc-level-1"><a class="toc-link" href="#%E8%BF%9E%E6%8E%A5%E8%BF%87%E7%A8%8B"><span class="toc-number">2.</span> <span class="toc-text">连接过程</span></a></li><li class="toc-item toc-level-1"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E4%B8%89%E6%AC%A1%E6%8F%A1%E6%89%8B%EF%BC%9F"><span class="toc-number">3.</span> <span class="toc-text">为什么要三次握手？</span></a></li><li class="toc-item toc-level-1"><a class="toc-link" href="#TCP%E5%9B%9B%E6%AC%A1%E6%8C%A5%E6%89%8B"><span class="toc-number">4.</span> <span class="toc-text">TCP四次挥手</span></a></li><li class="toc-item toc-level-1"><a class="toc-link" href="#%E6%96%AD%E5%BC%80%E8%BF%87%E7%A8%8B"><span class="toc-number">5.</span> <span class="toc-text">断开过程</span></a></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img02/%E5%A4%B4%E5%83%8F.jpg"></div><div class="author-info__name text-center">xiaobubuya</div><div class="author-info__description text-center">命数如织，当为磐石</div><div class="follow-button"><a target="_blank" rel="noopener" href="https://github.com/xiaobubuya">Follow Me</a></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">Articles</span><span class="pull-right">57</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">Tags</span><span class="pull-right">22</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">Categories</span><span class="pull-right">6</span></a></div><hr><div class="author-info-links"><div class="author-info-links__title text-center">Links</div><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/gallery">Gallery</a><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/slides">Slides</a></div></div></div><div id="content-outer"><div id="top-container" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">xiaobubuyaのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> Search</span></a></span></div><div id="post-info"><div id="post-title">TCP协议三次握手四次挥手</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2021-04-26</time><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E5%AD%A6%E4%B9%A0/">学习</a><div class="post-meta-wordcount"><span>Word count: </span><span class="word-count">1.7k</span><span class="post-meta__separator">|</span><span>Reading time: 5 min</span></div></div></div></div><div class="layout" id="content-inner"><article id="post"><div class="article-container" id="post-content"><h1 id="TCP三次握手"><a href="#TCP三次握手" class="headerlink" title="TCP三次握手"></a>TCP三次握手</h1><p><strong>TCP运输连接有三个阶段：连接建立、数据传送、连接释放</strong></p>
+<p>TCP连接过程通常叫做<strong>握手</strong>，握手需要客户端和服务器端交换三个报文，如下图所示</p>
+<p>之所以需要三次握手是因为TCP是可靠传输，三次能够刚好可靠又不多余TCP三次握手与Socket的连接过程是相关联对应的，Socket就是对于TCP/IP的封装么</p>
+<p><strong>客户端有CLOSED、SYN-SEND、ESTABLISHED三种状态</strong></p>
+<p><strong>服务器端有CLOSED、LISTEN、SYN-RCVD、ESTABLISHED四种状态</strong></p>
+<p>服务器会首先创建连接，并且进入监听等待阶段，等待客户端的请求</p>
+<p>当需要发送请求时，浏览器客户端主动打开连接，然后服务器被动打开连接</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/TCP/8309948_1566974042905_FC5D1E4A8542CB51426DC924E8578CD5" alt=""></p>
+<h1 id="连接过程"><a href="#连接过程" class="headerlink" title="连接过程"></a>连接过程</h1><p>客户端在需要时，向服务器发起请求连接报文，发出后状态从CLOSED转换为SYN-SEND 同步-已发送状态</p>
+<p>服务器一直处于LISTEN状态，接收到请求后，对客户端的请求进行回应，转换为SYN-RCVD，同步-已收到状态</p>
+<p>客户端收到服务器的回应后，状态转换为ESTABLISHED，并且再次向服务器发送确认</p>
+<p>服务器收到客户端的确认之后，服务器也转换为ESTABLISHED状态，完成了连接</p>
+<p><strong>发出消息或者收到消息后状态才会进行切换</strong></p>
+<p><strong>客户端与服务器的握手是一个往复确认的过程</strong></p>
+<p>客户端：发出确认请求，SYN=1，seq=x，你听得到么，我想建立连接（SYN=1），我的序号是x（seq=x）</p>
+<p>服务器：对请求进行确认，也就是回应，我听到了（ACK=1，ack=x+1），你听得到么（SYN=1），我的序号是y（seq=y）</p>
+<p>客户端：对服务器的回应进行确认，我听到了（ACK=1，ack=y+1），我的序号是x+1</p>
+<p>IP数据报经过运输层需要分段发送，所以在TCP的处理过程中，有序号的概念</p>
+<p>比如客户端说我要从666号开始，发送100个数据，服务器说，我是从888号开始回应的</p>
+<p>上面的seq=x 和 seq=y  seq=x+1（上一个seq=x，下一个自然就是seq=x+1了）都是各自的序号</p>
+<p><strong>握手的过程就是SYN seq  ACK ack的来回确认</strong></p>
+<p>SYN ACK是头部的字段，可以理解为标志位，协议中有对他们的值有具体的规定</p>
+<p>ack就是确认号，确认号是期望收到的对方的下一个报文段的第一个数据字节的序号，也就是收到的序号+1否则随便一个，怎么对得上号</p>
+<h1 id="为什么要三次握手？"><a href="#为什么要三次握手？" class="headerlink" title="为什么要三次握手？"></a>为什么要三次握手？</h1><p>如果不是三次握手，只有两次</p>
+<p>如果客户端发出请求连接时，报文延时了，于是客户端重新发送了一次连接请求消息</p>
+<p>后来收到了确认，建立了连接，然后完成了数据传输，关闭了连接</p>
+<p>此时，服务器收到了那个迟到的请求消息，此时他应该是个废物了</p>
+<p>但是如果只有两次握手，服务器收到请求就响应建立了连接了</p>
+<p>但是如果是三次，客户端不会再次确认，服务器也就随后知道了这消息有问题，不会建立连接</p>
+<h1 id="TCP四次挥手"><a href="#TCP四次挥手" class="headerlink" title="TCP四次挥手"></a>TCP四次挥手</h1><p>连接建立以后就可以进行数据通信传输了</p>
+<p>通信结束后，需要断开连接，断开连接需要四次交互，常被称为四次挥手</p>
+<p>最初状态均为ESTABLISHED，客户端与服务器相互进行数据传送</p>
+<p>下图假设客户端无数据发送，请求断开连接</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/TCP/8309948_1566974066111_035082E832E529B2DFF7F11FE4D076A4" alt=""></p>
+<h1 id="断开过程"><a href="#断开过程" class="headerlink" title="断开过程"></a>断开过程</h1><p>客户端无数据发送时，请求关闭连接，我好了，我想断开连接了（FIN=1）我的序号是u（u就是之前传送过的所有数据的最后一个字节的序号+1）</p>
+<p>此时客户端转变为FIN-WAIT-1状态</p>
+<p>服务器收到客户端的消息后，告诉客户端“好的，我知道了”（ACK=1，ack=u+1），这条消息的序号是v（seq=v ，这是服务器发送消息的序号)</p>
+<p>此时服务器的状态就转换为了CLOSE-WAIT状态</p>
+<p>此时，客户端通往服务器的路就断开了，客户端不能向服务器发送数据</p>
+<p>但是服务器仍旧可以向客户端发送数据，现在是“半关闭”的状态</p>
+<p>当客户端收到来自服务器的确认之后，进入FIN-WAIT-2状态，等待服务器那边说断开连接，等待中。。。。。</p>
+<p>当服务器所有的数据也都完全发送完成了之后，服务器才开始主动告知客户端断开连接（FIN=1，seq=w）</p>
+<p>这中间服务器可能又继续发送了一些数据，可能是v+1 也可能发送了更多，所以设置为w</p>
+<p>并且再次发送确认信息（ACK=1，ack=u+1，因为客户端已经不能发送数据了，服务器期望收到的序号永远都是最后一个序号+1，也就是u+1）</p>
+<p>这时，服务器就进入了LAST-ACK状态，最后确认状态</p>
+<p>客户端收到了服务器的断开连接请求后，也需要给出确认响应（ACK=1，ack=w+1，seq=u+1），然后进入TIME-WAIT状态</p>
+<p>等待两个MSL后，进入关闭状态</p>
+<p>MSL 是Maximum Segment Lifetime英文的缩写“报文最大生存时间”，他是任何报文在网络上存在的最长时间，超过这个时间报文将被丢弃。</p>
+<p>服务器最终收到来自客户端的确认信息后，关闭，进入CLOSED状态</p>
+<p><strong>四次挥手也是一个互相确认的过程，你说不玩了，别人答应了，还要等别人都搞好了再告诉你可以走了，你才能走</strong></p>
+<p>客户端：我不想玩了</p>
+<p>服务器：好的我知道了</p>
+<p>服务器：你可以走了</p>
+<p>客户端：好的我走了</p>
+<p>就如同在网吧上网，你点击下机之后，再去网管那边结账结账清楚了之后才彻底结束，而不是你说走就走了，难道你办会员卡了么</p>
+<p>这个过程很好理解，<strong>客户端发出请求后，并不意味着服务器都已经完成响应</strong>，所以当客户端请求断开时，并不能立即断开，还需要等待服务器那边处理妥当，再来通知你的确是可以断开了。消息发出来谁知道别人收没收到，所以还需要一个确认</p>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">Author: </span><span class="post-copyright-info"><a href="mailto:undefined">xiaobubuya</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">Link: </span><span class="post-copyright-info"><a href="https://xiaobubuya.github.io/TCP协议三次握手四次挥手/">https://xiaobubuya.github.io/TCP协议三次握手四次挥手/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">Copyright Notice: </span><span class="post-copyright-info">All articles in this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless stating additionally.</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/">计算机网络</a></div><div class="social-share pull-right" data-disabled="facebook"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/css/share.min.css"><script src="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/js/social-share.min.js"></script><nav id="pagination"><div class="prev-post pull-left"><a href="/Spring-Boot%E5%90%AF%E5%8A%A8%E5%8E%9F%E7%90%86/"><i class="fa fa-chevron-left">  </i><span>Spring Boot启动原理</span></a></div><div class="next-post pull-right"><a href="/%E6%A0%88%E5%92%8C%E9%98%9F%E5%88%97%E7%9A%84%E5%9F%BA%E7%A1%80%E7%94%A8%E6%B3%95/"><span>栈、队列、数组的基础用法</span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer class="footer-bg" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div class="layout" id="footer"><div class="copyright">&copy;2020 - 2021 By xiaobubuya</div><div class="framework-info"><span>Driven - </span><a target="_blank" rel="noopener" href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>Theme - </span><a target="_blank" rel="noopener" href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="footer_custom_text">hitokoto</div><div class="busuanzi"><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-animate@latest/velocity.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-ui-pack@latest/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.9.0"></script><script src="/js/fancybox.js?version=1.9.0"></script><script src="/js/sidebar.js?version=1.9.0"></script><script src="/js/copy.js?version=1.9.0"></script><script src="/js/fireworks.js?version=1.9.0"></script><script src="/js/transition.js?version=1.9.0"></script><script src="/js/scroll.js?version=1.9.0"></script><script src="/js/head.js?version=1.9.0"></script><script src="/js/search/algolia.js"></script><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  CommonHTML: {
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "HTML-CSS": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "SVG": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  }
+});
+</script><script type="text/x-mathjax-config">MathJax.Hub.Queue(function() {
+  var all = MathJax.Hub.getAllJax(), i;
+  for (i=0; i < all.length; i += 1) {
+    all[i].SourceElement().parentNode.className += ' has-jax';
+  }
+});
+</script><script src="https://cdn.jsdelivr.net/npm/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>if(/Android|webOS|iPhone|iPod|iPad|BlackBerry/i.test(navigator.userAgent)) {
+  $('#nav').addClass('is-mobile')
+  $('footer').addClass('is-mobile')
+  $('#top-container').addClass('is-mobile')
+}</script><div class="search-dialog" id="algolia-search"><div class="search-dialog__title" id="algolia-search-title">Algolia</div><div id="algolia-input-panel"><div id="algolia-search-input"></div></div><hr><div id="algolia-search-results"><div id="algolia-hits"></div><div id="algolia-pagination"></div><div id="algolia-stats"></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>

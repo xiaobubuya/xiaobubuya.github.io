@@ -1,0 +1,222 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="Redis集群以及应用"><meta name="keywords" content="database"><meta name="author" content="xiaobubuya"><meta name="copyright" content="xiaobubuya"><title>Redis集群以及应用 | xiaobubuyaのBlog</title><link rel="shortcut icon" href="/melody-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.9.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css?version=1.9.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="x-dns-prefetch-control" content="on"><link rel="dns-prefetch" href="https://cdn.jsdelivr.net"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.css"><script src="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.js" defer></script><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><script src="https://v1.hitokoto.cn/?encode=js&amp;charset=utf-8&amp;select=.footer_custom_text" defer></script><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: {"appId":"X2MTDP5JXS","apiKey":"b740a5c5a0afcfdb46cd9dde3f3da169","indexName":"xiaobubuya","hits":{"per_page":10},"languages":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}.","hits_stats":"${hits} results found in ${time} ms"}},
+  localSearch: undefined,
+  copy: {
+    success: 'Copy successfully',
+    error: 'Copy error',
+    noSupport: 'The browser does not support'
+  },
+  hexoVersion: '5.4.0'
+} </script><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="xiaobubuyaのBlog" type="application/atom+xml">
+</head><body><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div id="sidebar" data-display="true"><div class="toggle-sidebar-info text-center"><span data-toggle="Toggle article">Toggle site</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">Catalog</div><div class="sidebar-toc__progress"><span class="progress-notice">You've read</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#Redis-%E9%9B%86%E7%BE%A4%E4%BB%A5%E5%8F%8A%E5%BA%94%E7%94%A8"><span class="toc-number">1.</span> <span class="toc-text">Redis 集群以及应用</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E9%9B%86%E7%BE%A4"><span class="toc-number">1.1.</span> <span class="toc-text">集群</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BB%E4%BB%8E%E5%A4%8D%E5%88%B6"><span class="toc-number">1.1.1.</span> <span class="toc-text">主从复制</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E4%B8%BB%E4%BB%8E%E9%93%BE-%E6%8B%93%E6%89%91%E7%BB%93%E6%9E%84"><span class="toc-number">1.1.1.1.</span> <span class="toc-text">主从链(拓扑结构)</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%A4%8D%E5%88%B6%E6%A8%A1%E5%BC%8F"><span class="toc-number">1.1.1.2.</span> <span class="toc-text">复制模式</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%97%AE%E9%A2%98%E7%82%B9"><span class="toc-number">1.1.1.3.</span> <span class="toc-text">问题点</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%93%A8%E5%85%B5%E6%9C%BA%E5%88%B6"><span class="toc-number">1.1.2.</span> <span class="toc-text">哨兵机制</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8B%93%E6%89%91%E5%9B%BE"><span class="toc-number">1.1.2.1.</span> <span class="toc-text">拓扑图</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%8A%82%E7%82%B9%E4%B8%8B%E7%BA%BF"><span class="toc-number">1.1.2.2.</span> <span class="toc-text">节点下线</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#Leader%E9%80%89%E4%B8%BE"><span class="toc-number">1.1.2.3.</span> <span class="toc-text">Leader选举</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%95%85%E9%9A%9C%E8%BD%AC%E7%A7%BB"><span class="toc-number">1.1.2.4.</span> <span class="toc-text">故障转移</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%AF%BB%E5%86%99%E5%88%86%E7%A6%BB"><span class="toc-number">1.1.2.5.</span> <span class="toc-text">读写分离</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1"><span class="toc-number">1.1.2.6.</span> <span class="toc-text">定时任务</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E9%9B%86%E7%BE%A4-Cluster"><span class="toc-number">1.1.3.</span> <span class="toc-text">分布式集群(Cluster)</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E6%8B%93%E6%89%91%E5%9B%BE-1"><span class="toc-number">1.1.3.1.</span> <span class="toc-text">拓扑图</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E9%80%9A%E8%AE%AF"><span class="toc-number">1.1.3.2.</span> <span class="toc-text">通讯</span></a><ol class="toc-child"><li class="toc-item toc-level-5"><a class="toc-link" href="#%E9%9B%86%E4%B8%AD%E5%BC%8F"><span class="toc-number">1.1.3.2.1.</span> <span class="toc-text">集中式</span></a></li><li class="toc-item toc-level-5"><a class="toc-link" href="#Gossip"><span class="toc-number">1.1.3.2.2.</span> <span class="toc-text">Gossip</span></a></li></ol></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%AF%BB%E5%9D%80%E5%88%86%E7%89%87"><span class="toc-number">1.1.3.3.</span> <span class="toc-text">寻址分片</span></a><ol class="toc-child"><li class="toc-item toc-level-5"><a class="toc-link" href="#hash%E5%8F%96%E6%A8%A1"><span class="toc-number">1.1.3.3.1.</span> <span class="toc-text">hash取模</span></a></li><li class="toc-item toc-level-5"><a class="toc-link" href="#%E4%B8%80%E8%87%B4%E6%80%A7hash"><span class="toc-number">1.1.3.3.2.</span> <span class="toc-text">一致性hash</span></a></li><li class="toc-item toc-level-5"><a class="toc-link" href="#hash%E6%A7%BD"><span class="toc-number">1.1.3.3.3.</span> <span class="toc-text">hash槽</span></a></li></ol></li></ol></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF"><span class="toc-number">1.2.</span> <span class="toc-text">使用场景</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%83%AD%E7%82%B9%E6%95%B0%E6%8D%AE"><span class="toc-number">1.2.1.</span> <span class="toc-text">热点数据</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BC%9A%E8%AF%9D%E7%BB%B4%E6%8C%81-Session"><span class="toc-number">1.2.2.</span> <span class="toc-text">会话维持 Session</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81-SETNX"><span class="toc-number">1.2.3.</span> <span class="toc-text">分布式锁 SETNX</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%A1%A8%E7%BC%93%E5%AD%98"><span class="toc-number">1.2.4.</span> <span class="toc-text">表缓存</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97-list"><span class="toc-number">1.2.5.</span> <span class="toc-text">消息队列 list</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%AE%A1%E6%95%B0%E5%99%A8-string"><span class="toc-number">1.2.6.</span> <span class="toc-text">计数器 string</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E8%AE%BE%E8%AE%A1"><span class="toc-number">1.3.</span> <span class="toc-text">缓存设计</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9B%B4%E6%96%B0%E7%AD%96%E7%95%A5"><span class="toc-number">1.3.1.</span> <span class="toc-text">更新策略</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9B%B4%E6%96%B0%E4%B8%80%E8%87%B4%E6%80%A7"><span class="toc-number">1.3.2.</span> <span class="toc-text">更新一致性</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E7%B2%92%E5%BA%A6"><span class="toc-number">1.3.3.</span> <span class="toc-text">缓存粒度</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E7%A9%BF%E9%80%8F"><span class="toc-number">1.3.4.</span> <span class="toc-text">缓存穿透</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">1.3.4.1.</span> <span class="toc-text">解决方案</span></a></li></ol></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E9%9B%AA%E5%B4%A9"><span class="toc-number">1.3.5.</span> <span class="toc-text">缓存雪崩</span></a><ol class="toc-child"><li class="toc-item toc-level-4"><a class="toc-link" href="#%E5%87%BA%E7%8E%B0%E5%90%8E%E5%BA%94%E5%AF%B9"><span class="toc-number">1.3.5.1.</span> <span class="toc-text">出现后应对</span></a></li><li class="toc-item toc-level-4"><a class="toc-link" href="#%E8%AF%B7%E6%B1%82%E8%BF%87%E7%A8%8B"><span class="toc-number">1.3.5.2.</span> <span class="toc-text">请求过程</span></a></li></ol></li></ol></li></ol></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img02/%E5%A4%B4%E5%83%8F.jpg"></div><div class="author-info__name text-center">xiaobubuya</div><div class="author-info__description text-center">命数如织，当为磐石</div><div class="follow-button"><a target="_blank" rel="noopener" href="https://github.com/xiaobubuya">Follow Me</a></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">Articles</span><span class="pull-right">57</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">Tags</span><span class="pull-right">22</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">Categories</span><span class="pull-right">6</span></a></div><hr><div class="author-info-links"><div class="author-info-links__title text-center">Links</div><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/gallery">Gallery</a><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/slides">Slides</a></div></div></div><div id="content-outer"><div id="top-container" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">xiaobubuyaのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> Search</span></a></span></div><div id="post-info"><div id="post-title">Redis集群以及应用</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2021-03-24</time><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E5%AD%A6%E4%B9%A0/">学习</a><div class="post-meta-wordcount"><span>Word count: </span><span class="word-count">2.6k</span><span class="post-meta__separator">|</span><span>Reading time: 8 min</span></div></div></div></div><div class="layout" id="content-inner"><article id="post"><div class="article-container" id="post-content"><h1 id="Redis-集群以及应用"><a href="#Redis-集群以及应用" class="headerlink" title="Redis 集群以及应用"></a>Redis 集群以及应用</h1><h2 id="集群"><a href="#集群" class="headerlink" title="集群"></a>集群</h2><h3 id="主从复制"><a href="#主从复制" class="headerlink" title="主从复制"></a>主从复制</h3><h4 id="主从链-拓扑结构"><a href="#主从链-拓扑结构" class="headerlink" title="主从链(拓扑结构)"></a>主从链(拓扑结构)</h4><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/redis/67539461-d1a26c00-f714-11e9-81ae-61fa89faf156.png" alt=""></p>
+<p><img src="https://user-images.githubusercontent.com/26766909/67539485-e0891e80-f714-11e9-8980-d253239fcd8b.png" alt="主从"></p>
+<h4 id="复制模式"><a href="#复制模式" class="headerlink" title="复制模式"></a>复制模式</h4><ul>
+<li>全量复制：Master 全部同步到 Slave</li>
+<li>部分复制：Slave 数据丢失进行备份</li>
+</ul>
+<h4 id="问题点"><a href="#问题点" class="headerlink" title="问题点"></a>问题点</h4><ul>
+<li>同步故障<ul>
+<li>复制数据延迟(不一致)</li>
+<li>读取过期数据(Slave 不能删除数据)</li>
+<li>从节点故障</li>
+<li>主节点故障</li>
+</ul>
+</li>
+<li>配置不一致<ul>
+<li>maxmemory 不一致:丢失数据</li>
+<li>优化参数不一致:内存不一致.</li>
+</ul>
+</li>
+<li>避免全量复制<ul>
+<li>选择小主节点(分片)、低峰期间操作.</li>
+<li>如果节点运行 id 不匹配(如主节点重启、运行 id 发送变化)，此时要执行全量复制，应该配合哨兵和集群解决.</li>
+<li>主从复制挤压缓冲区不足产生的问题(网络中断，部分复制无法满足)，可增大复制缓冲区( rel_backlog_size 参数).</li>
+</ul>
+</li>
+<li>复制风暴</li>
+</ul>
+<h3 id="哨兵机制"><a href="#哨兵机制" class="headerlink" title="哨兵机制"></a>哨兵机制</h3><h4 id="拓扑图"><a href="#拓扑图" class="headerlink" title="拓扑图"></a>拓扑图</h4><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/redis/%E5%93%A8%E5%85%B5%E6%9C%BA%E5%88%B6-%E6%8B%93%E6%89%91%E5%9B%BE.png" alt=""></p>
+<h4 id="节点下线"><a href="#节点下线" class="headerlink" title="节点下线"></a>节点下线</h4><ul>
+<li>主观下线<ul>
+<li>即 Sentinel 节点对 Redis 节点失败的偏见，超出超时时间认为 Master 已经宕机。</li>
+<li>Sentinel 集群的每一个 Sentinel 节点会定时对 Redis 集群的所有节点发心跳包检测节点是否正常。如果一个节点在 <code>down-after-milliseconds</code> 时间内没有回复 Sentinel 节点的心跳包，则该 Redis 节点被该 Sentinel 节点主观下线。</li>
+</ul>
+</li>
+<li>客观下线<ul>
+<li>所有 Sentinel 节点对 Redis 节点失败要达成共识，即超过 quorum 个统一。</li>
+<li>当节点被一个 Sentinel 节点记为主观下线时，并不意味着该节点肯定故障了，还需要 Sentinel 集群的其他 Sentinel 节点共同判断为主观下线才行。</li>
+<li>该 Sentinel 节点会询问其它 Sentinel 节点，如果 Sentinel 集群中超过 quorum 数量的 Sentinel 节点认为该 Redis 节点主观下线，则该 Redis 客观下线。</li>
+</ul>
+</li>
+</ul>
+<h4 id="Leader选举"><a href="#Leader选举" class="headerlink" title="Leader选举"></a>Leader选举</h4><ul>
+<li>选举出一个 Sentinel 作为 Leader：集群中至少有三个 Sentinel 节点，但只有其中一个节点可完成故障转移.通过以下命令可以进行失败判定或领导者选举。</li>
+<li>选举流程<ol>
+<li>每个主观下线的 Sentinel 节点向其他 Sentinel 节点发送命令，要求设置它为领导者.</li>
+<li>收到命令的 Sentinel 节点如果没有同意通过其他 Sentinel 节点发送的命令，则同意该请求，否则拒绝。</li>
+<li>如果该 Sentinel 节点发现自己的票数已经超过 Sentinel 集合半数且超过 quorum，则它成为领导者。</li>
+<li>如果此过程有多个 Sentinel 节点成为领导者，则等待一段时间再重新进行选举。</li>
+</ol>
+</li>
+</ul>
+<h4 id="故障转移"><a href="#故障转移" class="headerlink" title="故障转移"></a>故障转移</h4><ul>
+<li>转移流程<ol>
+<li>Sentinel 选出一个合适的 Slave 作为新的 Master(slaveof no one 命令)。</li>
+<li>向其余 Slave 发出通知，让它们成为新 Master 的 Slave( parallel-syncs 参数)。</li>
+<li>等待旧 Master 复活，并使之称为新 Master 的 Slave。</li>
+<li>向客户端通知 Master 变化。</li>
+</ol>
+</li>
+<li>从 Slave 中选择新 Master 节点的规则(slave 升级成 master 之后)<ol>
+<li>选择 slave-priority 最高的节点。</li>
+<li>选择复制偏移量最大的节点(同步数据最多)。</li>
+<li>选择 runId 最小的节点。</li>
+</ol>
+</li>
+</ul>
+<blockquote>
+<p>Sentinel 集群运行过程中故障转移完成，所有 Sentinel 又会恢复平等。Leader 仅仅是故障转移操作出现的角色。</p>
+</blockquote>
+<h4 id="读写分离"><a href="#读写分离" class="headerlink" title="读写分离"></a>读写分离</h4><h4 id="定时任务"><a href="#定时任务" class="headerlink" title="定时任务"></a>定时任务</h4><ul>
+<li>每 1s 每个 Sentinel 对其他 Sentinel 和 Redis 执行 ping，进行心跳检测。</li>
+<li>每 2s 每个 Sentinel 通过 Master 的 Channel 交换信息(pub - sub)。</li>
+<li>每 10s 每个 Sentinel 对 Master 和 Slave 执行 info，目的是发现 Slave 节点、确定主从关系。</li>
+</ul>
+<h3 id="分布式集群-Cluster"><a href="#分布式集群-Cluster" class="headerlink" title="分布式集群(Cluster)"></a>分布式集群(Cluster)</h3><h4 id="拓扑图-1"><a href="#拓扑图-1" class="headerlink" title="拓扑图"></a>拓扑图</h4><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/redis/67539510-f8f93900-f714-11e9-9d8d-08afdecff95a.png" alt=""></p>
+<h4 id="通讯"><a href="#通讯" class="headerlink" title="通讯"></a>通讯</h4><h5 id="集中式"><a href="#集中式" class="headerlink" title="集中式"></a>集中式</h5><blockquote>
+<p>将集群元数据(节点信息、故障等等)几种存储在某个节点上。</p>
+<ul>
+<li>优势<ol>
+<li>元数据的更新读取具有很强的时效性，元数据修改立即更新</li>
+</ol>
+</li>
+<li>劣势<ol>
+<li>数据集中存储</li>
+</ol>
+</li>
+</ul>
+</blockquote>
+<h5 id="Gossip"><a href="#Gossip" class="headerlink" title="Gossip"></a>Gossip</h5><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/redis/67539546-16c69e00-f715-11e9-9891-1e81b6af624c.png" alt=""></p>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://www.jianshu.com/p/8279d6fd65bb">Gossip 协议</a></li>
+</ul>
+<h4 id="寻址分片"><a href="#寻址分片" class="headerlink" title="寻址分片"></a>寻址分片</h4><h5 id="hash取模"><a href="#hash取模" class="headerlink" title="hash取模"></a>hash取模</h5><ul>
+<li>hash(key)%机器数量</li>
+<li>问题<ol>
+<li>机器宕机，造成数据丢失，数据读取失败</li>
+<li>伸缩性</li>
+</ol>
+</li>
+</ul>
+<h5 id="一致性hash"><a href="#一致性hash" class="headerlink" title="一致性hash"></a>一致性hash</h5><ul>
+<li><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/redis/67539595-352c9980-f715-11e9-8e4a-9d9c04027785.png" alt=""></p>
+</li>
+<li><p>问题</p>
+<ol>
+<li>一致性哈希算法在节点太少时，容易因为节点分布不均匀而造成缓存热点的问题。<ul>
+<li>解决方案<ul>
+<li>可以通过引入虚拟节点机制解决：即对每一个节点计算多个 hash，每个计算结果位置都放置一个虚拟节点。这样就实现了数据的均匀分布，负载均衡。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+</li>
+</ul>
+<h5 id="hash槽"><a href="#hash槽" class="headerlink" title="hash槽"></a>hash槽</h5><ul>
+<li>CRC16(key)%16384</li>
+<li><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/redis/67539610-3fe72e80-f715-11e9-8e0d-ea58bc965795.png" alt=""></li>
+</ul>
+<h2 id="使用场景"><a href="#使用场景" class="headerlink" title="使用场景"></a>使用场景</h2><h3 id="热点数据"><a href="#热点数据" class="headerlink" title="热点数据"></a>热点数据</h3><p>存取数据优先从 Redis 操作，如果不存在再从文件（例如 MySQL）中操作，从文件操作完后将数据存储到 Redis 中并返回。同时有个定时任务后台定时扫描 Redis 的 key，根据业务规则进行淘汰，防止某些只访问一两次的数据一直存在 Redis 中。</p>
+<blockquote>
+<p>例如使用 Zset 数据结构，存储 Key 的访问次数/最后访问时间作为 Score，最后做排序，来淘汰那些最少访问的 Key。  </p>
+</blockquote>
+<p>如果企业级应用，可以参考：[阿里云的 Redis 混合存储版][1]</p>
+<h3 id="会话维持-Session"><a href="#会话维持-Session" class="headerlink" title="会话维持 Session"></a>会话维持 Session</h3><p>会话维持 Session 场景，即使用 Redis 作为分布式场景下的登录中心存储应用。每次不同的服务在登录的时候，都会去统一的 Redis 去验证 Session 是否正确。但是在微服务场景，一般会考虑 Redis + JWT 做 Oauth2 模块。</p>
+<blockquote>
+<p>其中 Redis 存储 JWT 的相关信息主要是留出口子，方便以后做统一的防刷接口，或者做登录设备限制等。</p>
+</blockquote>
+<h3 id="分布式锁-SETNX"><a href="#分布式锁-SETNX" class="headerlink" title="分布式锁 SETNX"></a>分布式锁 SETNX</h3><p>命令格式：<code>SETNX key value</code>：当且仅当 key 不存在，将 key 的值设为 value。若给定的 key 已经存在，则 SETNX 不做任何动作。</p>
+<ol>
+<li>超时时间设置：获取锁的同时，启动守护线程，使用 expire 进行定时更新超时时间。如果该业务机器宕机，守护线程也挂掉，这样也会自动过期。如果该业务不是宕机，而是真的需要这么久的操作时间，那么增加超时时间在业务上也是可以接受的，但是肯定有个最大的阈值。</li>
+<li>但是为了增加高可用，需要使用多台 Redis，就增加了复杂性，就可以参考 Redlock：<a href="Redlock分布式锁.md#怎么在单节点上实现分布式锁">Redlock分布式锁</a></li>
+</ol>
+<h3 id="表缓存"><a href="#表缓存" class="headerlink" title="表缓存"></a>表缓存</h3><p>Redis 缓存表的场景有黑名单、禁言表等。访问频率较高，即读高。根据业务需求，可以使用后台定时任务定时刷新 Redis 的缓存表数据。</p>
+<h3 id="消息队列-list"><a href="#消息队列-list" class="headerlink" title="消息队列 list"></a>消息队列 list</h3><p>主要使用了 List 数据结构。<br>List 支持在头部和尾部操作，因此可以实现简单的消息队列。</p>
+<ol>
+<li>发消息：在 List 尾部塞入数据。</li>
+<li>消费消息：在 List 头部拿出数据。</li>
+</ol>
+<p>同时可以使用多个 List，来实现多个队列，根据不同的业务消息，塞入不同的 List，来增加吞吐量。</p>
+<h3 id="计数器-string"><a href="#计数器-string" class="headerlink" title="计数器 string"></a>计数器 string</h3><p>主要使用了 INCR、DECR、INCRBY、DECRBY 方法。</p>
+<p>INCR key：给 key 的 value 值增加一<br>DECR key：给 key 的 value 值减去一</p>
+<h2 id="缓存设计"><a href="#缓存设计" class="headerlink" title="缓存设计"></a>缓存设计</h2><h3 id="更新策略"><a href="#更新策略" class="headerlink" title="更新策略"></a>更新策略</h3><ul>
+<li>LRU、LFU、FIFO 算法自动清除：一致性最差，维护成本低。</li>
+<li>超时自动清除(key expire)：一致性较差，维护成本低。</li>
+<li>主动更新：代码层面控制生命周期，一致性最好，维护成本高。</li>
+</ul>
+<p>在 Redis 根据在 redis.conf 的参数 <code>maxmemory</code> 来做更新淘汰策略：</p>
+<ol>
+<li>noeviction: 不删除策略, 达到最大内存限制时, 如果需要更多内存, 直接返回错误信息。大多数写命令都会导致占用更多的内存(有极少数会例外, 如 DEL 命令)。</li>
+<li>allkeys-lru: 所有 key 通用; 优先删除最近最少使用(less recently used ,LRU) 的 key。</li>
+<li>volatile-lru: 只限于设置了 expire 的部分; 优先删除最近最少使用(less recently used ,LRU) 的 key。</li>
+<li>allkeys-random: 所有key通用; 随机删除一部分 key。</li>
+<li>volatile-random: 只限于设置了 expire 的部分; 随机删除一部分 key。</li>
+<li>volatile-ttl: 只限于设置了 expire 的部分; 优先删除剩余时间(time to live,TTL) 短的key。</li>
+</ol>
+<h3 id="更新一致性"><a href="#更新一致性" class="headerlink" title="更新一致性"></a>更新一致性</h3><ul>
+<li>读请求：先读缓存，缓存没有的话，就读数据库，然后取出数据后放入缓存，同时返回响应。</li>
+<li>写请求：先删除缓存，然后再更新数据库(避免大量地写、却又不经常读的数据导致缓存频繁更新)。</li>
+</ul>
+<h3 id="缓存粒度"><a href="#缓存粒度" class="headerlink" title="缓存粒度"></a>缓存粒度</h3><ul>
+<li>通用性：全量属性更好。</li>
+<li>占用空间：部分属性更好。</li>
+<li>代码维护成本。</li>
+</ul>
+<h3 id="缓存穿透"><a href="#缓存穿透" class="headerlink" title="缓存穿透"></a>缓存穿透</h3><blockquote>
+<p>当大量的请求无命中缓存、直接请求到后端数据库(业务代码的 bug、或恶意攻击)，同时后端数据库也没有查询到相应的记录、无法添加缓存。<br>这种状态会一直维持，流量一直打到存储层上，无法利用缓存、还会给存储层带来巨大压力。</p>
+</blockquote>
+<h4 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h4><ol>
+<li>请求无法命中缓存、同时数据库记录为空时在缓存添加该 key 的空对象(设置过期时间)，缺点是可能会在缓存中添加大量的空值键(比如遭到恶意攻击或爬虫)，而且缓存层和存储层数据短期内不一致；</li>
+<li>使用布隆过滤器在缓存层前拦截非法请求、自动为空值添加黑名单(同时可能要为误判的记录添加白名单).但需要考虑布隆过滤器的维护(离线生成/ 实时生成)。</li>
+</ol>
+<h3 id="缓存雪崩"><a href="#缓存雪崩" class="headerlink" title="缓存雪崩"></a>缓存雪崩</h3><blockquote>
+<p>缓存崩溃时请求会直接落到数据库上，很可能由于无法承受大量的并发请求而崩溃，此时如果只重启数据库，或因为缓存重启后没有数据，新的流量进来很快又会把数据库击倒。</p>
+</blockquote>
+<h4 id="出现后应对"><a href="#出现后应对" class="headerlink" title="出现后应对"></a>出现后应对</h4><ul>
+<li>事前：Redis 高可用，主从 + 哨兵，Redis Cluster，避免全盘崩溃。</li>
+<li>事中：本地 ehcache 缓存 + hystrix 限流 &amp; 降级，避免数据库承受太多压力。</li>
+<li>事后：Redis 持久化，一旦重启，自动从磁盘上加载数据，快速恢复缓存数据。</li>
+</ul>
+<h4 id="请求过程"><a href="#请求过程" class="headerlink" title="请求过程"></a>请求过程</h4><ol>
+<li>用户请求先访问本地缓存，无命中后再访问 Redis，如果本地缓存和 Redis 都没有再查数据库，并把数据添加到本地缓存和 Redis；</li>
+<li>由于设置了限流，一段时间范围内超出的请求走降级处理(返回默认值，或给出友情提示)。</li>
+</ol>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">Author: </span><span class="post-copyright-info"><a href="mailto:undefined">xiaobubuya</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">Link: </span><span class="post-copyright-info"><a href="https://xiaobubuya.github.io/redis集群以及应用场景/">https://xiaobubuya.github.io/redis集群以及应用场景/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">Copyright Notice: </span><span class="post-copyright-info">All articles in this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless stating additionally.</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/database/">database</a></div><div class="social-share pull-right" data-disabled="facebook"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/css/share.min.css"><script src="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/js/social-share.min.js"></script><nav id="pagination"><div class="prev-post pull-left"><a href="/Redlock%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81/"><i class="fa fa-chevron-left">  </i><span>RedLock分布式锁</span></a></div><div class="next-post pull-right"><a href="/%E6%89%8B%E6%8A%8A%E6%89%8B%E6%95%99%E4%BD%A0%E5%AE%9A%E4%BD%8D%E5%B8%B8%E8%A7%81Java%E6%80%A7%E8%83%BD%E9%97%AE%E9%A2%98/"><span>Java性能问题模拟</span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer class="footer-bg" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div class="layout" id="footer"><div class="copyright">&copy;2020 - 2021 By xiaobubuya</div><div class="framework-info"><span>Driven - </span><a target="_blank" rel="noopener" href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>Theme - </span><a target="_blank" rel="noopener" href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="footer_custom_text">hitokoto</div><div class="busuanzi"><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-animate@latest/velocity.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-ui-pack@latest/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.9.0"></script><script src="/js/fancybox.js?version=1.9.0"></script><script src="/js/sidebar.js?version=1.9.0"></script><script src="/js/copy.js?version=1.9.0"></script><script src="/js/fireworks.js?version=1.9.0"></script><script src="/js/transition.js?version=1.9.0"></script><script src="/js/scroll.js?version=1.9.0"></script><script src="/js/head.js?version=1.9.0"></script><script src="/js/search/algolia.js"></script><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  CommonHTML: {
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "HTML-CSS": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "SVG": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  }
+});
+</script><script type="text/x-mathjax-config">MathJax.Hub.Queue(function() {
+  var all = MathJax.Hub.getAllJax(), i;
+  for (i=0; i < all.length; i += 1) {
+    all[i].SourceElement().parentNode.className += ' has-jax';
+  }
+});
+</script><script src="https://cdn.jsdelivr.net/npm/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>if(/Android|webOS|iPhone|iPod|iPad|BlackBerry/i.test(navigator.userAgent)) {
+  $('#nav').addClass('is-mobile')
+  $('footer').addClass('is-mobile')
+  $('#top-container').addClass('is-mobile')
+}</script><div class="search-dialog" id="algolia-search"><div class="search-dialog__title" id="algolia-search-title">Algolia</div><div id="algolia-input-panel"><div id="algolia-search-input"></div></div><hr><div id="algolia-search-results"><div id="algolia-hits"></div><div id="algolia-pagination"></div><div id="algolia-stats"></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>

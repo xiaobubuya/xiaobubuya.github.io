@@ -1,0 +1,112 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="linux文件系统"><meta name="keywords" content="linux"><meta name="author" content="xiaobubuya"><meta name="copyright" content="xiaobubuya"><title>linux文件系统 | xiaobubuyaのBlog</title><link rel="shortcut icon" href="/melody-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.9.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css?version=1.9.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="x-dns-prefetch-control" content="on"><link rel="dns-prefetch" href="https://cdn.jsdelivr.net"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.css"><script src="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.js" defer></script><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><script src="https://v1.hitokoto.cn/?encode=js&amp;charset=utf-8&amp;select=.footer_custom_text" defer></script><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: {"appId":"X2MTDP5JXS","apiKey":"b740a5c5a0afcfdb46cd9dde3f3da169","indexName":"xiaobubuya","hits":{"per_page":10},"languages":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}.","hits_stats":"${hits} results found in ${time} ms"}},
+  localSearch: undefined,
+  copy: {
+    success: 'Copy successfully',
+    error: 'Copy error',
+    noSupport: 'The browser does not support'
+  },
+  hexoVersion: '5.4.0'
+} </script><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="xiaobubuyaのBlog" type="application/atom+xml">
+</head><body><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div id="sidebar" data-display="true"><div class="toggle-sidebar-info text-center"><span data-toggle="Toggle article">Toggle site</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">Catalog</div><div class="sidebar-toc__progress"><span class="progress-notice">You've read</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#bin-%E5%92%8C-sbin"><span class="toc-number">1.</span> <span class="toc-text">&#x2F;bin 和 &#x2F;sbin</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#boot"><span class="toc-number">2.</span> <span class="toc-text">&#x2F;boot</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#dev"><span class="toc-number">3.</span> <span class="toc-text">&#x2F;dev</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#etc"><span class="toc-number">4.</span> <span class="toc-text">&#x2F;etc</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#lib"><span class="toc-number">5.</span> <span class="toc-text">&#x2F;lib</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#media"><span class="toc-number">6.</span> <span class="toc-text">&#x2F;media</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#mnt"><span class="toc-number">7.</span> <span class="toc-text">&#x2F;mnt</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#opt"><span class="toc-number">8.</span> <span class="toc-text">&#x2F;opt</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#proc"><span class="toc-number">9.</span> <span class="toc-text">&#x2F;proc</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#root"><span class="toc-number">10.</span> <span class="toc-text">&#x2F;root</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#run-%E5%92%8C-sys"><span class="toc-number">11.</span> <span class="toc-text">&#x2F;run 和 &#x2F;sys</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#srv"><span class="toc-number">12.</span> <span class="toc-text">&#x2F;srv</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#tmp"><span class="toc-number">13.</span> <span class="toc-text">&#x2F;tmp</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#usr"><span class="toc-number">14.</span> <span class="toc-text">&#x2F;usr</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#var"><span class="toc-number">15.</span> <span class="toc-text">&#x2F;var</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#home"><span class="toc-number">16.</span> <span class="toc-text">&#x2F;home</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9C%80%E5%90%8E%E6%80%BB%E7%BB%93"><span class="toc-number">17.</span> <span class="toc-text">最后总结</span></a></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img02/%E5%A4%B4%E5%83%8F.jpg"></div><div class="author-info__name text-center">xiaobubuya</div><div class="author-info__description text-center">命数如织，当为磐石</div><div class="follow-button"><a target="_blank" rel="noopener" href="https://github.com/xiaobubuya">Follow Me</a></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">Articles</span><span class="pull-right">57</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">Tags</span><span class="pull-right">22</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">Categories</span><span class="pull-right">6</span></a></div><hr><div class="author-info-links"><div class="author-info-links__title text-center">Links</div><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/gallery">Gallery</a><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/slides">Slides</a></div></div></div><div id="content-outer"><div id="top-container" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">xiaobubuyaのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> Search</span></a></span></div><div id="post-info"><div id="post-title">linux文件系统</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2021-01-19</time><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E5%AD%A6%E4%B9%A0/">学习</a><div class="post-meta-wordcount"><span>Word count: </span><span class="word-count">2.5k</span><span class="post-meta__separator">|</span><span>Reading time: 7 min</span></div></div></div></div><div class="layout" id="content-inner"><article id="post"><div class="article-container" id="post-content"><p>Linux 系统大家一定不陌生，学习工作中肯定会和 Linux 打交道。不过谈及 Linux，给人的第一印象可能就是黑乎乎的命令行，乱七八糟的文件夹，甚至安装软件都不知道是怎么安装上去的。</p>
+<p>其实这些问题都是用惯了 Windows 的后遗症，多用用 Linux 就会发现这玩意还是挺好用的，关键还能 DIY，非常装逼：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/desktop.png" alt=""></p>
+<p>言归正传，本文介绍一下 Linux 的文件系统（File System），简单介绍一下这些文件夹都是干什么的。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/linux-filesystem.png" alt=""></p>
+<p>上图是 Linux 文件系统的一个整体结构，无论是什么版本的 Linux 发行版，根目录 <code>/</code> 基本上就是这些文件。不要害怕这么多文件夹，大部分都不需要你操心，只要大概了解它们是干啥的就行了。</p>
+<h3 id="bin-和-sbin"><a href="#bin-和-sbin" class="headerlink" title="/bin 和 /sbin"></a>/bin 和 /sbin</h3><p><code>bin</code> 是 <code>Binary</code> 的缩写，存放着可执行文件或可执行文件的链接（类似快捷方式），如下图：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/bin.png" alt=""></p>
+<p>你可以看到 <code>cp</code>, <code>chmod</code>, <code>cat</code> 等常用命令都在这里。注意不要被图标上的 TXT 字样误导了，Linux 不按后缀识别文件类型，<code>/bin</code> 目录中的文件都是可执行的二进制文件，而不是文本文件。</p>
+<p>与 <code>/bin</code> 类似的是 <code>/sbin</code> 目录，System Binary 的缩写，这里存放的命令可以对系统配置进行操作。普通用户可能可以使用这里的命令查看某些系统状态，但是如果想更改配置，就需要 <code>sudo</code> 授权或者切换成超级用户。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/sbin.png" alt=""></p>
+<p>可以看到一些熟悉的命令，比如 <code>ifconfig</code>, <code>iptables</code>。普通用户可以使用 <code>ifconfig</code> 查看网卡状态，但是想配置网卡信息，就需要授权了。</p>
+<h3 id="boot"><a href="#boot" class="headerlink" title="/boot"></a>/boot</h3><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/boot.png" alt=""></p>
+<p>这里是系统启动需要的文件，你可以看到 <code>grub</code> 文件夹，它是常见的开机引导程序。我们不应该乱动这里的文件。</p>
+<h3 id="dev"><a href="#dev" class="headerlink" title="/dev"></a>/dev</h3><p><code>dev</code> 是 <code>device</code> 的缩写，这里存放这所有的设备文件。在 Linux 中，所有东西都是以文件的形式存在的，包括硬件设备。</p>
+<p>比如说，<code>sda</code>, <code>sdb</code> 就是我电脑上的两块硬盘，后面的数字是硬盘分区：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/dev.png" alt=""></p>
+<p>鼠标、键盘等等设备也都可以在这里找到。</p>
+<h3 id="etc"><a href="#etc" class="headerlink" title="/etc"></a>/etc</h3><p>这个目录经常使用，存放很多程序的配置信息，比如包管理工具 apt：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/etc.png" alt=""></p>
+<p>在 <code>/etc/apt</code> 中就存放着对应的配置，比如说镜像列表（我配置的阿里云镜像）：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/apt.png" alt=""></p>
+<p>如果你要修改一些系统程序的配置，十有八九要到 <code>etc</code> 目录下寻找。</p>
+<h3 id="lib"><a href="#lib" class="headerlink" title="/lib"></a>/lib</h3><p><code>lib</code> 是 Library 的缩写，类似于 Windows 系统中存放 <code>dll</code> 文件的库，包含 bin 和 sbin 中可执行文件的依赖。</p>
+<p>也可能出现 <code>lib32</code> 或 <code>lib64</code> 这样的目录，和 <code>lib</code> 差不多，只是操作系统位数不同而已。</p>
+<h3 id="media"><a href="#media" class="headerlink" title="/media"></a>/media</h3><p>这里会有一个以你用户名命名的文件夹，里面是自动挂载的设备，比如 U 盘，移动硬盘，网络设备等。</p>
+<p>比如说我在电脑上插入一个 U 盘，系统会把 U 盘自动给我挂载到 <code>/media/fdl</code> 这个文件夹里（我的用户名是 fdl），如果我要访问 U 盘的内容，就可以在那里找到。</p>
+<h3 id="mnt"><a href="#mnt" class="headerlink" title="/mnt"></a>/mnt</h3><p>这也是和设备挂载相关的一个文件夹，一般是空文件夹。<code>media</code> 文件夹是系统自动挂载设备的地方，这里是你手动挂载设备的地方。</p>
+<p>比如说，刚才我们在 <code>dev</code> 中看到了一大堆设备，你想打开某些设备看看里面的内容，就可以通过命令把设备挂载到 <code>mnt</code> 目录进行操作。</p>
+<p>不过一般来说，现在的操作系统已经很聪明了，像挂载设备的操作几乎都不用你手动做，都被自动挂载到 <code>media</code> 目录了。</p>
+<h3 id="opt"><a href="#opt" class="headerlink" title="/opt"></a>/opt</h3><p><code>opt</code> 是 Option 的缩写，这个文件夹的使用比较随意，一般来说我们自己在浏览器上下载的软件，安装在这里比较好。当然，包管理工具下载的软件也可能被存放在这里。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/opt.png" alt=""></p>
+<p>比如我在这里存放了 Chrome 浏览器（google），网易云音乐（netease），CLion IDE 等等软件的文件夹。</p>
+<h3 id="proc"><a href="#proc" class="headerlink" title="/proc"></a>/proc</h3><p><code>proc</code> 是 <code>process</code> 的缩写，这里存放的是全部正在运行程序的状态信息。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/proc.png" alt=""></p>
+<p>你会发现 <code>/proc</code> 里面有一大堆数字命名的文件夹，这个数字其实是 Process ID（PID），文件夹里又有很多文件。</p>
+<p>前面说过，Linux 中一切都以文件形式储存，类似 <code>/dev</code>，这里的文件也不是真正的文件，而是程序和内核交流的一些信息。比如说我们可以查看当前操作系统的版本，或者查看 CPU 的状态：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/cpu.png" alt=""></p>
+<p>如果你需要调试应用程序，<code>proc</code> 目录中的信息也许会帮上忙。</p>
+<h3 id="root"><a href="#root" class="headerlink" title="/root"></a>/root</h3><p>这是 root 用户的家目录，普通用户需要授权才能访问。</p>
+<h3 id="run-和-sys"><a href="#run-和-sys" class="headerlink" title="/run 和 /sys"></a>/run 和 /sys</h3><p>用来存储某些程序的运行时信息和系统需要的一些信息。比如说这个文件：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo vim /sys/devices/pci0000:00/0000:00:02.0/drm/card0/card0-eDP-1/intel_backlight/brightness</span><br></pre></td></tr></table></figure>
+<p>里面存储着一个数字，是你的显卡亮度，你修改这个数字就可以修改屏幕亮度。</p>
+<p>需要注意的是，这两个位置的数据都存储在内存中，所以一旦重启，<code>/run</code> 和 <code>/sys</code> 目录的信息就会丢失，所以不要试图在这里存放任何文件。</p>
+<h3 id="srv"><a href="#srv" class="headerlink" title="/srv"></a>/srv</h3><p><code>srv</code> 是 <code>service</code> 的缩写，主要用来存放服务数据。</p>
+<p>对于桌面版 Linux 系统，这个文件夹一般是空的，但是对于 Linux 服务器，Web 服务或者 FTP 文件服务的资源可以存放在这里。</p>
+<h3 id="tmp"><a href="#tmp" class="headerlink" title="/tmp"></a>/tmp</h3><p><code>tmp</code> 是 <code>temporary</code> 的缩写，存储一些程序的临时文件。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/tmp.png" alt=""></p>
+<p>临时文件可能起到很重要的作用。比如经常听说某同学的 Word 文档崩溃了，好不容易写的东西全没了，Linux 的很多文本编辑器都会在 <code>/tmp</code> 放一份当前文本的 copy 作为临时文件，如果你的编辑器意外崩溃，还有机会在 <code>/tmp</code> 找一找临时文件抢救一下。</p>
+<p>比如上图的 <code>VSCode Crashes</code> 应该就是 VScode 编辑器存放临时文件的地方。</p>
+<p>当然，<code>tmp</code> 文件夹在系统重启之后会自动被清空，如果没有被清空，说明系统删除某些文件失败，也许需要你手动删除一下。</p>
+<h3 id="usr"><a href="#usr" class="headerlink" title="/usr"></a>/usr</h3><p><code>usr</code> 是 Universal System Resource 的缩写，这里存放的是一些<strong>非系统必须的资源</strong>，比如用户安装的应用程序。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/usr.png" alt=""></p>
+<p><code>/usr</code> 和 <code>/usr/local</code> 目录中又含有 <code>bin</code> 和 <code>sbin</code> 目录，也是存放可执行文件（命令），但和根目录的 <code>bin</code> 和 <code>sbin</code> 不同的是，这里大都是用户使用的工具，而非系统必须使用的。</p>
+<p>比如说 <code>/usr/bin</code> 中含有我通过包管理工具安装的应用程序 Chrome 浏览器和 goldendict 字典的可执行文件：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/usrbin.png" alt=""></p>
+<p>值得一提的是，如果使用 Linux 桌面版，有时候在桌面找不到应用程序的快捷方式，就需要在 <code>/usr/share/applications</code> 中手动配置桌面图标文件：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/application.png" alt=""></p>
+<h3 id="var"><a href="#var" class="headerlink" title="/var"></a>/var</h3><p><code>var</code> 是 <code>variable</code> 的缩写，这个名字是历史遗留的，现在该目录最主要的作用是存储日志（log）信息，比如说程序崩溃，防火墙检测到异常等等信息都会记录在这里。</p>
+<p>这是我的 <code>/var/log</code> 目录：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/log.png" alt=""></p>
+<p>日志文件不会自动删除，也就是说随着系统使用时间的增长，你的 <code>var</code> 目录占用的磁盘空间会越来越大，也许需要适时清理一下。</p>
+<h3 id="home"><a href="#home" class="headerlink" title="/home"></a>/home</h3><p>最后说 <code>home</code> 目录，这是普通用户的家目录。在桌面版的 Linux 系统中，用户的家目录会有下载、视频、音乐、桌面等文件夹，这些没啥可说的，我们说一些隐藏的比较重要的文件夹（Linux 中名称以 <code>.</code> 开头就是隐藏文件）。</p>
+<p>这是我的家目录的部分文件：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Linux/home.png" alt=""></p>
+<p>其中 <code>.cache</code> 文件夹存储应用缓存数据，<code>.config</code> 文件夹存储了一部分应用程序的配置，比如说我的 Chrome 浏览器配置就是那里面。但是还有一部分应用程序并不把配置储存在 <code>.config</code> 文件夹，而是自己创建一个隐藏文件夹，存放自己的配置文件等等信息，比如你可以看到 Intellij 的配置文件就不在 <code>.config</code> 中。</p>
+<p>最后说 <code>.local</code> 文件夹，有点像 <code>/usr/local</code>，里面也有 <code>bin</code> 文件夹，也是存放可执行文件的。比如说我的 python pip 以及 pip 安装的一些工具，都存放在 <code>～/.local/bin</code> 目录中。<strong>但是，存在这里的文件，只有该用户才能使用。</strong></p>
+<p>这就是为什么，有时候普通用户可以使用的命令，用 sudo 或者超级用户却被告知找不到该命令。因为有的命令是特定用户家目录里的，被添加到了该用户的 <code>PATH</code> 环境变量里，他可以直接用。你超级用户想用当然可以，但是得写全绝对路径才行。</p>
+<h3 id="最后总结"><a href="#最后总结" class="headerlink" title="最后总结"></a>最后总结</h3><p>如果修改系统配置，就去 <code>/etc</code> 找，如果修改用户的应用程序配置，就在用户家目录的隐藏文件里找。</p>
+<p>你在命令行里可以直接输入使用的命令，其可执行文件一般就在以下几个位置：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">/bin    </span><br><span class="line">/sbin</span><br><span class="line">/usr/bin</span><br><span class="line">/usr/sbin</span><br><span class="line">/usr/<span class="built_in">local</span>/bin</span><br><span class="line">/usr/<span class="built_in">local</span>/sbin</span><br><span class="line">/home/USER/.<span class="built_in">local</span>/bin</span><br><span class="line">/home/USER/.<span class="built_in">local</span>/sbin</span><br></pre></td></tr></table></figure>
+<p>如果你写了一个脚本/程序，想在任何时候都能直接调用，可以把这个脚本/程序添加到上述目录中。</p>
+<p>如果某个程序崩溃了，可以到 <code>/val/log</code> 中尝试寻找出错信息，到 <code>/tmp</code> 中寻找残留的临时文件。</p>
+<p>设备文件在 <code>/dev</code> 目录，但是一般来说系统会自动帮你挂载诸如 U 盘之类的设备，可以到 <code>/media</code> 文件夹访问设备内容。</p>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">Author: </span><span class="post-copyright-info"><a href="mailto:undefined">xiaobubuya</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">Link: </span><span class="post-copyright-info"><a href="https://xiaobubuya.github.io/linux文件系统/">https://xiaobubuya.github.io/linux文件系统/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">Copyright Notice: </span><span class="post-copyright-info">All articles in this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless stating additionally.</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/linux/">linux</a></div><div class="social-share pull-right" data-disabled="facebook"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/css/share.min.css"><script src="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/js/social-share.min.js"></script><nav id="pagination"><div class="prev-post pull-left"><a href="/linux%E8%BF%9B%E7%A8%8B/"><i class="fa fa-chevron-left">  </i><span>linux进程</span></a></div><div class="next-post pull-right"><a href="/%E7%99%BB%E9%99%86%E6%B3%A8%E5%86%8Cmd5%E5%8A%A0%E7%9B%90%E5%8A%A0%E5%AF%86/"><span>登陆注册md5加盐加密</span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer class="footer-bg" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div class="layout" id="footer"><div class="copyright">&copy;2020 - 2021 By xiaobubuya</div><div class="framework-info"><span>Driven - </span><a target="_blank" rel="noopener" href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>Theme - </span><a target="_blank" rel="noopener" href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="footer_custom_text">hitokoto</div><div class="busuanzi"><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-animate@latest/velocity.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-ui-pack@latest/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.9.0"></script><script src="/js/fancybox.js?version=1.9.0"></script><script src="/js/sidebar.js?version=1.9.0"></script><script src="/js/copy.js?version=1.9.0"></script><script src="/js/fireworks.js?version=1.9.0"></script><script src="/js/transition.js?version=1.9.0"></script><script src="/js/scroll.js?version=1.9.0"></script><script src="/js/head.js?version=1.9.0"></script><script src="/js/search/algolia.js"></script><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  CommonHTML: {
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "HTML-CSS": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "SVG": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  }
+});
+</script><script type="text/x-mathjax-config">MathJax.Hub.Queue(function() {
+  var all = MathJax.Hub.getAllJax(), i;
+  for (i=0; i < all.length; i += 1) {
+    all[i].SourceElement().parentNode.className += ' has-jax';
+  }
+});
+</script><script src="https://cdn.jsdelivr.net/npm/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>if(/Android|webOS|iPhone|iPod|iPad|BlackBerry/i.test(navigator.userAgent)) {
+  $('#nav').addClass('is-mobile')
+  $('footer').addClass('is-mobile')
+  $('#top-container').addClass('is-mobile')
+}</script><div class="search-dialog" id="algolia-search"><div class="search-dialog__title" id="algolia-search-title">Algolia</div><div id="algolia-input-panel"><div id="algolia-search-input"></div></div><hr><div id="algolia-search-results"><div id="algolia-hits"></div><div id="algolia-pagination"></div><div id="algolia-stats"></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>
