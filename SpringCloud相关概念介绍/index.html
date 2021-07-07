@@ -1,0 +1,129 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="SpringCloud相关概念介绍"><meta name="keywords" content="SpringCloud"><meta name="author" content="xiaobubuya"><meta name="copyright" content="xiaobubuya"><title>SpringCloud相关概念介绍 | xiaobubuyaのBlog</title><link rel="shortcut icon" href="/melody-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.9.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css?version=1.9.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="x-dns-prefetch-control" content="on"><link rel="dns-prefetch" href="https://cdn.jsdelivr.net"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.css"><script src="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.js" defer></script><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><script src="https://v1.hitokoto.cn/?encode=js&amp;charset=utf-8&amp;select=.footer_custom_text" defer></script><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: {"appId":"X2MTDP5JXS","apiKey":"b740a5c5a0afcfdb46cd9dde3f3da169","indexName":"xiaobubuya","hits":{"per_page":10},"languages":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}.","hits_stats":"${hits} results found in ${time} ms"}},
+  localSearch: undefined,
+  copy: {
+    success: 'Copy successfully',
+    error: 'Copy error',
+    noSupport: 'The browser does not support'
+  },
+  hexoVersion: '5.4.0'
+} </script><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="xiaobubuyaのBlog" type="application/atom+xml">
+</head><body><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div id="sidebar" data-display="true"><div class="toggle-sidebar-info text-center"><span data-toggle="Toggle article">Toggle site</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">Catalog</div><div class="sidebar-toc__progress"><span class="progress-notice">You've read</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#%E4%BB%80%E4%B9%88%E6%98%AF%E5%BE%AE%E6%9C%8D%E5%8A%A1"><span class="toc-number">1.</span> <span class="toc-text">什么是微服务</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BE%AE%E6%9C%8D%E5%8A%A1%E7%9A%84%E7%94%B1%E6%9D%A5"><span class="toc-number">1.1.</span> <span class="toc-text">微服务的由来</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%BE%AE%E6%9C%8D%E5%8A%A1"><span class="toc-number">1.2.</span> <span class="toc-text">为什么需要微服务</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BE%AE%E6%9C%8D%E5%8A%A1%E4%B8%8E%E5%8D%95%E4%BD%93%E6%9E%B6%E6%9E%84%E5%8C%BA%E5%88%AB"><span class="toc-number">1.3.</span> <span class="toc-text">微服务与单体架构区别</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%BE%AE%E6%9C%8D%E5%8A%A1%E6%9C%AC%E8%B4%A8"><span class="toc-number">1.4.</span> <span class="toc-text">微服务本质</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BB%80%E4%B9%88%E6%A0%B7%E7%9A%84%E9%A1%B9%E7%9B%AE%E9%80%82%E5%90%88%E5%BE%AE%E6%9C%8D%E5%8A%A1"><span class="toc-number">1.5.</span> <span class="toc-text">什么样的项目适合微服务</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BB%80%E4%B9%88%E6%98%AFSpring-Cloud"><span class="toc-number">1.6.</span> <span class="toc-text">什么是Spring Cloud</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Spring-Cloud%E5%92%8CSpring-Boot%E6%98%AF%E4%BB%80%E4%B9%88%E5%85%B3%E7%B3%BB"><span class="toc-number">1.7.</span> <span class="toc-text">Spring Cloud和Spring Boot是什么关系</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Spring-Cloud%E7%9B%B8%E5%85%B3%E5%9F%BA%E7%A1%80%E6%9C%8D%E5%8A%A1%E7%BB%84%E4%BB%B6"><span class="toc-number">1.8.</span> <span class="toc-text">Spring Cloud相关基础服务组件</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Spring-Cloud%E7%9A%84%E7%89%88%E6%9C%AC"><span class="toc-number">1.9.</span> <span class="toc-text">Spring Cloud的版本</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%B0%8F%E7%89%88%E6%9C%AC"><span class="toc-number">1.10.</span> <span class="toc-text">小版本</span></a></li></ol></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img02/%E5%A4%B4%E5%83%8F.jpg"></div><div class="author-info__name text-center">xiaobubuya</div><div class="author-info__description text-center">命数如织，当为磐石</div><div class="follow-button"><a target="_blank" rel="noopener" href="https://github.com/xiaobubuya">Follow Me</a></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">Articles</span><span class="pull-right">64</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">Tags</span><span class="pull-right">27</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">Categories</span><span class="pull-right">6</span></a></div><hr><div class="author-info-links"><div class="author-info-links__title text-center">Links</div><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/gallery">Gallery</a><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/slides">Slides</a></div></div></div><div id="content-outer"><div id="top-container" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">xiaobubuyaのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> Search</span></a></span></div><div id="post-info"><div id="post-title">SpringCloud相关概念介绍</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2021-06-10</time><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E9%A1%B9%E7%9B%AE/">项目</a><div class="post-meta-wordcount"><span>Word count: </span><span class="word-count">1.7k</span><span class="post-meta__separator">|</span><span>Reading time: 5 min</span></div></div></div></div><div class="layout" id="content-inner"><article id="post"><div class="article-container" id="post-content"><h1 id="什么是微服务"><a href="#什么是微服务" class="headerlink" title="什么是微服务"></a>什么是微服务</h1><h2 id="微服务的由来"><a href="#微服务的由来" class="headerlink" title="微服务的由来"></a>微服务的由来</h2><p>微服务最早由Martin Fowler与James Lewis于2014年共同提出，微服务架构风格是一种使用一套小服务来开发单个应用的方式途径，每个服务运行在自己的进程中，并使用轻量级机制通信，通常是HTTP API，这些服务基于业务能力构建，并能够通过自动化部署机制来独立部署，这些服务使用不同的编程语言实现，以及不同数据存储技术，并保持最低限度的集中式管理。 </p>
+<h2 id="为什么需要微服务"><a href="#为什么需要微服务" class="headerlink" title="为什么需要微服务"></a>为什么需要微服务</h2><p>在传统的IT行业软件大多都是各种独立系统的堆砌，这些系统的问题总结来说就是扩展性差，可靠性不高，维护成本高。到后面引入了SOA服务化，但是，由于 SOA 早期均使用了总线模式，这种总线模式是与某种技术栈强绑定的，比如：J2EE。这导致很多企业的遗留系统很难对接，切换时间太长，成本太高，新系统稳定性的收敛也需要一些时间。 </p>
+<h2 id="微服务与单体架构区别"><a href="#微服务与单体架构区别" class="headerlink" title="微服务与单体架构区别"></a>微服务与单体架构区别</h2><p>（1）单体架构所有的模块全都耦合在一块，代码量大，维护困难。</p>
+<p>​     微服务每个模块就相当于一个单独的项目，代码量明显减少，遇到问题也相对来说比较好解决。</p>
+<p>（2）单体架构所有的模块都共用一个数据库，存储方式比较单一。</p>
+<p>​     微服务每个模块都可以使用不同的存储方式（比如有的用redis，有的用mysql等），数据库也是单个模块对应自己的数据库。</p>
+<p>（3）单体架构所有的模块开发所使用的技术一样。</p>
+<p>​     微服务每个模块都可以使用不同的开发技术，开发模式更灵活。 </p>
+<h2 id="微服务本质"><a href="#微服务本质" class="headerlink" title="微服务本质"></a>微服务本质</h2><p>（1）微服务，关键其实不仅仅是微服务本身，而是系统要提供一套基础的架构，这种架构使得微服务可以独立的部署、运行、升级，不仅如此，这个系统架构还让微服务与微服务之间在结构上“松耦合”，而在功能上则表现为一个统一的整体。这种所谓的“统一的整体”表现出来的是统一风格的界面，统一的权限管理，统一的安全策略，统一的上线过程，统一的日志和审计方法，统一的调度方式，统一的访问入口等等。<br>（2）微服务的目的是有效的拆分应用，实现敏捷开发和部署 。<br>（3）微服务提倡的理念团队间应该是 inter-operate, not integrate 。inter-operate是定义好系统的边界和接口，在一个团队内全栈，让团队自治，原因就是因为如果团队按照这样的方式组建，将沟通的成本维持在系统内部，每个子系统就会更加内聚，彼此的依赖耦合能变弱，跨系统的沟通成本也就能降低。</p>
+<h2 id="什么样的项目适合微服务"><a href="#什么样的项目适合微服务" class="headerlink" title="什么样的项目适合微服务"></a>什么样的项目适合微服务</h2><p>微服务可以按照业务功能本身的独立性来划分，如果系统提供的业务是非常底层的，如：操作系统内核、存储系统、网络系统、数据库系统等等，这类系统都偏底层，功能和功能之间有着紧密的配合关系，如果强制拆分为较小的服务单元，会让集成工作量急剧上升，并且这种人为的切割无法带来业务上的真正的隔离，所以无法做到独立部署和运行，也就不适合做成微服务了。</p>
+<p>6、微服务开发框架</p>
+<p>目前微服务的开发框架，最常用的有以下四个：</p>
+<p>Spring Cloud：<a target="_blank" rel="noopener" href="http://projects.spring.io/spring-cloud（现在非常流行的微服务架构）">http://projects.spring.io/spring-cloud（现在非常流行的微服务架构）</a></p>
+<p>Dubbo：http：//dubbo.io</p>
+<p>Dropwizard：<a target="_blank" rel="noopener" href="http://www.dropwizard.io">http://www.dropwizard.io</a> （关注单个微服务的开发）</p>
+<p>Consul、etcd&amp;etc.（微服务的模块）</p>
+<h2 id="什么是Spring-Cloud"><a href="#什么是Spring-Cloud" class="headerlink" title="什么是Spring Cloud"></a>什么是Spring Cloud</h2><p>Spring Cloud是一系列框架的集合。它利用Spring Boot的开发便利性简化了分布式系统基础设施的开发，如服务发现、服务注册、配置中心、消息总线、负载均衡、 熔断器、数据监控等，都可以用Spring Boot的开发风格做到一键启动和部署。Spring并没有重复制造轮子，它只是将目前各家公司开发的比较成熟、经得起实际考验的服务框架组合起来，通过SpringBoot风格进行再封装屏蔽掉了复杂的配置和实现原理，最终给开发者留出了一套简单易懂、易部署和易维护的分布式系统开发工具包</p>
+<h2 id="Spring-Cloud和Spring-Boot是什么关系"><a href="#Spring-Cloud和Spring-Boot是什么关系" class="headerlink" title="Spring Cloud和Spring Boot是什么关系"></a>Spring Cloud和Spring Boot是什么关系</h2><p>Spring Boot 是 Spring 的一套快速配置脚手架，可以基于Spring Boot 快速开发单个微服务，Spring Cloud是一个基于Spring Boot实现的开发工具；Spring Boot专注于快速、方便集成的单个微服务个体，Spring Cloud关注全局的服务治理框架； Spring Boot使用了默认大于配置的理念，很多集成方案已经帮你选择好了，能不配置就不配置，Spring Cloud很大的一部分是基于Spring Boot来实现，必须基于Spring Boot开发。可以单独使用Spring Boot开发项目，但是Spring Cloud离不开 Spring Boot。</p>
+<h2 id="Spring-Cloud相关基础服务组件"><a href="#Spring-Cloud相关基础服务组件" class="headerlink" title="Spring Cloud相关基础服务组件"></a>Spring Cloud相关基础服务组件</h2><p>服务发现——Netflix Eureka （Nacos）</p>
+<p>服务调用——Netflix Feign </p>
+<p>熔断器——Netflix Hystrix </p>
+<p>服务网关——Spring Cloud GateWay </p>
+<p>分布式配置——Spring Cloud Config  （Nacos）</p>
+<p>消息总线 —— Spring Cloud Bus （Nacos）</p>
+<h2 id="Spring-Cloud的版本"><a href="#Spring-Cloud的版本" class="headerlink" title="Spring Cloud的版本"></a>Spring Cloud的版本</h2><p>Spring Cloud并没有熟悉的数字版本号，而是对应一个开发代号。</p>
+<div class="table-container">
+<table>
+<thead>
+<tr>
+<th>Cloud代号</th>
+<th>Boot版本(train)</th>
+<th>Boot版本(tested)</th>
+<th>lifecycle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Angle</td>
+<td>1.2.x</td>
+<td>incompatible with 1.3</td>
+<td>EOL in July 2017</td>
+</tr>
+<tr>
+<td>Brixton</td>
+<td>1.3.x</td>
+<td>1.4.x</td>
+<td>2017-07卒</td>
+</tr>
+<tr>
+<td>Camden</td>
+<td>1.4.x</td>
+<td>1.5.x</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Dalston</td>
+<td>1.5.x</td>
+<td>not expected 2.x</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Edgware</td>
+<td>1.5.x</td>
+<td>not expected 2.x</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Finchley</td>
+<td>2.0.x</td>
+<td>not expected 1.5.x</td>
+<td>-</td>
+</tr>
+<tr>
+<td>Greenwich</td>
+<td><strong>2.1.x</strong></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Hoxton</td>
+<td>2.2.x</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>开发代号看似没有什么规律，但实际上首字母是有顺序的，比如：Dalston版本，我们可以简称 D 版本，对应的 Edgware 版本我们可以简称 E 版本。</p>
+<h2 id="小版本"><a href="#小版本" class="headerlink" title="小版本"></a>小版本</h2><p>Spring Cloud 小版本分为:</p>
+<p>SNAPSHOT： 快照版本，随时可能修改</p>
+<p>M： MileStone，M1表示第1个里程碑版本，一般同时标注PRE，表示预览版版。</p>
+<p>SR： Service Release，SR1表示第1个正式版本，一般同时标注GA：(GenerallyAvailable),表示稳定版本。</p>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">Author: </span><span class="post-copyright-info"><a href="mailto:undefined">xiaobubuya</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">Link: </span><span class="post-copyright-info"><a href="https://xiaobubuya.github.io/SpringCloud相关概念介绍/">https://xiaobubuya.github.io/SpringCloud相关概念介绍/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">Copyright Notice: </span><span class="post-copyright-info">All articles in this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless stating additionally.</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/SpringCloud/">SpringCloud</a></div><div class="social-share pull-right" data-disabled="facebook"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/css/share.min.css"><script src="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/js/social-share.min.js"></script><nav id="pagination"><div class="prev-post pull-left"><a href="/windows%E4%B8%8BRocketMQ%E4%B8%8B%E8%BD%BD%E5%AE%89%E8%A3%85%E6%95%99%E7%A8%8B%E5%8F%8A%E5%BC%82%E6%AD%A5%E5%8F%91%E9%80%81%E9%82%AE%E4%BB%B6/"><i class="fa fa-chevron-left">  </i><span>windows下RocketMQ下载安装教程及异步发送邮件</span></a></div><div class="next-post pull-right"><a href="/Java%E9%9D%A2%E8%AF%95%E6%B1%87%E6%80%BB/"><span>Java面试汇总</span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer class="footer-bg" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div class="layout" id="footer"><div class="copyright">&copy;2020 - 2021 By xiaobubuya</div><div class="framework-info"><span>Driven - </span><a target="_blank" rel="noopener" href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>Theme - </span><a target="_blank" rel="noopener" href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="footer_custom_text">hitokoto</div><div class="busuanzi"><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-animate@latest/velocity.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-ui-pack@latest/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.9.0"></script><script src="/js/fancybox.js?version=1.9.0"></script><script src="/js/sidebar.js?version=1.9.0"></script><script src="/js/copy.js?version=1.9.0"></script><script src="/js/fireworks.js?version=1.9.0"></script><script src="/js/transition.js?version=1.9.0"></script><script src="/js/scroll.js?version=1.9.0"></script><script src="/js/head.js?version=1.9.0"></script><script src="/js/search/algolia.js"></script><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  CommonHTML: {
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "HTML-CSS": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "SVG": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  }
+});
+</script><script type="text/x-mathjax-config">MathJax.Hub.Queue(function() {
+  var all = MathJax.Hub.getAllJax(), i;
+  for (i=0; i < all.length; i += 1) {
+    all[i].SourceElement().parentNode.className += ' has-jax';
+  }
+});
+</script><script src="https://cdn.jsdelivr.net/npm/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>if(/Android|webOS|iPhone|iPod|iPad|BlackBerry/i.test(navigator.userAgent)) {
+  $('#nav').addClass('is-mobile')
+  $('footer').addClass('is-mobile')
+  $('#top-container').addClass('is-mobile')
+}</script><div class="search-dialog" id="algolia-search"><div class="search-dialog__title" id="algolia-search-title">Algolia</div><div id="algolia-input-panel"><div id="algolia-search-input"></div></div><hr><div id="algolia-search-results"><div id="algolia-hits"></div><div id="algolia-pagination"></div><div id="algolia-stats"></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>
