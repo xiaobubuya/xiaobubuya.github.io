@@ -1,0 +1,112 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="计算机网络面试知识点总结"><meta name="keywords" content="计算机网络"><meta name="author" content="xiaobubuya"><meta name="copyright" content="xiaobubuya"><title>计算机网络面试知识点总结 | xiaobubuyaのBlog</title><link rel="shortcut icon" href="/melody-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.9.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css?version=1.9.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="x-dns-prefetch-control" content="on"><link rel="dns-prefetch" href="https://cdn.jsdelivr.net"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.css"><script src="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.js" defer></script><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><script src="https://v1.hitokoto.cn/?encode=js&amp;charset=utf-8&amp;select=.footer_custom_text" defer></script><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: {"appId":"X2MTDP5JXS","apiKey":"b740a5c5a0afcfdb46cd9dde3f3da169","indexName":"xiaobubuya","hits":{"per_page":10},"languages":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}.","hits_stats":"${hits} results found in ${time} ms"}},
+  localSearch: undefined,
+  copy: {
+    success: 'Copy successfully',
+    error: 'Copy error',
+    noSupport: 'The browser does not support'
+  },
+  hexoVersion: '5.4.0'
+} </script><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="xiaobubuyaのBlog" type="application/atom+xml">
+</head><body><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div id="sidebar" data-display="true"><div class="toggle-sidebar-info text-center"><span data-toggle="Toggle article">Toggle site</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">Catalog</div><div class="sidebar-toc__progress"><span class="progress-notice">You've read</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#TCP%E7%9A%84%E4%B8%89%E6%AC%A1%E6%8F%A1%E6%89%8B%E6%9C%BA%E5%88%B6-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E4%B8%89%E6%AC%A1"><span class="toc-number">1.</span> <span class="toc-text">TCP的三次握手机制,为什么要三次?</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E6%8F%A1%E6%89%8B"><span class="toc-number">1.1.</span> <span class="toc-text">为什么需要握手?</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%98%AF3%E6%AC%A1"><span class="toc-number">1.2.</span> <span class="toc-text">为什么是3次?</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#HTTP%E5%8D%8F%E8%AE%AE%E7%BC%93%E5%AD%98%E5%A4%84%E7%90%86%E6%B5%81%E7%A8%8B"><span class="toc-number">2.</span> <span class="toc-text">HTTP协议缓存处理流程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%BE%93%E5%85%A5URL%E5%90%8E%E5%8F%91%E7%94%9F%E4%BA%86%E4%BB%80%E4%B9%88"><span class="toc-number">3.</span> <span class="toc-text">输入URL后发生了什么</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#HTTP%E9%95%BF%E8%BF%9E%E6%8E%A5%E7%9A%84%E4%BC%98%E7%82%B9"><span class="toc-number">4.</span> <span class="toc-text">HTTP长连接的优点</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#CLOSE-WAIT%E4%BA%A7%E7%94%9F%E7%9A%84%E5%8E%9F%E5%9B%A0"><span class="toc-number">5.</span> <span class="toc-text">CLOSE_WAIT产生的原因</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%A4%9A%E6%92%AD"><span class="toc-number">6.</span> <span class="toc-text">多播</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%9A%84%E6%9C%80%E5%A4%A7%E5%B9%B6%E5%8F%91%E8%BF%9E%E6%8E%A5%E6%95%B0"><span class="toc-number">7.</span> <span class="toc-text">服务器的最大并发连接数</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#TCP-UDP%E7%9A%84%E9%80%89%E6%8B%A9"><span class="toc-number">8.</span> <span class="toc-text">TCP&#x2F;UDP的选择</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#TLS-SSL%E5%A6%82%E4%BD%95%E4%BF%9D%E9%9A%9C%E4%BF%A1%E6%81%AF%E5%AE%89%E5%85%A8"><span class="toc-number">9.</span> <span class="toc-text">TLS&#x2F;SSL如何保障信息安全</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#HTTP2%E7%9A%84%E4%BC%98%E7%82%B9"><span class="toc-number">10.</span> <span class="toc-text">HTTP2的优点</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-0%E7%9A%84%E7%BC%BA%E7%82%B9"><span class="toc-number">10.1.</span> <span class="toc-text">1.0的缺点:</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-0%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="toc-number">10.2.</span> <span class="toc-text">2.0解决方案:</span></a></li></ol></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img02/%E5%A4%B4%E5%83%8F.jpg"></div><div class="author-info__name text-center">xiaobubuya</div><div class="author-info__description text-center">命数如织，当为磐石</div><div class="follow-button"><a target="_blank" rel="noopener" href="https://github.com/xiaobubuya">Follow Me</a></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">Articles</span><span class="pull-right">69</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">Tags</span><span class="pull-right">28</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">Categories</span><span class="pull-right">6</span></a></div><hr><div class="author-info-links"><div class="author-info-links__title text-center">Links</div><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/gallery">Gallery</a><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/slides">Slides</a></div></div></div><div id="content-outer"><div id="top-container" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">xiaobubuyaのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> Search</span></a></span></div><div id="post-info"><div id="post-title">计算机网络面试知识点总结</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2021-07-28</time><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E9%9D%A2%E8%AF%95/">面试</a><div class="post-meta-wordcount"><span>Word count: </span><span class="word-count">1.7k</span><span class="post-meta__separator">|</span><span>Reading time: 5 min</span></div></div></div></div><div class="layout" id="content-inner"><article id="post"><div class="article-container" id="post-content"><h2 id="TCP的三次握手机制-为什么要三次"><a href="#TCP的三次握手机制-为什么要三次" class="headerlink" title="TCP的三次握手机制,为什么要三次?"></a>TCP的三次握手机制,为什么要三次?</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225417728.png" alt=""></p>
+<h3 id="为什么需要握手"><a href="#为什么需要握手" class="headerlink" title="为什么需要握手?"></a>为什么需要握手?</h3><p>需要同步序列号，当然也有MSS(最大报文段长度)，滑动窗口。</p>
+<h3 id="为什么是3次"><a href="#为什么是3次" class="headerlink" title="为什么是3次?"></a>为什么是3次?</h3><p>正常想法应该是:</p>
+<p>Client: 我要建连接,我的Seq是这个;</p>
+<p>Server: 我收到了</p>
+<p>Server: 我的Seq是这个</p>
+<p>Client: 我也收到了</p>
+<p>关连接的时候就是这样的思路。关连接的时候，允许消息处于半打开状态。Server关连接，而Client没有关连接的情况下，Client还可以长时间的发送数据(linux中不会对半打开状态下设置超时时间)。</p>
+<p>而建立连接时不允许半打开状态(半建立状态)就收发消息,因此需要Server同时发送确认ack和自己的序列号seq。</p>
+<blockquote>
+<p>ps: HTTP：是单工，client发请求，server发响应。TCP：双工.</p>
+</blockquote>
+<h2 id="HTTP协议缓存处理流程"><a href="#HTTP协议缓存处理流程" class="headerlink" title="HTTP协议缓存处理流程"></a>HTTP协议缓存处理流程</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/2021031622541896.png" alt=""></p>
+<p>过期缓存304和200之间的差别。</p>
+<p>$：cash和cache发音相似，用来表示缓存。</p>
+<p>Proxy：正向代理服务器，代理客户端。</p>
+<p>Gateway：网关，可以充当反向代理服务器，代理服务端.</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225417771.png" alt=""></p>
+<p>根据摘要信息判断缓存是否最新，如果没有改变，会发送304告诉客户端没有改变；如果改变发送200，并重新获取资源。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418144.png" alt=""></p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/2021031622541886.png" alt=""></p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418380.png" alt=""></p>
+<h2 id="输入URL后发生了什么"><a href="#输入URL后发生了什么" class="headerlink" title="输入URL后发生了什么"></a>输入URL后发生了什么</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418298.png" alt=""></p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/2021031622541885.png" alt=""></p>
+<p>http请求的编码并非简单的是你输入的网址。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418306.png" alt=""></p>
+<p>tcp：进程到进程</p>
+<p>IP：主机之间</p>
+<p>mac：局域网内的通讯</p>
+<h2 id="HTTP长连接的优点"><a href="#HTTP长连接的优点" class="headerlink" title="HTTP长连接的优点"></a>HTTP长连接的优点</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418351.png" alt=""></p>
+<p>长连接：connection：keep-alive</p>
+<p>短：connection：close</p>
+<p>连接越多，占内存越多，切换连接也会占用更多的cpu。</p>
+<p>TCP支持1GB的文件也支持1B的文件，UDP发送大文件就有问题(因为TCP建立连接，是流传输的，有丢包重传机制；而UDP对于大文件，需要分批传输，UDP可能会丢包，导致文件不能够正常使用)。</p>
+<p>慢启动：每个TCP连接过程，一开始不分配太大的带宽，慢慢地把速度提上去.如果连接多，经历的慢启动的时间也会增多。</p>
+<p>缺点：TCP是字符流协议，需要从文件头传到文件尾，一个字节一个字节的传，顺序不能乱。 如果只传输一个请求无所谓，不会有顺序乱的问题。如果在一个连接上同时传输多个请求，第一个没传完绝对不能第二个，是一种串行的方式。会出现队头阻塞，一个报文丢包了，那么后面的即使传过去了，对方的应用层也不能接收。</p>
+<h2 id="CLOSE-WAIT产生的原因"><a href="#CLOSE-WAIT产生的原因" class="headerlink" title="CLOSE_WAIT产生的原因"></a>CLOSE_WAIT产生的原因</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/11.png" alt=""></p>
+<p>这个状态表示程序出了bug，而不是配置上的问题。</p>
+<p>在关闭时不提客户端还是服务端，因为两者都可以发起关闭的请求，这里用主动端和被动端。</p>
+<p>主动端的FIN_WAIT_1,FIN_WAIT_2,TIME_WAIT,服务器端会对这三种状态进行精细配置，linux下默认前两个是1min，最后一个是2min.</p>
+<p>被动端的CLOSE_WAIT可以长时间存在，TCP允许这种半打开的状态，一端可以发消息，另一端不可以发了。但这种状态的场景是很少的，一般看到CLOSE_WAIT，应该是出bug了.</p>
+<h2 id="多播"><a href="#多播" class="headerlink" title="多播"></a>多播</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418403.png" alt=""></p>
+<p>多播包括广播和组播，一般是局域网中使用，5G中将在互联网中使用多播.</p>
+<p>IPTV就是多播，arp攻击也是多播.</p>
+<p>在多播中,网络设备去复制报文。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418637.png" alt=""></p>
+<h2 id="服务器的最大并发连接数"><a href="#服务器的最大并发连接数" class="headerlink" title="服务器的最大并发连接数"></a>服务器的最大并发连接数</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418605.png" alt=""></p>
+<p>端口和进程是关联起来的,如果没有端口就没法关联到进程.</p>
+<p>1台服务器它的ip在确定的情况下，目的ip和目的端口可变的情况下，可以建立2^(32+16)个连接. </p>
+<p>实践层面:在linux下可以配置ip_local_port_range把端口的范围进行修改。一台服务器可能有多个网卡，有很多虚拟ip地址，物理ip地址.</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418205.png" alt=""></p>
+<p>实现高并发的关键点在于不要处理一个连接的时间太长，否则会导致其他连接超时.把粒度切得非常小，这时候适合使用事件驱动的方式(无阻塞)。</p>
+<h2 id="TCP-UDP的选择"><a href="#TCP-UDP的选择" class="headerlink" title="TCP/UDP的选择"></a>TCP/UDP的选择</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418333.png" alt=""></p>
+<p>TCP:字符流协议,可以传递任意长度的消息，要利用UDP实现传输大文件,需要应用层做比较复杂的封装，用UDP传输大量的消息时，需要在应用层做流量控制，否则会把网络打死。而TCP自带流量控制，包括滑动窗口(通过缓冲区,接收窗口)？</p>
+<p>UDP：用UDP可以实现广播，组播，TCP不行。效率高：UDP的报文头比TCP小很多，有效信息占比高。HTTP3不用TCP，用UDP。实时性更好,适合直播,车联网等.</p>
+<h2 id="TLS-SSL如何保障信息安全"><a href="#TLS-SSL如何保障信息安全" class="headerlink" title="TLS/SSL如何保障信息安全"></a>TLS/SSL如何保障信息安全</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418541.png" alt=""></p>
+<p>PKI证书：解决信任问题,通过非对称加密(比如RSA)解决的。</p>
+<p>对称加密(比如AES)要比非对称快很多。</p>
+<p>传递密钥需要用到密钥交换协议，需要在SSL握手时确定使用哪种交换协议，目前主要使用的椭圆曲线，椭圆曲线比之前的DH协议快很多，而且有前向安全性(就算后来破解了密码，之前的数据还是不能用)。</p>
+<h2 id="HTTP2的优点"><a href="#HTTP2的优点" class="headerlink" title="HTTP2的优点"></a>HTTP2的优点</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418545.png" alt=""></p>
+<p>gRPC使用的是HTTP2.0。</p>
+<h3 id="1-0的缺点"><a href="#1-0的缺点" class="headerlink" title="1.0的缺点:"></a>1.0的缺点:</h3><p>-header太长了。比如cookie里存了很多东西，User-Agent也很长，而且每条请求都会发一遍，很浪费带宽。</p>
+<p>-长连接时，不支持多路复用。</p>
+<h3 id="2-0解决方案"><a href="#2-0解决方案" class="headerlink" title="2.0解决方案:"></a>2.0解决方案:</h3><p>-消息推送：1.0中对于服务器返回来的响应，浏览器会解析，可能此时需要css、js文件，再向服务器去请求，这就多了交互次数。而实际上服务器可以把关联性的资源推送。</p>
+<p>-多路复用：1.0中目前chrome中最多支持6个TCP连接，而现在网页中动辄成百上千个资源，每个TCP连接需要传输很多的请求，而且是串行的。而2.0可以多路复用，可以一次性传输很多个对象(当然也有优先级)。</p>
+<p>1.0的编码效率低，2.0可以压缩一半以上。</p>
+<p>比如用数字来代替user-agent;</p>
+<p>常用的61个header写死在代码中，称为静态表；不在这里的，建立动态表.</p>
+<p>之前用字符串表示整数比较浪费内存，比如”1000000”需要七个字节，而实际上一个整数4个字节(32位)就可以了，而且可以表示到40多亿。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418679.png" alt=""></p>
+<p>css、js不出来时是看不到页面的,可以先把这些加载出来。</p>
+<p>再比如依赖中，先加载框架类的资源,再加载应用类的。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418695.png" alt=""></p>
+<p>整理自B站视频:<a target="_blank" rel="noopener" href="https://www.bilibili.com/video/BV1gk4y1o7pX?from=search&amp;seid=8672121521613718864">https://www.bilibili.com/video/BV1gk4y1o7pX?from=search&amp;seid=8672121521613718864</a></p>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">Author: </span><span class="post-copyright-info"><a href="mailto:undefined">xiaobubuya</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">Link: </span><span class="post-copyright-info"><a href="https://xiaobubuya.github.io/计算机网络十个面试题/">https://xiaobubuya.github.io/计算机网络十个面试题/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">Copyright Notice: </span><span class="post-copyright-info">All articles in this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless stating additionally.</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/">计算机网络</a></div><div class="social-share pull-right" data-disabled="facebook"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/css/share.min.css"><script src="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/js/social-share.min.js"></script><nav id="pagination"><div class="next-post pull-right"><a href="/%E4%B8%89%E7%A7%8D%E5%88%86%E5%B8%83%E5%BC%8F%E9%94%81%E4%BD%BF%E7%94%A8/"><span>三种分布式锁的使用</span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer class="footer-bg" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div class="layout" id="footer"><div class="copyright">&copy;2020 - 2021 By xiaobubuya</div><div class="framework-info"><span>Driven - </span><a target="_blank" rel="noopener" href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>Theme - </span><a target="_blank" rel="noopener" href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="footer_custom_text">hitokoto</div><div class="busuanzi"><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-animate@latest/velocity.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-ui-pack@latest/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.9.0"></script><script src="/js/fancybox.js?version=1.9.0"></script><script src="/js/sidebar.js?version=1.9.0"></script><script src="/js/copy.js?version=1.9.0"></script><script src="/js/fireworks.js?version=1.9.0"></script><script src="/js/transition.js?version=1.9.0"></script><script src="/js/scroll.js?version=1.9.0"></script><script src="/js/head.js?version=1.9.0"></script><script src="/js/search/algolia.js"></script><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  CommonHTML: {
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "HTML-CSS": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "SVG": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  }
+});
+</script><script type="text/x-mathjax-config">MathJax.Hub.Queue(function() {
+  var all = MathJax.Hub.getAllJax(), i;
+  for (i=0; i < all.length; i += 1) {
+    all[i].SourceElement().parentNode.className += ' has-jax';
+  }
+});
+</script><script src="https://cdn.jsdelivr.net/npm/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>if(/Android|webOS|iPhone|iPod|iPad|BlackBerry/i.test(navigator.userAgent)) {
+  $('#nav').addClass('is-mobile')
+  $('footer').addClass('is-mobile')
+  $('#top-container').addClass('is-mobile')
+}</script><div class="search-dialog" id="algolia-search"><div class="search-dialog__title" id="algolia-search-title">Algolia</div><div id="algolia-input-panel"><div id="algolia-search-input"></div></div><hr><div id="algolia-search-results"><div id="algolia-hits"></div><div id="algolia-pagination"></div><div id="algolia-stats"></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>

@@ -6,7 +6,7 @@
   <link href="https://xiaobubuya.github.io/atom.xml" rel="self"/>
   
   <link href="https://xiaobubuya.github.io/"/>
-  <updated>2021-07-25T12:51:13.239Z</updated>
+  <updated>2021-07-30T13:12:53.773Z</updated>
   <id>https://xiaobubuya.github.io/</id>
   
   <author>
@@ -15,6 +15,30 @@
   </author>
   
   <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>计算机网络面试知识点总结</title>
+    <link href="https://xiaobubuya.github.io/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C%E5%8D%81%E4%B8%AA%E9%9D%A2%E8%AF%95%E9%A2%98/"/>
+    <id>https://xiaobubuya.github.io/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C%E5%8D%81%E4%B8%AA%E9%9D%A2%E8%AF%95%E9%A2%98/</id>
+    <published>2021-07-28T08:17:49.000Z</published>
+    <updated>2021-07-30T13:12:53.773Z</updated>
+    
+    <content type="html"><![CDATA[<h2 id="TCP的三次握手机制-为什么要三次"><a href="#TCP的三次握手机制-为什么要三次" class="headerlink" title="TCP的三次握手机制,为什么要三次?"></a>TCP的三次握手机制,为什么要三次?</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225417728.png" alt=""></p><h3 id="为什么需要握手"><a href="#为什么需要握手" class="headerlink" title="为什么需要握手?"></a>为什么需要握手?</h3><p>需要同步序列号，当然也有MSS(最大报文段长度)，滑动窗口。</p><h3 id="为什么是3次"><a href="#为什么是3次" class="headerlink" title="为什么是3次?"></a>为什么是3次?</h3><p>正常想法应该是:</p><p>Client: 我要建连接,我的Seq是这个;</p><p>Server: 我收到了</p><p>Server: 我的Seq是这个</p><p>Client: 我也收到了</p><p>关连接的时候就是这样的思路。关连接的时候，允许消息处于半打开状态。Server关连接，而Client没有关连接的情况下，Client还可以长时间的发送数据(linux中不会对半打开状态下设置超时时间)。</p><p>而建立连接时不允许半打开状态(半建立状态)就收发消息,因此需要Server同时发送确认ack和自己的序列号seq。</p><blockquote><p>ps: HTTP：是单工，client发请求，server发响应。TCP：双工.</p></blockquote><h2 id="HTTP协议缓存处理流程"><a href="#HTTP协议缓存处理流程" class="headerlink" title="HTTP协议缓存处理流程"></a>HTTP协议缓存处理流程</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/2021031622541896.png" alt=""></p><p>过期缓存304和200之间的差别。</p><p>$：cash和cache发音相似，用来表示缓存。</p><p>Proxy：正向代理服务器，代理客户端。</p><p>Gateway：网关，可以充当反向代理服务器，代理服务端.</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225417771.png" alt=""></p><p>根据摘要信息判断缓存是否最新，如果没有改变，会发送304告诉客户端没有改变；如果改变发送200，并重新获取资源。</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418144.png" alt=""></p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/2021031622541886.png" alt=""></p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418380.png" alt=""></p><h2 id="输入URL后发生了什么"><a href="#输入URL后发生了什么" class="headerlink" title="输入URL后发生了什么"></a>输入URL后发生了什么</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418298.png" alt=""></p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/2021031622541885.png" alt=""></p><p>http请求的编码并非简单的是你输入的网址。</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418306.png" alt=""></p><p>tcp：进程到进程</p><p>IP：主机之间</p><p>mac：局域网内的通讯</p><h2 id="HTTP长连接的优点"><a href="#HTTP长连接的优点" class="headerlink" title="HTTP长连接的优点"></a>HTTP长连接的优点</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418351.png" alt=""></p><p>长连接：connection：keep-alive</p><p>短：connection：close</p><p>连接越多，占内存越多，切换连接也会占用更多的cpu。</p><p>TCP支持1GB的文件也支持1B的文件，UDP发送大文件就有问题(因为TCP建立连接，是流传输的，有丢包重传机制；而UDP对于大文件，需要分批传输，UDP可能会丢包，导致文件不能够正常使用)。</p><p>慢启动：每个TCP连接过程，一开始不分配太大的带宽，慢慢地把速度提上去.如果连接多，经历的慢启动的时间也会增多。</p><p>缺点：TCP是字符流协议，需要从文件头传到文件尾，一个字节一个字节的传，顺序不能乱。 如果只传输一个请求无所谓，不会有顺序乱的问题。如果在一个连接上同时传输多个请求，第一个没传完绝对不能第二个，是一种串行的方式。会出现队头阻塞，一个报文丢包了，那么后面的即使传过去了，对方的应用层也不能接收。</p><h2 id="CLOSE-WAIT产生的原因"><a href="#CLOSE-WAIT产生的原因" class="headerlink" title="CLOSE_WAIT产生的原因"></a>CLOSE_WAIT产生的原因</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/11.png" alt=""></p><p>这个状态表示程序出了bug，而不是配置上的问题。</p><p>在关闭时不提客户端还是服务端，因为两者都可以发起关闭的请求，这里用主动端和被动端。</p><p>主动端的FIN_WAIT_1,FIN_WAIT_2,TIME_WAIT,服务器端会对这三种状态进行精细配置，linux下默认前两个是1min，最后一个是2min.</p><p>被动端的CLOSE_WAIT可以长时间存在，TCP允许这种半打开的状态，一端可以发消息，另一端不可以发了。但这种状态的场景是很少的，一般看到CLOSE_WAIT，应该是出bug了.</p><h2 id="多播"><a href="#多播" class="headerlink" title="多播"></a>多播</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418403.png" alt=""></p><p>多播包括广播和组播，一般是局域网中使用，5G中将在互联网中使用多播.</p><p>IPTV就是多播，arp攻击也是多播.</p><p>在多播中,网络设备去复制报文。</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418637.png" alt=""></p><h2 id="服务器的最大并发连接数"><a href="#服务器的最大并发连接数" class="headerlink" title="服务器的最大并发连接数"></a>服务器的最大并发连接数</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418605.png" alt=""></p><p>端口和进程是关联起来的,如果没有端口就没法关联到进程.</p><p>1台服务器它的ip在确定的情况下，目的ip和目的端口可变的情况下，可以建立2^(32+16)个连接. </p><p>实践层面:在linux下可以配置ip_local_port_range把端口的范围进行修改。一台服务器可能有多个网卡，有很多虚拟ip地址，物理ip地址.</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418205.png" alt=""></p><p>实现高并发的关键点在于不要处理一个连接的时间太长，否则会导致其他连接超时.把粒度切得非常小，这时候适合使用事件驱动的方式(无阻塞)。</p><h2 id="TCP-UDP的选择"><a href="#TCP-UDP的选择" class="headerlink" title="TCP/UDP的选择"></a>TCP/UDP的选择</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418333.png" alt=""></p><p>TCP:字符流协议,可以传递任意长度的消息，要利用UDP实现传输大文件,需要应用层做比较复杂的封装，用UDP传输大量的消息时，需要在应用层做流量控制，否则会把网络打死。而TCP自带流量控制，包括滑动窗口(通过缓冲区,接收窗口)？</p><p>UDP：用UDP可以实现广播，组播，TCP不行。效率高：UDP的报文头比TCP小很多，有效信息占比高。HTTP3不用TCP，用UDP。实时性更好,适合直播,车联网等.</p><h2 id="TLS-SSL如何保障信息安全"><a href="#TLS-SSL如何保障信息安全" class="headerlink" title="TLS/SSL如何保障信息安全"></a>TLS/SSL如何保障信息安全</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418541.png" alt=""></p><p>PKI证书：解决信任问题,通过非对称加密(比如RSA)解决的。</p><p>对称加密(比如AES)要比非对称快很多。</p><p>传递密钥需要用到密钥交换协议，需要在SSL握手时确定使用哪种交换协议，目前主要使用的椭圆曲线，椭圆曲线比之前的DH协议快很多，而且有前向安全性(就算后来破解了密码，之前的数据还是不能用)。</p><h2 id="HTTP2的优点"><a href="#HTTP2的优点" class="headerlink" title="HTTP2的优点"></a>HTTP2的优点</h2><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418545.png" alt=""></p><p>gRPC使用的是HTTP2.0。</p><h3 id="1-0的缺点"><a href="#1-0的缺点" class="headerlink" title="1.0的缺点:"></a>1.0的缺点:</h3><p>-header太长了。比如cookie里存了很多东西，User-Agent也很长，而且每条请求都会发一遍，很浪费带宽。</p><p>-长连接时，不支持多路复用。</p><h3 id="2-0解决方案"><a href="#2-0解决方案" class="headerlink" title="2.0解决方案:"></a>2.0解决方案:</h3><p>-消息推送：1.0中对于服务器返回来的响应，浏览器会解析，可能此时需要css、js文件，再向服务器去请求，这就多了交互次数。而实际上服务器可以把关联性的资源推送。</p><p>-多路复用：1.0中目前chrome中最多支持6个TCP连接，而现在网页中动辄成百上千个资源，每个TCP连接需要传输很多的请求，而且是串行的。而2.0可以多路复用，可以一次性传输很多个对象(当然也有优先级)。</p><p>1.0的编码效率低，2.0可以压缩一半以上。</p><p>比如用数字来代替user-agent;</p><p>常用的61个header写死在代码中，称为静态表；不在这里的，建立动态表.</p><p>之前用字符串表示整数比较浪费内存，比如”1000000”需要七个字节，而实际上一个整数4个字节(32位)就可以了，而且可以表示到40多亿。</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418679.png" alt=""></p><p>css、js不出来时是看不到页面的,可以先把这些加载出来。</p><p>再比如依赖中，先加载框架类的资源,再加载应用类的。</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/20210316225418695.png" alt=""></p><p>整理自B站视频:<a href="https://www.bilibili.com/video/BV1gk4y1o7pX?from=search&amp;seid=8672121521613718864">https://www.bilibili.com/video/BV1gk4y1o7pX?from=search&amp;seid=8672121521613718864</a></p>]]></content>
+    
+    
+      
+      
+    <summary type="html">&lt;h2 id=&quot;TCP的三次握手机制-为什么要三次&quot;&gt;&lt;a href=&quot;#TCP的三次握手机制-为什么要三次&quot; class=&quot;headerlink&quot; title=&quot;TCP的三次握手机制,为什么要三次?&quot;&gt;&lt;/a&gt;TCP的三次握手机制,为什么要三次?&lt;/h2&gt;&lt;p&gt;&lt;img src</summary>
+      
+    
+    
+    
+    <category term="面试" scheme="https://xiaobubuya.github.io/categories/%E9%9D%A2%E8%AF%95/"/>
+    
+    
+    <category term="计算机网络" scheme="https://xiaobubuya.github.io/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/"/>
+    
+  </entry>
   
   <entry>
     <title>三种分布式锁的使用</title>
@@ -478,31 +502,6 @@
     
     
     <category term="数据结构" scheme="https://xiaobubuya.github.io/tags/%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84/"/>
-    
-  </entry>
-  
-  <entry>
-    <title>Mybatis工作原理</title>
-    <link href="https://xiaobubuya.github.io/Mybatis%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86/"/>
-    <id>https://xiaobubuya.github.io/Mybatis%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86/</id>
-    <published>2021-04-20T02:40:45.000Z</published>
-    <updated>2021-06-02T01:41:20.850Z</updated>
-    
-    <content type="html"><![CDATA[<h1 id="一、Mybatis工作原理图"><a href="#一、Mybatis工作原理图" class="headerlink" title="一、Mybatis工作原理图"></a>一、Mybatis工作原理图</h1><p>mybatis 原理图如下所示：</p><p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/Mybatis/20180624002302854.png" alt=""></p><h1 id="二、工作原理解析"><a href="#二、工作原理解析" class="headerlink" title="二、工作原理解析"></a>二、工作原理解析</h1><p>mybatis应用程序通过SqlSessionFactoryBuilder从mybatis-config.xml配置文件（也可以用Java文件配置的方式，需要添加@Configuration）来构建SqlSessionFactory（SqlSessionFactory是线程安全的）；</p><p>然后，SqlSessionFactory的实例直接开启一个SqlSession，再通过SqlSession实例获得Mapper对象并运行Mapper映射的SQL语句，完成对数据库的CRUD和事务提交，之后关闭SqlSession。</p><p>说明：SqlSession是单线程对象，因为它是非线程安全的，是持久化操作的独享对象，类似jdbc中的Connection，底层就封装了jdbc连接。</p><p>详细流程如下：</p><p>1、加载mybatis全局配置文件（数据源、mapper映射文件等），解析配置文件，MyBatis基于XML配置文件生成Configuration，和一个个MappedStatement（包括了参数映射配置、动态SQL语句、结果映射配置），其对应着<select | update | delete | insert>标签项。</p><p>2、SqlSessionFactoryBuilder通过Configuration对象生成SqlSessionFactory，用来开启SqlSession。</p><p>3、SqlSession对象完成和数据库的交互：<br>a、用户程序调用mybatis接口层api（即Mapper接口中的方法）<br>b、SqlSession通过调用api的Statement ID找到对应的MappedStatement对象<br>c、通过Executor（负责动态SQL的生成和查询缓存的维护）将MappedStatement对象进行解析，sql参数转化、动态sql拼接，生成jdbc Statement对象<br>d、JDBC执行sql。</p><p>e、借助MappedStatement中的结果映射关系，将返回结果转化成HashMap、JavaBean等存储结构并返回。</p><p>mybatis层次图：<br><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/Java/Mybatis/20180625095624918.png" alt=""></p>]]></content>
-    
-    
-      
-      
-    <summary type="html">&lt;h1 id=&quot;一、Mybatis工作原理图&quot;&gt;&lt;a href=&quot;#一、Mybatis工作原理图&quot; class=&quot;headerlink&quot; title=&quot;一、Mybatis工作原理图&quot;&gt;&lt;/a&gt;一、Mybatis工作原理图&lt;/h1&gt;&lt;p&gt;mybatis 原理图如下所示：&lt;/p&gt;
-&lt;</summary>
-      
-    
-    
-    
-    <category term="面试" scheme="https://xiaobubuya.github.io/categories/%E9%9D%A2%E8%AF%95/"/>
-    
-    
-    <category term="database" scheme="https://xiaobubuya.github.io/tags/database/"/>
     
   </entry>
   
