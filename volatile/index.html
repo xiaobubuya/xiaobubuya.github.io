@@ -1,0 +1,209 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"><meta name="description" content="volatile详解"><meta name="keywords" content="多线程"><meta name="author" content="xiaobubuya"><meta name="copyright" content="xiaobubuya"><title>volatile详解 | xiaobubuyaのBlog</title><link rel="shortcut icon" href="/melody-favicon.ico"><link rel="stylesheet" href="/css/index.css?version=1.9.0"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@latest/css/font-awesome.min.css?version=1.9.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="x-dns-prefetch-control" content="on"><link rel="dns-prefetch" href="https://cdn.jsdelivr.net"><link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.css"><script src="https://cdn.jsdelivr.net/npm/instantsearch.js@2.1.1/dist/instantsearch.min.js" defer></script><meta http-equiv="Cache-Control" content="no-transform"><meta http-equiv="Cache-Control" content="no-siteapp"><script src="https://v1.hitokoto.cn/?encode=js&amp;charset=utf-8&amp;select=.footer_custom_text" defer></script><script>var GLOBAL_CONFIG = { 
+  root: '/',
+  algolia: {"appId":"X2MTDP5JXS","apiKey":"b740a5c5a0afcfdb46cd9dde3f3da169","indexName":"xiaobubuya","hits":{"per_page":10},"languages":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}.","hits_stats":"${hits} results found in ${time} ms"}},
+  localSearch: undefined,
+  copy: {
+    success: 'Copy successfully',
+    error: 'Copy error',
+    noSupport: 'The browser does not support'
+  },
+  hexoVersion: '5.4.0'
+} </script><meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/atom.xml" title="xiaobubuyaのBlog" type="application/atom+xml">
+</head><body><i class="fa fa-arrow-right" id="toggle-sidebar" aria-hidden="true"></i><div id="sidebar" data-display="true"><div class="toggle-sidebar-info text-center"><span data-toggle="Toggle article">Toggle site</span><hr></div><div class="sidebar-toc"><div class="sidebar-toc__title">Catalog</div><div class="sidebar-toc__progress"><span class="progress-notice">You've read</span><span class="progress-num">0</span><span class="progress-percentage">%</span><div class="sidebar-toc__progress-bar"></div></div><div class="sidebar-toc__content"><ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E4%B8%80%E8%87%B4%E6%80%A7%E5%8D%8F%E8%AE%AE"><span class="toc-number">1.</span> <span class="toc-text">缓存一致性协议</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%BC%93%E5%AD%98%E4%B8%80%E8%87%B4%E6%80%A7%E5%8D%8F%E8%AE%AE%E4%BC%98%E5%8C%96%E5%AD%98%E5%9C%A8%E7%9A%84%E9%97%AE%E9%A2%98"><span class="toc-number">2.</span> <span class="toc-text">缓存一致性协议优化存在的问题</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C"><span class="toc-number">3.</span> <span class="toc-text">内存屏障</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#volatile%E4%B8%AD%E7%9A%84%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C"><span class="toc-number">4.</span> <span class="toc-text">volatile中的内存屏障</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-number">5.</span> <span class="toc-text">总结</span></a></li></ol></div></div><div class="author-info hide"><div class="author-info__avatar text-center"><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img02/%E5%A4%B4%E5%83%8F.jpg"></div><div class="author-info__name text-center">xiaobubuya</div><div class="author-info__description text-center">命数如织，当为磐石</div><div class="follow-button"><a target="_blank" rel="noopener" href="https://github.com/xiaobubuya">Follow Me</a></div><hr><div class="author-info-articles"><a class="author-info-articles__archives article-meta" href="/archives"><span class="pull-left">Articles</span><span class="pull-right">70</span></a><a class="author-info-articles__tags article-meta" href="/tags"><span class="pull-left">Tags</span><span class="pull-right">28</span></a><a class="author-info-articles__categories article-meta" href="/categories"><span class="pull-left">Categories</span><span class="pull-right">6</span></a></div><hr><div class="author-info-links"><div class="author-info-links__title text-center">Links</div><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/gallery">Gallery</a><a class="author-info-links__name text-center" target="_blank" rel="noopener" href="https://xiaobubuya.cn/slides">Slides</a></div></div></div><div id="content-outer"><div id="top-container" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div id="page-header"><span class="pull-left"> <a id="site-name" href="/">xiaobubuyaのBlog</a></span><i class="fa fa-bars toggle-menu pull-right" aria-hidden="true"></i><span class="pull-right"><a class="site-page social-icon search"><i class="fa fa-search"></i><span> Search</span></a></span></div><div id="post-info"><div id="post-title">volatile详解</div><div id="post-meta"><time class="post-meta__date"><i class="fa fa-calendar" aria-hidden="true"></i> 2021-08-28</time><span class="post-meta__separator">|</span><i class="fa fa-inbox post-meta__icon" aria-hidden="true"></i><a class="post-meta__categories" href="/categories/%E9%9D%A2%E8%AF%95/">面试</a><div class="post-meta-wordcount"><span>Word count: </span><span class="word-count">4.1k</span><span class="post-meta__separator">|</span><span>Reading time: 12 min</span></div></div></div></div><div class="layout" id="content-inner"><article id="post"><div class="article-container" id="post-content"><h3 id="缓存一致性协议"><a href="#缓存一致性协议" class="headerlink" title="缓存一致性协议"></a>缓存一致性协议</h3><p>我们知道，现代CPU都是多核处理器。由于cpu核心（Kernel）读取内存数据较慢，于是就有了缓存的概念。我们希望针对频繁读写的某个内存变量，提升本核心的访问速率。因此我们会给每个核心设计缓存区(Cache)，缓存该变量。由于缓存硬件的读写速度比内存快，所以通过这种方式可以提升变量访问速度。<br>缓存的结构可以如下设计：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/640" alt="">缓存结构图</p>
+<p>其中，一个缓存区可以分为N个缓存行(Cache line)，缓存行是和内存进行数据交换的最小单位。每个缓存行包含三个部分，其中valid用于标识该数据的有效性。如果有效位为false，CPU核心就从内存中读取，并将对应旧的缓存行数据覆盖，否则使用旧缓存数据；tag用于指示数据对应的内存地址；block则用以存储数据，</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/640.webp" alt="">多核缓存和内存</p>
+<p>但是，如果涉及到并发任务，多个核心读取同一个变量值，由于每个核心读取的是自己那一部分的缓存，每个核心的缓存数据不一致将会导致一系列问题。缓存一致性的问题根源就在于，对于某个变量，好几个核心对应的缓存区都有，到底哪个是新的数据呢？如果只有一个CPU核心对应的缓存区有该变量，那就没事啦，该缓存肯定是新的。</p>
+<p>所以为了保证缓存的一致性，业界有两种思路：</p>
+<ol>
+<li>写失效(Write Invalidate)：当一个核心修改了一份数据，其它核心如果有这份数据，就把valid标识为无效；</li>
+<li>写更新(Write update)：当一个核心修改了一份数据，其它核心如果有这份数据，就都更新为新值，并且还是标记valid有效。</li>
+</ol>
+<p>业界有多种实现缓存一致性的协议，诸如MSI、MESI、MOSI、Synapse、Firefly Dragon Protocol等，其中最为流行的是MESI协议。</p>
+<p>MESI协议就是根据写失效的思路，设计的一种缓存一致性协议。为了实现这个协议，原先的缓存行修改如下：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/640%20(1" alt="">.webp)缓存结构图</p>
+<p>原先的valid是一个比特位，代表有效/无效两种状态。在MESI协议中，该位改成两位，不再只是有效和无效两种状态，而是有四个状态，分别为：</p>
+<ol>
+<li>M（Modified）：表示核心的数据被修改了，缓存数据属于有效状态，但是数据只处于本核心对应的缓存，还没有将这个新数据写到内存中。由于此时数据在各个核心缓存区只有唯一一份，不涉及缓存一致性问题；</li>
+<li>E（Exclusive）：表示数据只存在本核心对应的缓存中，别的核心缓存没这个数据，缓存数据属于有效状态，并且该缓存中的最新数据已经写到内存中了。同样由于此时数据在各个核心缓存区只有一份，也不涉及缓存一致性问题；</li>
+<li>S（Shared）：表示数据存于多个核心对应的缓存中，缓存数据属于有效状态，和内存一致。这种状态的值涉及缓存一致性问题；</li>
+<li>I（Invalid）：表示该核心对应的缓存数据无效。</li>
+</ol>
+<p>看到这里，大家想必知道为什么这个协议称为MESI协议了吧，它的命名就是取了这四个状态的首字母而已。</p>
+<p>为了保证缓存一致性，每个核心要写新数据前，需要确保其他核心已经置同一变量数据的缓存行状态位为Invalid后，再把新数据写到自己的缓存行，并之后写到内存中。</p>
+<p>MESI协议包含以下几个行为：</p>
+<ul>
+<li>读（Read）：当某个核心需要某个变量的值，并且该核心对应的缓存没这个变量时，就会发出读命令，希望别的核心缓存或者内存能给该核心最新的数据；</li>
+<li>读命令反馈（Read Response）：读命令反馈是对读命令的回应，包含了之前读命令请求的数据。举例来说，Kernel0发送读命令，请求变量a的值，Kernel1对应的缓存区包含变量a，并且该缓存的状态是M状态，所以Kernel1会给Kernel0的读命令发送读命令反馈，给出该值；</li>
+<li>无效化（Invalidate）：无效化指令是一条广播指令，它告诉其他所有核心，缓存中某个变量已经无效了。如果变量是独占的，只存在某一个核心对应的缓存区中，那就不存在缓存一致性问题了，直接在自己缓存中改了就行，也不用发送无效化指令；</li>
+<li>无效化确认（Invalidate Acknowledge）：该指令是对无效化指令的回复，收到无效化指令的核心，需要将自己缓存区对应的变量状态改为Invalid，并回复无效化确认，以此保证发送无效化确认的缓存已经无效了；</li>
+<li>读无效（Read Invalidate）:这个命令是读命令和无效化命令的综合体。它需要接受读命令反馈和无效化确认；</li>
+<li>写回（Writeback）这个命令的意思是将核心中某个缓存行对应的变量值写回到内存中去。</li>
+</ul>
+<p>下图给了个一个应用MESI读写数据的例子。在该图中，假设CPU有两个核心，Kernel0表示第一个核心，Kernel1表示第二个核心。这里给出了Kernel0想写新数据到自己缓存的例子。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/640%20(2" alt="">.webp)MESI工作原理</p>
+<ol>
+<li>首先Kernel0先完成新数据的创建；</li>
+<li>Kernel0向全体其他核心发送无效化指令，告诉其他核心其所对应的缓存区中的这条数据已经过期无效。本图例中只有一个其他核心，为Kernel1；</li>
+<li>其他核心收到广播消息后，将自己对应缓存的数据的标志位记为无效，然后给Kernel0回确认消息；</li>
+<li>收到所有其他Kernel的确认消息后，Kernel0才能将新数据写回到它所对应的缓存结构中去。</li>
+</ol>
+<p>根据上图，我们可以发现，影响MESI协议的时间瓶颈主要有两块：</p>
+<ol>
+<li>无效化指令：Kernel0需要通知所有的核心，该变量对应的缓存在其他核心中是无效的。在通知完之前，该核心不能做任何关于这个变量的操作。</li>
+<li>确认响应：Kernel0需要收到其他核心的确认响应。在收到确认消息之前，该核心不能做任何关于这个变量的操作，需要持续等待其他核心的响应，直到所有核心响应完成，将其对应的缓存行标志位设为Invalid，才能继续其它操作。</li>
+</ol>
+<p>针对这两部分，我们可以进一步优化：</p>
+<ol>
+<li>针对无效化指令的加速：在缓存的基础上，引入Store Buffer这个结构。Store Buffer是一个特殊的硬件存储结构。通俗的来讲，核心可以先将变量写入Store Buffer，然后再处理其他事情。如果后面的操作需要用到这个变量，就可以从Store Buffer中读取变量的值，核心读数据的順序变成Store Buffer → 缓存 → 内存。这样在任何时候核心都不用卡住，做不了关于这个变量的操作了。引入Store Buffer后的结构如下所示：</li>
+</ol>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/640%20(3" alt="">.webp)Store Buffer结构</p>
+<ol>
+<li>针对确认响应的加速：在缓存的基础上，引入Invalidate Queue这个结构。其他核心收到Kernel0的Invalidate的命令后，立即给Kernel0回Acknowledge，并把Invalidate这个操作，先记录到Invalidate Queue里，当其他操作结束时，再从Invalidate Queue中取命令，进行Invalidate操作。所以当Kernel0收到确认响应时，其他核心对应的缓存行可能还没完全置为Invalid状态。引入Invalidate Queue后的结构如下所示：</li>
+</ol>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/1.webp" alt="">Invalidate Queue结构</p>
+<hr>
+<h3 id="缓存一致性协议优化存在的问题"><a href="#缓存一致性协议优化存在的问题" class="headerlink" title="缓存一致性协议优化存在的问题"></a>缓存一致性协议优化存在的问题</h3><p>上一节讲了两种缓存一致性协议的加速方式。但是这两个方式却会对缓存一致性导致一定的偏差，下面我们来看一下两个出错的例子：</p>
+<p>例子1：关于Store Buffer带来的错误，假设CPU有两个核心，Kernel0表示第一个核心，Kernel1表示第二个核心。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">...</span><br><span class="line">public void foo()&#123;</span><br><span class="line">    a=1;</span><br><span class="line">    b=1;</span><br><span class="line">&#125;</span><br><span class="line">public void bar()&#123;</span><br><span class="line">    while(b==0) continue;</span><br><span class="line">    assert(a==1):&quot;a has a wrong value!&quot;;</span><br><span class="line">&#125;</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<p>如果Kernel0执行foo()函数，Kernel1执行bar()函数，按照之前我们的理解，如果b变量为1了，那a肯定为1了，assert(a==1)肯定不会报错。但是事实却不是这样的。</p>
+<p>假设初始情况是这样的：在执行两个函数前Kernel1的缓存包含变量a=0，不包含缓存变量b，Kernel0的缓存包含变量b=0，不包含缓存变量a。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/641.webp" alt=""></p>
+<p>Kernel0执行foo()函数，Kernel1执行bar()函数时，。这样的话计算机的指令程序可能会如下展开：</p>
+<ol>
+<li><p>Kernel0执行a=1。由于Kernel0的缓存行不包含变量a，因此Kernel0会将变量a的值存在Store Buffer中，并且向其他Kernel进行read Invalidate操作，通知a变量缓存无效；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/642.webp" alt=""></p>
+</li>
+<li><p>Kernel1执行while(b==0)，由于Kernel1的缓存没有变量b，因此它需要发送一个读命令，去找b的值；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/643.webp" alt="">2</p>
+</li>
+<li><p>Kernel0执行b=1，由于Kernel0的缓存中已经有了变量b，而且别的核心没有这个变量的缓存，所以它可以直接更改缓存b的值；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/644.webp" alt="">3</p>
+</li>
+<li><p>Kernel0收到读命令后，将最新的b的值发送给Kernel1，并且将变量b的状态由E（独占）改变为S（共享）；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/645.webp" alt="">4</p>
+</li>
+<li><p>Kernel1收到b的值后，将其存到自己Kernel对应的缓存区中；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/646.webp" alt="">5</p>
+</li>
+<li><p>Kernel1接着执行while(b==0)，因为此时b的新值为1，因此跳出循环；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/647.webp" alt="">6</p>
+</li>
+<li><p>Kernel1执行assert(a==1)，由于Kernel1缓存中a的值为0，并且是有效的，所以断言出错；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/648.webp" alt="">7</p>
+</li>
+<li><p>Kernel1终于收到了第一步Kernel0发送的Invalidate了，赶紧将缓存区的a==1置为invalid，但是为时已晚。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/649.webp" alt="">8</p>
+</li>
+</ol>
+<p>所以我们看到，这个例子出错的原因完全是由Store Buffer这个结构引发的。如果规定将Store Buffer中数据完全刷入到缓存，才能执行对应变量写操作的话，该错误也能避免了。</p>
+<p>例子2：关于Invalidate Queue带来的错误，同样假设CPU有两个核心，Kernel0表示第一个核心，Kernel1表示第二个核心。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">...</span><br><span class="line">public void foo()&#123;</span><br><span class="line">    a=1;</span><br><span class="line">    b=1;</span><br><span class="line">&#125;</span><br><span class="line">public void bar()&#123;</span><br><span class="line">    while(b==0) continue;</span><br><span class="line">    assert(a==1):&quot;a has a wrong value!&quot;;</span><br><span class="line">&#125;</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<p>Kernel0执行foo()函数，Kernel1执行bar()函数，猜猜看这次断言会出错吗？</p>
+<p>假设在初始情况是这样的：变量a的值在Kernel0和Kernel1对应的缓存区都有，状态为S（共享），初值为0，变量b的值是0，状态为E（独占），只存在于Kernel1对应的缓存区，不存在Kernel0对应的缓存区。假设Kernel0执行foo()函数，Kernel1执行bar()函数时，程序执行过程如下：</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/650.webp" alt="">0</p>
+<ol>
+<li><p>Kernel0执行a=1，此时由于a变量被更改了，需要给Kernel1发送无效化命令，并且将a的值存储在Kernel0的Store Buffer中；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/651.webp" alt="">1</p>
+</li>
+<li><p>Kernel1执行while(b==0)，由于Kernel1对应的缓存不包含变量b，它需要发出一个读命令；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/652.webp" alt="">2</p>
+</li>
+<li><p>Kernel0执行b=1，由于是独占的，因此它直接更改自己缓存的值；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/653.webp" alt="">3</p>
+</li>
+<li><p>Kernel0收到读命令，将最新的b的值发送给Kernel1，并且将变量b的状态改变为S（共享）；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/654.webp" alt="">4</p>
+</li>
+<li><p>Kernel1收到Kernel0在第一步发的无效化命令，将这个命令存到Invalidate Queue中，打算之后再处理，并且给Kernel0回确认响应；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/655.webp" alt="">5</p>
+</li>
+<li><p>Kernel1收到包含b值的读命令反馈，把该值存到自己缓存下；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/656.webp" alt="">6</p>
+</li>
+<li><p>Kernel1收到b的值之后，打破while循环；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/657.webp" alt="">7</p>
+</li>
+<li><p>Kernel1执行assert(a==1)，由于此时Invalidate Queue中的无效化a=0这个缓存值还没执行，因此Kernel1会接着用自己缓存中的a=1这个缓存值，这就出现了问题；</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/658.webp" alt="">8</p>
+</li>
+<li><p>Kernel1开始执行Invalidate Queue中的命令，将a=0这个缓存值无效化。但这时已经太晚了。</p>
+<p><img src="https://cdn.jsdelivr.net/gh/xiaobubuya/image@thired/volatile/659.webp" alt="">9</p>
+</li>
+</ol>
+<p>所以我们看到，这个例子出错的原因完全是由Invalidate Queue这个结构引发的。如果规定将Invalidate Queue中命令完全处理完，才能执行对应变量读操作的话，该错误也能避免了。</p>
+<hr>
+<h3 id="内存屏障"><a href="#内存屏障" class="headerlink" title="内存屏障"></a>内存屏障</h3><p>既然刚刚我们遇到了问题，那如何改正呢？这里就终于到了今天的重头戏，内存屏障了。内存屏障简单来讲就是一行命令，规定了某个针对缓存的操作。这里我们来看一下最常见的写屏障和读屏障。</p>
+<ol>
+<li>针对Store Buffer：核心在后续变量的新值写入之前，把Store Buffer的所有值刷新到缓存；核心要么就等待刷新完成后写入，要么就把后续的后续变量的新值放到Store Buffer中，直到Store Buffer的数据按顺序刷入缓存。这种也称为内存屏障中的写屏障（Store Barrier）。</li>
+<li>针对Invalidate Queue：执行后需等待Invalidate Queue完全应用到缓存后，后续的读操作才能继续执行，保证执行前后的读操作对其他CPU而言是顺序执行的。这种也称为内存屏障中的读屏障（Load Barrier）。</li>
+</ol>
+<hr>
+<h3 id="volatile中的内存屏障"><a href="#volatile中的内存屏障" class="headerlink" title="volatile中的内存屏障"></a>volatile中的内存屏障</h3><p>对于JVM的内存屏障实现中，也采取了内存屏障。JVM的内存屏障有四种，这四种实际上也是上述的读屏障和写屏障的组合。我们来看一下这四种屏障和他们的作用：</p>
+<ol>
+<li><p>LoadLoad屏障：对于这样的语句</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">第一大段读数据指令; </span><br><span class="line">LoadLoad; </span><br><span class="line">第二大段读数据指令;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p>LoadLoad指令作用：在第二大段读数据指令被访问前，保证第一大段读数据指令执行完毕</p>
+<ol>
+<li><p>StoreStore屏障：对于这样的语句</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">第一大段写数据指令; </span><br><span class="line">StoreStore; </span><br><span class="line">第二大段写数据指令;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p>StoreStore指令作用：在第二大段写数据指令被访问前，保证第一大段写数据指令执行完毕</p>
+<ol>
+<li><p>LoadStore屏障：对于这样的语句</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">第一大段读数据指令; </span><br><span class="line">LoadStore; </span><br><span class="line">第二大段写数据指令;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p>LoadStore指令作用：在第二大段写数据指令被访问前，保证第一大段读数据指令执行完毕。</p>
+<ol>
+<li><p>StoreLoad屏障：对于这样的语句</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">第一大段写数据指令; </span><br><span class="line">StoreLoad; </span><br><span class="line">第二大段读数据指令;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p>StoreLoad指令作用：在第二大段读数据指令被访问前，保证第一大段写数据指令执行完毕。</p>
+<p>针对volatile变量，JVM采用的内存屏障是：</p>
+<ol>
+<li>针对volatile修饰变量的写操作：在写操作前插入StoreStore屏障，在写操作后插入StoreLoad屏障；</li>
+<li>针对volatile修饰变量的读操作：在每个volatile读操作前插入LoadLoad屏障，在读操作后插入LoadStore屏障；</li>
+</ol>
+<p>通过这种方式，就可以保证被volatile修饰的变量具有线程间的可见性和禁止指令重排序的功能了。</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>讲了这么多，我们来总结一下。</p>
+<p>volatile关键字保证了两个性质：</p>
+<ul>
+<li>可见性：可见性是指当多个线程访问同一个变量时，一个线程修改了这个变量的值，其他线程能够立即看得到修改的值。</li>
+<li>有序性：对一个volatile变量的写操作，执行在任意后续对这个volatile变量的读操作之前。</li>
+</ul>
+<p>单单缓存一致性协议无法实现volatile。</p>
+<p>缓存一致性可以通过Store Buffer和Invalidate Queue两种结构进行加速，但这两种方式会造成一系列不一致性的问题。</p>
+<p>因此后续提出了内存屏障的概念，分为读屏障和写屏障，以此修正Store Buffer和Invalidate Queu产生的问题。</p>
+<p>通过读屏障和写屏障，又发展出了LoadLoad屏障，StoreStore屏障，LoadStore屏障，StoreLoad屏障JVM也是利用了这几种屏障，实现volatile关键字。</p>
+</div></article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta">Author: </span><span class="post-copyright-info"><a href="mailto:undefined">xiaobubuya</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta">Link: </span><span class="post-copyright-info"><a href="https://xiaobubuya.github.io/volatile/">https://xiaobubuya.github.io/volatile/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta">Copyright Notice: </span><span class="post-copyright-info">All articles in this blog are licensed under <a target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> unless stating additionally.</span></div></div><div class="post-meta__tag-list"><a class="post-meta__tags" href="/tags/%E5%A4%9A%E7%BA%BF%E7%A8%8B/">多线程</a></div><div class="social-share pull-right" data-disabled="facebook"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/css/share.min.css"><script src="https://cdn.jsdelivr.net/npm/social-share.js@1.0.16/dist/js/social-share.min.js"></script><nav id="pagination"><div class="next-post pull-right"><a href="/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C%E5%8D%81%E4%B8%AA%E9%9D%A2%E8%AF%95%E9%A2%98/"><span>计算机网络十个面试题</span><i class="fa fa-chevron-right"></i></a></div></nav></div></div><footer class="footer-bg" style="background-image: url(https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/img01/jiangnan.jpg)"><div class="layout" id="footer"><div class="copyright">&copy;2020 - 2021 By xiaobubuya</div><div class="framework-info"><span>Driven - </span><a target="_blank" rel="noopener" href="http://hexo.io"><span>Hexo</span></a><span class="footer-separator">|</span><span>Theme - </span><a target="_blank" rel="noopener" href="https://github.com/Molunerfinn/hexo-theme-melody"><span>Melody</span></a></div><div class="footer_custom_text">hitokoto</div><div class="busuanzi"><script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script><span id="busuanzi_container_page_pv"><i class="fa fa-file"></i><span id="busuanzi_value_page_pv"></span><span></span></span></div></div></footer><i class="fa fa-arrow-up" id="go-up" aria-hidden="true"></i><script src="https://cdn.jsdelivr.net/npm/animejs@latest/anime.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jquery@latest/dist/jquery.min.js"></script><script src="https://cdn.jsdelivr.net/npm/@fancyapps/fancybox@latest/dist/jquery.fancybox.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-animate@latest/velocity.min.js"></script><script src="https://cdn.jsdelivr.net/npm/velocity-ui-pack@latest/velocity.ui.min.js"></script><script src="/js/utils.js?version=1.9.0"></script><script src="/js/fancybox.js?version=1.9.0"></script><script src="/js/sidebar.js?version=1.9.0"></script><script src="/js/copy.js?version=1.9.0"></script><script src="/js/fireworks.js?version=1.9.0"></script><script src="/js/transition.js?version=1.9.0"></script><script src="/js/scroll.js?version=1.9.0"></script><script src="/js/head.js?version=1.9.0"></script><script src="/js/search/algolia.js"></script><script type="text/x-mathjax-config">MathJax.Hub.Config({
+  tex2jax: {
+    inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+    processEscapes: true,
+    skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+  },
+  CommonHTML: {
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "HTML-CSS": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  },
+  "SVG": { 
+    linebreaks: { automatic: true, width: "90% container" }
+  }
+});
+</script><script type="text/x-mathjax-config">MathJax.Hub.Queue(function() {
+  var all = MathJax.Hub.getAllJax(), i;
+  for (i=0; i < all.length; i += 1) {
+    all[i].SourceElement().parentNode.className += ' has-jax';
+  }
+});
+</script><script src="https://cdn.jsdelivr.net/npm/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script><script>if(/Android|webOS|iPhone|iPod|iPad|BlackBerry/i.test(navigator.userAgent)) {
+  $('#nav').addClass('is-mobile')
+  $('footer').addClass('is-mobile')
+  $('#top-container').addClass('is-mobile')
+}</script><div class="search-dialog" id="algolia-search"><div class="search-dialog__title" id="algolia-search-title">Algolia</div><div id="algolia-input-panel"><div id="algolia-search-input"></div></div><hr><div id="algolia-search-results"><div id="algolia-hits"></div><div id="algolia-pagination"></div><div id="algolia-stats"></div></div><span class="search-close-button"><i class="fa fa-times"></i></span></div><div class="search-mask"></div></body></html>
