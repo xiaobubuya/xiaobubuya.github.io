@@ -1,0 +1,40 @@
+name: Deploy Gallery with Token
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Inject GitHub Token
+        run: |
+          # 将占位符替换为真实的 GitHub Token
+          sed -i 's/__GITHUB_TOKEN_PLACEHOLDER__/${{ secrets.TOKEN }}/g' index.html
+          echo "Token injected successfully"
+      
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

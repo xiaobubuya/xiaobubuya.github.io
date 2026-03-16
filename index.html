@@ -448,8 +448,8 @@
             rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image/master'
         };
 
-        // 硬编码 GitHub Token（仓库已私有，Token 不再公开暴露）
-        const HARDCODED_TOKEN = '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';
+        // GitHub Token 占位符，部署时由 GitHub Actions 替换
+        const HARDCODED_TOKEN = '__GITHUB_TOKEN_PLACEHOLDER__';
 
         let currentUser = null;
         let githubToken = HARDCODED_TOKEN;
