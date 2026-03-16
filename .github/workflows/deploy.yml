@@ -25,9 +25,11 @@ jobs:
         uses: actions/checkout@v4
       
       - name: Inject GitHub Token
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
         run: |
           # 将占位符替换为真实的 GitHub Token
-          sed -i 's/__GITHUB_TOKEN_PLACEHOLDER__/${{ secrets.TOKEN }}/g' index.html
+          sed -i "s|__GITHUB_TOKEN_PLACEHOLDER__|${GITHUB_TOKEN}|g" index.html
           echo "Token injected successfully"
       
       - name: Setup Pages
