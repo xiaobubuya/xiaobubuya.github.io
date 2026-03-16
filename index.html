@@ -665,6 +665,20 @@
             return `${CONFIG.rawBase}/gallery/${filename}`;
         }
 
+        // 从服务器获取最新数据
+        async function fetchFromServer() {
+            const headers = { 'Accept': 'application/vnd.github.v3+json' };
+            // 如果有 token，添加到请求头提高速率限制
+            if (githubToken) {
+                headers['Authorization'] = `Bearer ${githubToken}`;
+            }
+            
+            const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/gallery?ref=${CONFIG.branch}`, {
+                headers: headers
+            });
+            return res;
+        }
+
         async function loadPhotos() {
             const gallery = document.getElementById('gallery');
             const empty = document.getElementById('emptyState');
@@ -687,9 +701,7 @@
             
             // 然后从服务器获取最新数据
             try {
-                const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/gallery?ref=${CONFIG.branch}`, {
-                    headers: { 'Accept': 'application/vnd.github.v3+json' }
-                });
+                const res = await fetchFromServer();
                 
                 if (!res.ok) {
                     if (res.status === 404) {
@@ -698,6 +710,15 @@
                         empty.classList.add('active');
                         document.getElementById('loadMore').style.display = 'none';
                         return;
+                    }
+                    // 如果是速率限制错误，显示提示
+                    if (res.status === 403) {
+                        const errorData = await res.json().catch(() => ({}));
+                        if (errorData.message && errorData.message.includes('rate limit')) {
+                            showStatus('API 请求太频繁，请稍后再试或使用 Token', 'error');
+                            document.getElementById('cacheStatus').textContent = '受限';
+                            return;
+                        }
                     }
                     throw new Error();
                 }
