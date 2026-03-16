@@ -415,7 +415,7 @@
 
             try {
                 const { data, error } = await supabase
-                    .from('users')
+                    .from('account')
                     .select('*')
                     .eq('username', username)
                     .eq('password', password)
