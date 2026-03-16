@@ -448,8 +448,11 @@
             rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image/master'
         };
 
+        // 硬编码 GitHub Token（仓库已私有，Token 不再公开暴露）
+        const HARDCODED_TOKEN = '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';
+
         let currentUser = null;
-        let githubToken = localStorage.getItem('githubToken') || '';
+        let githubToken = HARDCODED_TOKEN;
         let photos = [];
         let displayedPhotos = [];
         let currentPage = 0;
@@ -550,15 +553,6 @@
             if (ACCOUNTS[username] === password) {
                 currentUser = username;
                 localStorage.setItem('galleryUser', username);
-                
-                if (!githubToken) {
-                    const token = prompt('请输入 GitHub Token 以使用上传功能：');
-                    if (token) {
-                        localStorage.setItem('githubToken', token);
-                        githubToken = token;
-                    }
-                }
-                
                 showMainPage();
             } else {
                 errorDiv.textContent = '用户名或密码错误';
@@ -576,7 +570,6 @@
 
         function logout() {
             localStorage.removeItem('galleryUser');
-            localStorage.removeItem('githubToken');
             location.reload();
         }
 
@@ -617,12 +610,6 @@
         async function handleFiles(fileList) {
             const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
             if (!files.length) return;
-            if (!githubToken) {
-                const token = prompt('请输入 GitHub Token：');
-                if (!token) return;
-                githubToken = token;
-                localStorage.setItem('githubToken', token);
-            }
 
             let success = 0;
             for (let i = 0; i < files.length; i++) {
@@ -871,12 +858,6 @@
 
         async function deletePhoto(filename, sha) {
             if (!confirm('确定删除？')) return;
-            if (!githubToken) {
-                const token = prompt('请输入 GitHub Token：');
-                if (!token) return;
-                githubToken = token;
-                localStorage.setItem('githubToken', token);
-            }
             showStatus('删除中...', 'loading');
             try {
                 const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/gallery/${filename}`, {
