@@ -28,8 +28,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.TOKEN }}
         run: |
+          # 打印 Token 前几位用于调试（不要打印完整 Token）
+          echo "Token prefix: ${GITHUB_TOKEN:0:10}..."
+          echo "Token length: ${#GITHUB_TOKEN}"
           # 将占位符替换为真实的 GitHub Token
           sed -i "s|__GITHUB_TOKEN_PLACEHOLDER__|${GITHUB_TOKEN}|g" index.html
+          # 验证替换是否成功
+          grep -o 'token [a-zA-Z0-9_]*' index.html | head -1
           echo "Token injected successfully"
       
       - name: Setup Pages
