@@ -55,10 +55,7 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        .login-box p {
-            color: var(--text-muted);
-            margin-bottom: 40px;
-        }
+        .login-box p { color: var(--text-muted); margin-bottom: 40px; }
         .login-box input {
             width: 100%;
             padding: 15px;
@@ -70,9 +67,7 @@
             margin-bottom: 15px;
             outline: none;
         }
-        .login-box input:focus {
-            border-color: var(--primary);
-        }
+        .login-box input:focus { border-color: var(--primary); }
         .login-box button {
             width: 100%;
             padding: 15px;
@@ -103,9 +98,7 @@
             padding: 20px;
             display: none;
         }
-        .main-container.active {
-            display: block;
-        }
+        .main-container.active { display: block; }
         header {
             text-align: center;
             padding: 40px 20px;
@@ -122,10 +115,7 @@
             gap: 15px;
             margin-bottom: 20px;
         }
-        .user-bar span {
-            color: var(--text-muted);
-            padding: 8px 0;
-        }
+        .user-bar span { color: var(--text-muted); padding: 8px 0; }
         .user-bar button {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -155,10 +145,8 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
-        .stat-label {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
+        .stat-label { font-size: 0.85rem; color: var(--text-muted); }
+        
         .upload-section {
             background: var(--bg-card);
             border: 2px dashed var(--border);
@@ -213,6 +201,18 @@
         .status.error { background: rgba(220, 53, 69, 0.2); color: #ea868f; display: block; }
         .status.loading { background: rgba(255, 193, 7, 0.2); color: #ffda6a; display: block; }
         
+        /* 骨架屏 */
+        .skeleton {
+            background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 16px;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
         .gallery {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -225,6 +225,11 @@
             border: 1px solid var(--border);
             cursor: pointer;
             transition: all 0.3s;
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+        }
+        @keyframes fadeIn {
+            to { opacity: 1; }
         }
         .photo-card:hover {
             transform: translateY(-5px);
@@ -234,15 +239,20 @@
             position: relative;
             padding-top: 75%;
             overflow: hidden;
+            background: rgba(255,255,255,0.02);
         }
         .photo-wrapper img {
             position: absolute;
             top: 0; left: 0;
             width: 100%; height: 100%;
             object-fit: cover;
-            transition: transform 0.5s;
+            transition: transform 0.5s, opacity 0.3s;
+            opacity: 0;
         }
-        .photo-card:hover img { transform: scale(1.05); }
+        .photo-wrapper img.loaded {
+            opacity: 1;
+        }
+        .photo-wrapper img:hover { transform: scale(1.05); }
         .photo-overlay {
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
@@ -254,10 +264,7 @@
             padding: 15px;
         }
         .photo-card:hover .photo-overlay { opacity: 1; }
-        .photo-actions {
-            display: flex;
-            gap: 10px;
-        }
+        .photo-actions { display: flex; gap: 10px; }
         .photo-action-btn {
             background: rgba(255,255,255,0.2);
             border: none;
@@ -283,6 +290,22 @@
         .empty-state.active { display: block; }
         .empty-state svg { width: 100px; height: 100px; margin-bottom: 20px; opacity: 0.3; }
         
+        .load-more {
+            text-align: center;
+            padding: 40px;
+        }
+        .load-more button {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 12px 40px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .load-more button:hover { border-color: var(--primary); }
+        .load-more button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
         .lightbox {
             display: none;
             position: fixed;
@@ -295,7 +318,7 @@
             padding: 20px;
         }
         .lightbox.active { display: flex; }
-        .lightbox img { max-width: 90%; max-height: 90%; border-radius: 10px; }
+        .lightbox img { max-width: 90%; max-height: 90%; border-radius: 10px; object-fit: contain; }
         .lightbox-close {
             position: absolute;
             top: 20px; right: 20px;
@@ -307,12 +330,41 @@
             font-size: 1.5rem;
             cursor: pointer;
         }
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .lightbox-nav:hover { background: rgba(255,255,255,0.2); }
+        .lightbox-prev { left: 20px; }
+        .lightbox-next { right: 20px; }
+        
+        .cache-info {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            display: none;
+        }
+        .cache-info.active { display: block; }
     </style>
 </head>
 <body>
     <div class="bg-animation"></div>
     
-    <!-- 登录页面 -->
     <div class="login-container" id="loginPage">
         <div class="login-box">
             <h1>📸 云端相册</h1>
@@ -324,14 +376,12 @@
         </div>
     </div>
     
-    <!-- 主页面 -->
     <div class="main-container" id="mainPage">
-        <header>
-            <h1>我的云端相册</h1>
-        </header>
+        <header><h1>我的云端相册</h1></header>
         
         <div class="user-bar">
             <span id="welcomeUser"></span>
+            <button onclick="refreshPhotos()">🔄 刷新</button>
             <button onclick="logout()">退出登录</button>
         </div>
         
@@ -339,6 +389,10 @@
             <div class="stat-item">
                 <div class="stat-value" id="photoCount">0</div>
                 <div class="stat-label">照片数量</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="cacheStatus">-</div>
+                <div class="stat-label">缓存状态</div>
             </div>
         </div>
         
@@ -357,6 +411,10 @@
         
         <div class="gallery" id="gallery"></div>
         
+        <div class="load-more" id="loadMore" style="display:none">
+            <button onclick="loadMorePhotos()">加载更多</button>
+        </div>
+        
         <div class="empty-state" id="emptyState">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
                 <rect x="3" y="3" width="18" height="18" rx="2"></rect>
@@ -368,39 +426,114 @@
         </div>
     </div>
     
-    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
-        <button class="lightbox-close">×</button>
+    <div class="lightbox" id="lightbox">
+        <button class="lightbox-close" onclick="closeLightbox()">×</button>
+        <button class="lightbox-nav lightbox-prev" onclick="prevPhoto()">‹</button>
+        <button class="lightbox-nav lightbox-next" onclick="nextPhoto()">›</button>
         <img src="" id="lightboxImg">
     </div>
+    
+    <div class="cache-info" id="cacheInfo">从缓存加载</div>
 
     <script>
-        // 账号配置（前端硬编码）
-        const ACCOUNTS = {
-            'yuge': '20250918',
-            'meimei': '20250918'
-        };
-
+        // 账号配置
+        const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
+        
         // GitHub 配置
         const CONFIG = {
             owner: 'xiaobubuya',
             repo: 'image',
             branch: 'master',
-            cdnBase: 'https://cdn.jsdelivr.net/gh/xiaobubuya/image@master'
+            cdnBase: 'https://cdn.jsdelivr.net/gh/xiaobubuya/image@master',
+            rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image/master'
         };
 
         let currentUser = null;
         let githubToken = localStorage.getItem('githubToken') || '';
         let photos = [];
+        let displayedPhotos = [];
+        let currentPage = 0;
+        const PHOTOS_PER_PAGE = 20;
+        let currentLightboxIndex = 0;
+
+        // IndexedDB 配置
+        const DB_NAME = 'GalleryDB';
+        const DB_VERSION = 1;
+        let db = null;
 
         // 初始化
         init();
 
-        function init() {
+        async function init() {
+            await initDB();
             const savedUser = localStorage.getItem('galleryUser');
             if (savedUser) {
                 currentUser = savedUser;
                 showMainPage();
             }
+        }
+
+        // 初始化 IndexedDB
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => { db = request.result; resolve(); };
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('photos')) {
+                        db.createObjectStore('photos', { keyPath: 'name' });
+                    }
+                    if (!db.objectStoreNames.contains('metadata')) {
+                        db.createObjectStore('metadata', { keyPath: 'key' });
+                    }
+                };
+            });
+        }
+
+        // 缓存操作
+        async function getCachedPhotos() {
+            if (!db) return null;
+            return new Promise((resolve) => {
+                const tx = db.transaction('photos', 'readonly');
+                const store = tx.objectStore('photos');
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => resolve(null);
+            });
+        }
+
+        async function cachePhotos(photos) {
+            if (!db) return;
+            const tx = db.transaction('photos', 'readwrite');
+            const store = tx.objectStore('photos');
+            photos.forEach(p => store.put(p));
+        }
+
+        async function getCacheTime() {
+            if (!db) return null;
+            return new Promise((resolve) => {
+                const tx = db.transaction('metadata', 'readonly');
+                const store = tx.objectStore('metadata');
+                const request = store.get('cacheTime');
+                request.onsuccess = () => resolve(request.result?.value || null);
+                request.onerror = () => resolve(null);
+            });
+        }
+
+        async function setCacheTime() {
+            if (!db) return;
+            const tx = db.transaction('metadata', 'readwrite');
+            const store = tx.objectStore('metadata');
+            store.put({ key: 'cacheTime', value: Date.now() });
+        }
+
+        async function clearCache() {
+            if (!db) return;
+            const tx1 = db.transaction('photos', 'readwrite');
+            tx1.objectStore('photos').clear();
+            const tx2 = db.transaction('metadata', 'readwrite');
+            tx2.objectStore('metadata').clear();
         }
 
         function login() {
@@ -433,12 +566,12 @@
             }
         }
 
-        function showMainPage() {
+        async function showMainPage() {
             document.getElementById('loginPage').style.display = 'none';
             document.getElementById('mainPage').classList.add('active');
             document.getElementById('welcomeUser').textContent = `欢迎，${currentUser}`;
-            loadPhotos();
             setupDragDrop();
+            await loadPhotos();
         }
 
         function logout() {
@@ -501,7 +634,10 @@
             }
             updateProgress(files.length, files.length);
             showStatus(success > 0 ? `成功上传 ${success} 张照片` : '上传失败', success > 0 ? 'success' : 'error');
-            if (success) setTimeout(loadPhotos, 2000);
+            if (success) {
+                await clearCache();
+                setTimeout(() => refreshPhotos(), 2000);
+            }
             document.getElementById('fileInput').value = '';
         }
 
@@ -524,57 +660,173 @@
             if (!res.ok) throw new Error('Upload failed');
         }
 
+        // 优先使用 raw.githubusercontent，失败时回退到 jsdelivr
+        function getImageUrl(filename) {
+            return `${CONFIG.rawBase}/gallery/${filename}`;
+        }
+
         async function loadPhotos() {
             const gallery = document.getElementById('gallery');
             const empty = document.getElementById('emptyState');
-            showStatus('加载中...', 'loading');
+            const cacheInfo = document.getElementById('cacheInfo');
+            
+            // 先尝试从缓存加载
+            const cached = await getCachedPhotos();
+            const cacheTime = await getCacheTime();
+            
+            if (cached && cached.length > 0) {
+                photos = cached;
+                document.getElementById('photoCount').textContent = photos.length;
+                document.getElementById('cacheStatus').textContent = '已缓存';
+                renderPhotos(true);
+                cacheInfo.classList.add('active');
+                setTimeout(() => cacheInfo.classList.remove('active'), 2000);
+            } else {
+                gallery.innerHTML = '<div class="skeleton" style="height:200px"></div>'.repeat(6);
+            }
+            
+            // 然后从服务器获取最新数据
             try {
-                const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/gallery?ref=${CONFIG.branch}`);
+                const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/gallery?ref=${CONFIG.branch}`, {
+                    headers: { 'Accept': 'application/vnd.github.v3+json' }
+                });
+                
                 if (!res.ok) {
                     if (res.status === 404) {
                         photos = [];
                         gallery.innerHTML = '';
                         empty.classList.add('active');
-                        showStatus('', '');
+                        document.getElementById('loadMore').style.display = 'none';
                         return;
                     }
                     throw new Error();
                 }
+                
                 const files = await res.json();
-                photos = files.filter(f => f.type === 'file' && /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name))
-                    .sort((a, b) => b.name.localeCompare(a.name));
-                document.getElementById('photoCount').textContent = photos.length;
-                if (!photos.length) {
-                    empty.classList.add('active');
-                    gallery.innerHTML = '';
+                const newPhotos = files
+                    .filter(f => f.type === 'file' && /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name))
+                    .map(f => ({
+                        name: f.name,
+                        sha: f.sha,
+                        size: f.size,
+                        timestamp: parseInt(f.name.split('_')[0]) || 0
+                    }))
+                    .sort((a, b) => b.timestamp - a.timestamp);
+                
+                // 检查是否有变化
+                const hasChanged = JSON.stringify(newPhotos) !== JSON.stringify(photos);
+                
+                if (hasChanged || photos.length === 0) {
+                    photos = newPhotos;
+                    await cachePhotos(photos);
+                    await setCacheTime();
+                    document.getElementById('cacheStatus').textContent = '已同步';
+                    renderPhotos();
+                    showStatus(`已加载 ${photos.length} 张照片`, 'success');
                 } else {
-                    empty.classList.remove('active');
-                    gallery.innerHTML = photos.map((f, i) => {
-                        const name = f.name.replace(/^\d+_/, '');
-                        const date = new Date(parseInt(f.name.split('_')[0])).toLocaleString('zh-CN');
-                        return `
-                            <div class="photo-card" onclick="openLightbox(${i})">
-                                <div class="photo-wrapper">
-                                    <img src="${CONFIG.cdnBase}/gallery/${f.name}" loading="lazy">
-                                    <div class="photo-overlay" onclick="event.stopPropagation()">
-                                        <div class="photo-actions">
-                                            <button class="photo-action-btn" onclick="openLightbox(${i})">👁</button>
-                                            <button class="photo-action-btn delete" onclick="deletePhoto('${f.name}', '${f.sha}')">🗑</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="photo-info">
-                                    <div class="photo-name">${name}</div>
-                                    <div class="photo-date">${date}</div>
-                                </div>
-                            </div>`;
-                    }).join('');
+                    document.getElementById('cacheStatus').textContent = '最新';
                 }
-                showStatus(`已加载 ${photos.length} 张照片`, 'success');
-                setTimeout(() => showStatus('', ''), 2000);
+                
+                document.getElementById('photoCount').textContent = photos.length;
+                
             } catch (e) {
-                showStatus('加载失败', 'error');
+                console.error('Load error:', e);
+                if (!cached || cached.length === 0) {
+                    showStatus('加载失败，请检查网络', 'error');
+                }
             }
+        }
+
+        async function refreshPhotos() {
+            await clearCache();
+            currentPage = 0;
+            displayedPhotos = [];
+            await loadPhotos();
+        }
+
+        function renderPhotos(append = false) {
+            const gallery = document.getElementById('gallery');
+            const empty = document.getElementById('emptyState');
+            const loadMore = document.getElementById('loadMore');
+            
+            if (!photos.length) {
+                empty.classList.add('active');
+                loadMore.style.display = 'none';
+                if (!append) gallery.innerHTML = '';
+                return;
+            }
+            
+            empty.classList.remove('active');
+            
+            // 计算要显示的照片
+            const start = append ? displayedPhotos.length : 0;
+            const end = Math.min(start + PHOTOS_PER_PAGE, photos.length);
+            const pagePhotos = photos.slice(start, end);
+            
+            if (!append) {
+                gallery.innerHTML = '';
+                displayedPhotos = [];
+            }
+            
+            displayedPhotos = displayedPhotos.concat(pagePhotos);
+            
+            // 渲染照片卡片
+            pagePhotos.forEach((p, idx) => {
+                const actualIndex = start + idx;
+                const name = p.name.replace(/^\d+_/, '');
+                const date = p.timestamp ? new Date(p.timestamp).toLocaleString('zh-CN') : '-';
+                
+                const card = document.createElement('div');
+                card.className = 'photo-card';
+                card.style.animationDelay = `${idx * 0.05}s`;
+                card.innerHTML = `
+                    <div class="photo-wrapper">
+                        <img data-src="${getImageUrl(p.name)}" alt="${name}" loading="lazy">
+                        <div class="photo-overlay" onclick="event.stopPropagation()">
+                            <div class="photo-actions">
+                                <button class="photo-action-btn" onclick="openLightbox(${actualIndex})">👁</button>
+                                <button class="photo-action-btn delete" onclick="deletePhoto('${p.name}', '${p.sha}')">🗑</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-info">
+                        <div class="photo-name">${name}</div>
+                        <div class="photo-date">${date}</div>
+                    </div>
+                `;
+                card.onclick = () => openLightbox(actualIndex);
+                gallery.appendChild(card);
+                
+                // 懒加载图片
+                const img = card.querySelector('img');
+                if ('IntersectionObserver' in window) {
+                    const observer = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const img = entry.target;
+                                img.src = img.dataset.src;
+                                img.onload = () => img.classList.add('loaded');
+                                observer.unobserve(img);
+                            }
+                        });
+                    }, { rootMargin: '50px' });
+                    observer.observe(img);
+                } else {
+                    img.src = img.dataset.src;
+                    img.onload = () => img.classList.add('loaded');
+                }
+            });
+            
+            // 显示/隐藏加载更多按钮
+            if (end < photos.length) {
+                loadMore.style.display = 'block';
+            } else {
+                loadMore.style.display = 'none';
+            }
+        }
+
+        function loadMorePhotos() {
+            renderPhotos(true);
         }
 
         async function deletePhoto(filename, sha) {
@@ -597,23 +849,62 @@
                     body: JSON.stringify({ message: `Delete ${filename}`, sha, branch: CONFIG.branch })
                 });
                 if (!res.ok) throw new Error();
+                
+                // 更新缓存
+                photos = photos.filter(p => p.name !== filename);
+                await cachePhotos(photos);
+                
                 showStatus('删除成功', 'success');
-                setTimeout(loadPhotos, 1000);
+                currentPage = 0;
+                displayedPhotos = [];
+                renderPhotos();
             } catch (e) {
                 showStatus('删除失败', 'error');
             }
         }
 
-        function openLightbox(i) {
-            const f = photos[i];
-            if (!f) return;
-            document.getElementById('lightboxImg').src = `${CONFIG.cdnBase}/gallery/${f.name}`;
+        function openLightbox(index) {
+            currentLightboxIndex = index;
+            updateLightboxImage();
             document.getElementById('lightbox').classList.add('active');
         }
+
+        function updateLightboxImage() {
+            const p = photos[currentLightboxIndex];
+            if (!p) return;
+            document.getElementById('lightboxImg').src = getImageUrl(p.name);
+        }
+
         function closeLightbox() {
             document.getElementById('lightbox').classList.remove('active');
         }
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+        function prevPhoto() {
+            if (currentLightboxIndex > 0) {
+                currentLightboxIndex--;
+                updateLightboxImage();
+            }
+        }
+
+        function nextPhoto() {
+            if (currentLightboxIndex < photos.length - 1) {
+                currentLightboxIndex++;
+                updateLightboxImage();
+            }
+        }
+
+        // 键盘导航
+        document.addEventListener('keydown', e => {
+            if (!document.getElementById('lightbox').classList.contains('active')) return;
+            if (e.key === 'Escape') closeLightbox();
+            if (e.key === 'ArrowLeft') prevPhoto();
+            if (e.key === 'ArrowRight') nextPhoto();
+        });
+
+        // 点击空白处关闭
+        document.getElementById('lightbox').addEventListener('click', e => {
+            if (e.target.id === 'lightbox') closeLightbox();
+        });
     </script>
 </body>
 </html>
