@@ -651,7 +651,7 @@
             const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${filename}`, {
                 method: 'PUT',
                 headers: {
-                    'Authorization': `Bearer ${githubToken}`,
+                    'Authorization': `token ${githubToken}`,
                     'Content-Type': 'application/json',
                     'Accept': 'application/vnd.github.v3+json'
                 },
@@ -670,7 +670,7 @@
             const headers = { 'Accept': 'application/vnd.github.v3+json' };
             // 如果有 token，添加到请求头提高速率限制
             if (githubToken) {
-                headers['Authorization'] = `Bearer ${githubToken}`;
+                headers['Authorization'] = `token ${githubToken}`;
             }
             
             const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/gallery?ref=${CONFIG.branch}`, {
@@ -704,6 +704,25 @@
                 const res = await fetchFromServer();
                 
                 if (!res.ok) {
+                    // 401 - Token 无效
+                    if (res.status === 401) {
+                        console.error('GitHub Token 无效或已过期');
+                        showStatus('GitHub Token 无效，请重新输入', 'error');
+                        document.getElementById('cacheStatus').textContent = 'Token无效';
+                        // 清除无效 token
+                        localStorage.removeItem('githubToken');
+                        githubToken = '';
+                        // 3秒后提示输入新 token
+                        setTimeout(() => {
+                            const newToken = prompt('GitHub Token 无效或已过期，请输入新的 Token：');
+                            if (newToken) {
+                                localStorage.setItem('githubToken', newToken);
+                                githubToken = newToken;
+                                loadPhotos();
+                            }
+                        }, 3000);
+                        return;
+                    }
                     if (res.status === 404) {
                         photos = [];
                         gallery.innerHTML = '';
@@ -715,12 +734,12 @@
                     if (res.status === 403) {
                         const errorData = await res.json().catch(() => ({}));
                         if (errorData.message && errorData.message.includes('rate limit')) {
-                            showStatus('API 请求太频繁，请稍后再试或使用 Token', 'error');
+                            showStatus('API 请求太频繁，请稍后再试', 'error');
                             document.getElementById('cacheStatus').textContent = '受限';
                             return;
                         }
                     }
-                    throw new Error();
+                    throw new Error(`HTTP ${res.status}`);
                 }
                 
                 const files = await res.json();
@@ -863,7 +882,7 @@
                 const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/gallery/${filename}`, {
                     method: 'DELETE',
                     headers: {
-                        'Authorization': `Bearer ${githubToken}`,
+                        'Authorization': `token ${githubToken}`,
                         'Content-Type': 'application/json',
                         'Accept': 'application/vnd.github.v3+json'
                     },
