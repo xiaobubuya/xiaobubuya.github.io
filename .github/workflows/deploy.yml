@@ -31,8 +31,8 @@ jobs:
           # 打印 Token 前几位用于调试（不要打印完整 Token）
           echo "Token prefix: ${GITHUB_TOKEN:0:10}..."
           echo "Token length: ${#GITHUB_TOKEN}"
-          # 将占位符替换为真实的 GitHub Token
-          sed -i "s|__GITHUB_TOKEN_PLACEHOLDER__|${GITHUB_TOKEN}|g" index.html
+          # 使用 perl 替换，处理特殊字符更可靠
+          perl -i -pe 's/__GITHUB_TOKEN_PLACEHOLDER__/$ENV{GITHUB_TOKEN}/g' index.html
           # 验证替换是否成功
           echo "Checking replacement..."
           grep "HARDCODED_TOKEN" index.html | head -1
