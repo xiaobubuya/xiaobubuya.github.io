@@ -34,7 +34,8 @@ jobs:
           # 将占位符替换为真实的 GitHub Token
           sed -i "s|__GITHUB_TOKEN_PLACEHOLDER__|${GITHUB_TOKEN}|g" index.html
           # 验证替换是否成功
-          grep -o 'token [a-zA-Z0-9_]*' index.html | head -1
+          echo "Checking replacement..."
+          grep "HARDCODED_TOKEN" index.html | head -1
           echo "Token injected successfully"
       
       - name: Setup Pages
