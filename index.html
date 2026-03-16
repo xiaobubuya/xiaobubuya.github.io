@@ -654,7 +654,6 @@
 
         // 从服务器获取最新数据
         async function fetchFromServer() {
-            console.log('【获取照片列表请求】GitHub Token:', githubToken);
             const headers = { 'Accept': 'application/vnd.github.v3+json' };
             // 如果有 token，添加到请求头提高速率限制
             if (githubToken) {
