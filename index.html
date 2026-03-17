@@ -450,9 +450,11 @@
 
         // GitHub Token 占位符，部署时由 GitHub Actions 替换
         const HARDCODED_TOKEN = '__GITHUB_TOKEN_PLACEHOLDER__';
+        const decodedToken = base64Decode(HARDCODED_TOKEN);
+
 
         let currentUser = null;
-        let githubToken = HARDCODED_TOKEN;
+        let githubToken = decodedToken;
         let photos = [];
         let displayedPhotos = [];
         let currentPage = 0;
@@ -912,6 +914,37 @@
                 currentLightboxIndex++;
                 updateLightboxImage();
             }
+        }
+
+        /**
+         * Base64 解码函数（兼容浏览器和 Node.js）
+         * @param {string} base64Str - 待解码的 Base64 字符串
+         * @returns {string} 解码后的原始字符串
+         */
+        function base64Decode(base64Str) {
+          try {
+            // 处理 Base64 填充字符缺失的情况（避免解码失败）
+            const paddedStr = base64Str.padEnd(base64Str.length + (4 - base64Str.length % 4) % 4, '=');
+            
+            let decoded;
+            // 浏览器环境
+            if (typeof window !== 'undefined' && window.atob) {
+              decoded = window.atob(paddedStr);
+            } 
+            // Node.js 环境
+            else if (typeof Buffer !== 'undefined') {
+              decoded = Buffer.from(paddedStr, 'base64').toString('utf8');
+            } 
+            // 不支持的环境
+            else {
+              throw new Error('当前环境不支持 Base64 解码');
+            }
+        
+            return decoded;
+          } catch (error) {
+            console.error('Base64 解码失败：', error.message);
+            return ''; // 解码失败返回空字符串，避免程序崩溃
+          }
         }
 
         // 键盘导航
