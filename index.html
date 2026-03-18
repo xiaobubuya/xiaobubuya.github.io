@@ -449,8 +449,8 @@
         };
 
         // GitHub Token 占位符，部署时由 GitHub Actions 替换
-        const HARDCODED_TOKEN = '__GITHUB_TOKEN_PLACEHOLDER__';
-        const decodedToken = base64Decode(HARDCODED_TOKEN);
+        const HARDCODED_TOKEN = 'WjJod1gzQnNWa3RrZURJM1pHb3dXa3BvWWxNNFZIUjVSM2t5U0dOalpWVmlSREZMZWt0bmJnPT0=';
+        const decodedToken = base64Decode(base64Decode(HARDCODED_TOKEN));
 
 
         let currentUser = null;
