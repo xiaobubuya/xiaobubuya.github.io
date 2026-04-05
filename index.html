@@ -517,6 +517,38 @@
     </div>
 
     <script>
+        // 账号配置
+        const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
+
+        // 登录函数
+        function login() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+            const errorDiv = document.getElementById('loginError');
+
+            if (!username || !password) {
+                errorDiv.textContent = '请输入用户名和密码';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            if (ACCOUNTS[username] === password) {
+                localStorage.setItem('galleryUser', username);
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('mainPage').classList.add('active');
+                document.getElementById('welcomeUser').textContent = `欢迎，${username}`;
+            } else {
+                errorDiv.textContent = '用户名或密码错误';
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        // 登出函数
+        function logout() {
+            localStorage.removeItem('galleryUser');
+            location.reload();
+        }
+
         // 设置面板开关
         function toggleSettings() {
             const panel = document.getElementById('settingsPanel');
