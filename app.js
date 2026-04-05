@@ -374,13 +374,16 @@ function updateSlideshowSlide(index, sourcePhotos = null) {
     const slideshowText = document.getElementById('slideshowText');
     const container = document.getElementById('slideshowContainer');
 
+    if (!slideshowImg || !container) return;
+
     // 强制重绘，确保移动端立即响应
     container.style.display = 'none';
     container.offsetHeight; // 触发重绘
     container.style.display = '';
 
     // 立即更新图片
-    slideshowImg.src = getImageUrl(photo.name);
+    if (photo && photo.name) {
+        slideshowImg.src = getImageUrl(photo.name);
     slideshowDate.textContent = photo.timestamp ?
         new Date(photo.timestamp).toLocaleDateString('zh-CN') : '';
     slideshowText.textContent = photo.name.split('/').pop().replace(/^\d+_/, '').replace(/\.[^/.]+$/, '');

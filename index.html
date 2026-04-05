@@ -517,6 +517,14 @@
     </div>
 
     <script>
+        // 设置面板开关
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            if (panel) {
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
         // 音乐播放器开关控制
         function toggleMusicPlayer() {
             const frame = document.getElementById('musicFrame');
