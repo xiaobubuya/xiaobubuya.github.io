@@ -517,7 +517,8 @@
     </div>
 
     <script>
-        // 音乐播放器开关控到        function toggleMusicPlayer() {
+        // 音乐播放器开关控制
+        function toggleMusicPlayer() {
             const frame = document.getElementById('musicFrame');
             const icon = document.querySelector('.music-icon');
             if (frame.style.display === 'none') {
@@ -533,19 +534,23 @@
         let map = null;
         let locationMarkers = [];
         let locations = [];
-        let lastLocationsHash = ''; // 用于检测变区
-        // 初始化地图        function initMap() {
+        let lastLocationsHash = ''; // 用于检测变化
+        // 初始化地图
+        function initMap() {
             if (map) return;
             
-            // 创建地图，初始显示中国全国            map = L.map('mapContainer').setView([35.8617, 104.1954], 4);
+            // 创建地图，初始显示中国全国
+            map = L.map('mapContainer').setView([35.8617, 104.1954], 4);
             
-            // 添加带中文标签的地图图层（CartoDB Positron）            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            // 添加带中文标签的地图图层（CartoDB Positron）
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
                 attribution: '© OpenStreetMap contributors © CARTO',
                 subdomains: 'abcd',
                 maxZoom: 19
             }).addTo(map);
             
-            // 添加中国地图边界（GeoJSON）            loadChinaBoundary();
+            // 添加中国地图边界（GeoJSON）
+            loadChinaBoundary();
             
             // 加载足迹数据
             loadLocations();
@@ -614,7 +619,7 @@
             }
         }
 
-        // 简单哈希用于检测变区        function simpleHash(str) {
+        // 简单哈希用于检测变化        function simpleHash(str) {
             let hash = 0;
             for (let i = 0; i < str.length; i++) {
                 const char = str.charCodeAt(i);
