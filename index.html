@@ -3,200 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💕 我们的情侣空间</<</title>
+    <title>💕 我们的情侣空间</title>
     <link rel="stylesheet" href="style.css?v=20260404">
-</<</head>
+</head>
 <body>
     <!-- 动态背景-->
-    <div class="bg-slideshow" id="bgSlideshow"></<</div>
-    <div class="bg-overlay" id="bgOverlay"></<</div>
+    <div class="bg-slideshow" id="bgSlideshow"></div>
+    <div class="bg-overlay" id="bgOverlay"></div>
 
     <!-- 漂浮爱心 -->
-    <div class="floating-hearts" id="floatingHearts"></<</div>
+    <div class="floating-hearts" id="floatingHearts"></div>
 
     <div class="login-container" id="loginPage">
         <div class="login-box">
-            <div class="login-hearts">💕 💕 💕</<</div>
-            <h1>我们的小天地</<</h1>
-            <p>记录属于我们的甜蜜时光</<</p>
-            <input type="text" id="username" placeholder="用户名">>
+            <div class="login-hearts">💕 💕 💕</div>
+            <h1>我们的小天地</h1>
+            <p>记录属于我们的甜蜜时光</p>
+            <input type="text" id="username" placeholder="用户名">
             <input type="password" id="password" placeholder="密码">
-            <button onclick="login()">进入我们的世界</<</button>
-            <div class="login-error" id="loginError"></<</div>
-        </<</div>
-    </<</div>
+            <button onclick="login()">进入我们的世界</button>
+            <div class="login-error" id="loginError"></div>
+        </div>
+    </div>
 
     <div class="main-container" id="mainPage">
         <!-- 顶部导航 -->
         <nav class="top-nav">
             <div class="nav-brand">
-                <span class="nav-icon">💕</<</span>
-                <span>我们的小天地</<</span>
-            </<</div>
+                <span class="nav-icon">💕</span>
+                <span>我们的小天地</span>
+            </div>
             <div class="nav-user">
-                <span id="welcomeUser"></<</span>
-                <button onclick="toggleSettings()" class="nav-btn" title="设置">⚙️</<</button>
+                <span id="welcomeUser"></span>
+                <button onclick="toggleSettings()" class="nav-btn" title="设置">⚙️</button>
                 <button onclick="logout()" class="nav-btn">退出</button>
-            </<</div>
-        </<</nav>
+            </div>
+        </nav>
 
         <!-- 纪念日区城-->
         <section class="anniversary-section">
             <div class="anniversary-content">
                 <div class="anniversary-label">我们已经在一起</div>
                 <div class="anniversary-days">
-                    <span class="days-number" id="daysTogether">0</<</span>
+                    <span class="days-number" id="daysTogether">0</span>
                     <span class="days-unit">天</span>
-                </<</div>
+                </div>
                 <div class="anniversary-date" id="anniversaryDate">2025 年9 月18 日</div>
-                <div class="love-quote" id="loveQuote">"每一天和你在一起，都是最好的礼物"</<</div>
-            </<</div>
-        </<</section>
+                <div class="love-quote" id="loveQuote">"每一天和你在一起，都是最好的礼物"</div>
+            </div>
+        </section>
 
         <!-- 重要日期倒计日-->
         <section class="countdown-section">
             <div class="countdown-header">
                 <h2>⏰重要日期倒计日</h2>
-                <button class="add-countdown-btn" onclick="toggleAddCountdownPanel()">➤添加</<</button>
-            </<</div>
+                <button class="add-countdown-btn" onclick="toggleAddCountdownPanel()">➤添加</button>
+            </div>
             <div class="countdown-grid" id="countdownGrid">
                 <!-- 动态加载倒计时卡片-->
-            </<</div>
+            </div>
             <div class="empty-countdown" id="emptyCountdown" style="display: none;">
-                <div class="empty-icon">📅</<</div>
+                <div class="empty-icon">📅</div>
                 <p>还没有添加重要日月</p>
                 <button class="add-countdown-btn" onclick="toggleAddCountdownPanel()">添加第一个倒计日</button>
-            </<</div>
-        </<</section>
+            </div>
+        </section>
 
         <!-- 成就系统 -->
         <section class="achievements-section">
             <div class="achievements-header">
-                <h2>🏆 成就系统</<</h2>
+                <h2>🏆 成就系统</h2>
                 <div class="achievement-stats">
-                    <span class="stat-item">已解锁<strong id="unlockedCount">0</<</strong> 个成就</span>
-                    <span class="stat-item">总进度<strong id="achievementProgress">0%</<</strong></<</span>
-                </<</div>
-            </<</div>
+                    <span class="stat-item">已解锁<strong id="unlockedCount">0</strong> 个成就</span>
+                    <span class="stat-item">总进度<strong id="achievementProgress">0%</strong></span>
+                </div>
+            </div>
             <div class="achievements-grid" id="achievementsGrid">
                 <!-- 动态加载成就卡片-->
-            </<</div>
-        </<</section>
+            </div>
+        </section>
 
         <!-- 愿望清单 -->
         <section class="wishlist-section">
             <div class="wishlist-header">
-                <h2>🌟 愿望清单</<</h2>
-                <button class="add-wish-btn" onclick="toggleWishPanel()">➤添加愿望</<</button>
-            </<</div>
+                <h2>🌟 愿望清单</h2>
+                <button class="add-wish-btn" onclick="toggleWishPanel()">➤添加愿望</button>
+            </div>
             <div class="wishlist-stats">
                 <div class="wish-stat">
-                    <span class="wish-number" id="totalWishes">0</<</span>
-                    <span class="wish-label">总愿月</span>
-                </<</div>
+                    <span class="wish-number" id="totalWishes">0</span>
+                    <span class="wish-label">总愿望</span>
+                </div>
                 <div class="wish-stat">
-                    <span class="wish-number" id="completedWishes">0</<</span>
+                    <span class="wish-number" id="completedWishes">0</span>
                     <span class="wish-label">已完成</span>
-                </<</div>
+                </div>
                 <div class="wish-stat">
-                    <span class="wish-number" id="pendingWishes">0</<</span>
+                    <span class="wish-number" id="pendingWishes">0</span>
                     <span class="wish-label">进行中</span>
-                </<</div>
-            </<</div>
+                </div>
+            </div>
             <div class="wishlist-filters">
-                <button class="filter-btn active" onclick="filterWishes('all')">全部</<</button>
+                <button class="filter-btn active" onclick="filterWishes('all')">全部</button>
                 <button class="filter-btn" onclick="filterWishes('pending')">进行中</button>
                 <button class="filter-btn" onclick="filterWishes('completed')">已完成</button>
-            </<</div>
+            </div>
             <div class="wishlist-grid" id="wishlistGrid">
                 <!-- 动态加载愿望卡片-->
-            </<</div>
+            </div>
             <div class="empty-wishlist" id="emptyWishlist" style="display: none;">
-                <div class="empty-icon">🌠</<</div>
-                <p>还没有添加愿月</p>
-                <button class="add-wish-btn" onclick="toggleWishPanel()">添加第一个愿月</button>
-            </<</div>
-        </<</section>
+                <div class="empty-icon">🌠</div>
+                <p>还没有添加愿望</p>
+                <button class="add-wish-btn" onclick="toggleWishPanel()">添加第一个愿望</button>
+            </div>
+        </section>
 
         <!-- 添加/编辑愿望面板 -->
         <div class="add-wish-panel" id="wishPanel" style="display: none;">
             <div class="panel-header">
-                <h3 id="wishPanelTitle">➤添加愿望</<</h3>
-                <button class="close-btn" onclick="toggleWishPanel()">×</<</button>
-            </<</div>
+                <h3 id="wishPanelTitle">➤添加愿望</h3>
+                <button class="close-btn" onclick="toggleWishPanel()">×</button>
+            </div>
             <div class="panel-content">
                 <div class="form-group">
-                    <label>愿望内容</<</label>
+                    <label>愿望内容</label>
                     <input type="text" id="wishContent" placeholder="例如：一起看极光、学会做对方喜欢的菜..." maxlength="100">
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>愿望类型</<</label>
+                    <label>愿望类型</label>
                     <select id="wishCategory">
-                        <option value="travel">✈️ 旅行</<</option>
-                        <option value="food">🍳 美食</<</option>
-                        <option value="gift">🎁 礼物</<</option>
-                        <option value="experience">🎭 体验</<</option>
+                        <option value="travel">✈️ 旅行</option>
+                        <option value="food">🍳 美食</option>
+                        <option value="gift">🎁 礼物</option>
+                        <option value="experience">🎭 体验</option>
                         <option value="skill">📚 技能</option>
-                        <option value="other">⭐其他</<</option>
-                    </<</select>
-                </<</div>
+                        <option value="other">⭐其他</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label>优先级</label>
                     <select id="wishPriority">
                         <option value="normal">普通</option>
-                        <option value="important">重要</<</option>
+                        <option value="important">重要</option>
                         <option value="urgent">紧急</option>
-                    </<</select>
-                </<</div>
+                    </select>
+                </div>
                 <div class="form-group">
-                    <label>截止日期（可选）</<</label>
+                    <label>截止日期（可选）</label>
                     <input type="date" id="wishDeadline">
-                </<</div>
+                </div>
                 <div class="form-actions">
-                    <button class="cancel-btn" onclick="toggleWishPanel()">取消</<</button>
-                    <button class="submit-btn" onclick="saveWish()">保存</<</button>
-                </<</div>
-            </<</div>
-        </<</div>
+                    <button class="cancel-btn" onclick="toggleWishPanel()">取消</button>
+                    <button class="submit-btn" onclick="saveWish()">保存</button>
+                </div>
+            </div>
+        </div>
 
         <!-- 添加倒计时面来-->
         <div class="add-countdown-panel" id="addCountdownPanel" style="display: none;">
             <div class="panel-header">
-                <h3>➤添加重要日期</<</h3>
-                <button class="close-btn" onclick="toggleAddCountdownPanel()">×</<</button>
-            </<</div>
+                <h3>➤添加重要日期</h3>
+                <button class="close-btn" onclick="toggleAddCountdownPanel()">×</button>
+            </div>
             <div class="panel-content">
                 <div class="form-group">
-                    <label>日期名称</<</label>
+                    <label>日期名称</label>
                     <input type="text" id="countdownName" placeholder="例如：生日、纪念日、旅行.." maxlength="20">
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>日期</<</label>
+                    <label>日期</label>
                     <input type="date" id="countdownDate">
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>类型</<</label>
+                    <label>类型</label>
                     <select id="countdownType">
-                        <option value="birthday">🎂 生日</<</option>
+                        <option value="birthday">🎂 生日</option>
                         <option value="anniversary">💕 纪念日</option>
-                        <option value="travel">✈️ 旅行</<</option>
-                        <option value="event">📅 事件</<</option>
+                        <option value="travel">✈️ 旅行</option>
+                        <option value="event">📅 事件</option>
                         <option value="custom">⭐自定义</option>
-                    </<</select>
-                </<</div>
+                    </select>
+                </div>
                 <div class="form-group">
-                    <label>每年重复</<</label>
+                    <label>每年重复</label>
                     <label class="checkbox-label">
                         <input type="checkbox" id="countdownRepeat" checked>
                         <span>每年自动重复（适用于生日、周年等）</span>
-                    </<</label>
-                </<</div>
+                    </label>
+                </div>
                 <div class="form-actions">
-                    <button class="cancel-btn" onclick="toggleAddCountdownPanel()">取消</<</button>
-                    <button class="submit-btn" onclick="addCountdown()">保存</<</button>
-                </<</div>
-            </<</div>
-        </<</div>
+                    <button class="cancel-btn" onclick="toggleAddCountdownPanel()">取消</button>
+                    <button class="submit-btn" onclick="addCountdown()">保存</button>
+                </div>
+            </div>
+        </div>
 
         <!-- 照片幻灯片-->
         <section class="slideshow-section">
@@ -204,42 +204,42 @@
                 <div class="slideshow-slide active">
                     <img src="" alt="甜蜜瞬间" id="slideshowImg">
                     <div class="slideshow-caption">
-                        <div class="caption-date" id="slideshowDate"></<</div>
+                        <div class="caption-date" id="slideshowDate"></div>
                         <div class="caption-text" id="slideshowText">我们的美好回忆</div>
-                    </<</div>
-                </<</div>
+                    </div>
+                </div>
                 <button class="slideshow-prev" onclick="prevSlide()">’</button>
                 <button class="slideshow-next" onclick="nextSlide()">’</button>
-                <div class="slideshow-dots" id="slideshowDots"></<</div>
-            </<</div>
-        </<</section>
+                <div class="slideshow-dots" id="slideshowDots"></div>
+            </div>
+        </section>
 
         <!-- 快捷操作标-->
         <section class="quick-actions">
             <button class="action-btn" onclick="scrollToUpload()">
-                <span class="action-icon">📸</<</span>
-                <span class="action-text">上传照片</<</span>
-            </<</button>
+                <span class="action-icon">📸</span>
+                <span class="action-text">上传照片</span>
+            </button>
             <button class="action-btn" onclick="toggleFullscreenSlideshow()">
-                <span class="action-icon">🎬</<</span>
+                <span class="action-icon">🎬</span>
                 <span class="action-text">幻灯片放映</span>
-            </<</button>
+            </button>
             <button class="action-btn" onclick="randomPhoto()">
-                <span class="action-icon">🎲</<</span>
-                <span class="action-text">随机回忆</<</span>
-            </<</button>
+                <span class="action-icon">🎲</span>
+                <span class="action-text">随机回忆</span>
+            </button>
             <button class="action-btn" onclick="setCurrentPhotoAsBg()">
                 <span class="action-icon">🖼️</span>
-                <span class="action-text">设为背景</<</span>
-            </<</button>
-        </<</section>
+                <span class="action-text">设为背景</span>
+            </button>
+        </section>
 
         <!-- 设置面板 -->
         <div class="settings-panel" id="settingsPanel" style="display: none;">
             <div class="panel-header">
-                <h3>⚙️ 设置</<</h3>
-                <button class="close-btn" onclick="toggleSettings()">×</<</button>
-            </<</div>
+                <h3>⚙️ 设置</h3>
+                <button class="close-btn" onclick="toggleSettings()">×</button>
+            </div>
             <div class="panel-content">
                 <!-- 纪念日设置-->
                 <div class="setting-group">
@@ -247,12 +247,12 @@
                     <div class="setting-item">
                         <label>开始日月</label>
                         <input type="date" id="anniversaryDateInput" onchange="updateAnniversaryDate(this.value)">
-                    </<</div>
+                    </div>
                     <div class="setting-item">
-                        <label>甜蜜寄语</<</label>
+                        <label>甜蜜寄语</label>
                         <input type="text" id="loveQuoteInput" placeholder="输入你们的甜蜜寄语.." onchange="updateLoveQuote(this.value)">
-                    </<</div>
-                </<</div>
+                    </div>
+                </div>
 
                 <!-- 幻灯片设置-->
                 <div class="setting-group">
@@ -261,246 +261,246 @@
                         <label>自动播放间隔（秒）</label>
                         <input type="range" id="slideshowInterval" min="3" max="30" value="5" onchange="updateSlideshowInterval(this.value)">
                         <span class="range-value" id="intervalValue">5 秒</span>
-                    </<</div>
+                    </div>
                     <div class="setting-item">
-                        <label>过渡效果</<</label>
+                        <label>过渡效果</label>
                         <select id="transitionEffect" onchange="updateTransitionEffect(this.value)">
-                            <option value="fade">淡入淡出</<</option>
-                            <option value="slide">滑动</<</option>
-                            <option value="zoom">缩放</<</option>
-                        </<</select>
-                    </<</div>
+                            <option value="fade">淡入淡出</option>
+                            <option value="slide">滑动</option>
+                            <option value="zoom">缩放</option>
+                        </select>
+                    </div>
                     <div class="setting-item">
                         <label>幻灯片目录</label>
                         <input type="text" id="slideshowFolder" value="slideshow" onchange="updateSlideshowFolder(this.value)" placeholder="例如：slideshow">
-                        <p class="setting-hint">💡 照片上传到image 仓库的此目录下会自动出现在幻灯片</<</p>
-                    </<</div>
+                        <p class="setting-hint">💡 照片上传到image 仓库的此目录下会自动出现在幻灯片</p>
+                    </div>
                     <div class="setting-item">
                         <label>最大显示数重</label>
                         <input type="range" id="slideshowMaxCount" min="3" max="20" value="10" onchange="updateSlideshowMaxCount(this.value)">
                         <span class="range-value" id="maxCountValue">10 张</span>
-                    </<</div>
+                    </div>
                     <div class="setting-item">
                         <button class="data-btn" onclick="reloadSlideshowPhotos()">🔄 重新加载幻灯片</button>
-                    </<</div>
+                    </div>
                     <div class="setting-item">
                         <label class="checkbox-label">
                             <input type="checkbox" id="slideshowAutoPlay" checked onchange="updateSlideshowAutoPlay(this.checked)">
-                            <span>自动播放</<</span>
-                        </<</label>
-                    </<</div>
-                </<</div>
+                            <span>自动播放</span>
+                        </label>
+                    </div>
+                </div>
 
                 <!-- 背景设置 -->
                 <div class="setting-group">
-                    <h4>🎨 背景设置</<</h4>
+                    <h4>🎨 背景设置</h4>
                     <div class="setting-item">
-                        <label>背景模式</<</label>
+                        <label>背景模式</label>
                         <div class="bg-options">
-                            <button class="bg-option active" id="bgDefault" onclick="setBackgroundMode('default')">默认</<</button>
-                            <button class="bg-option" id="bgSlideshow" onclick="setBackgroundMode('slideshow')">照片轮播</<</button>
+                            <button class="bg-option active" id="bgDefault" onclick="setBackgroundMode('default')">默认</button>
+                            <button class="bg-option" id="bgSlideshow" onclick="setBackgroundMode('slideshow')">照片轮播</button>
                             <button class="bg-option" id="bgCustom" onclick="setBackgroundMode('custom')">自定义图片</button>
-                        </<</div>
-                    </<</div>
+                        </div>
+                    </div>
                     <div class="setting-item" id="customBgInput" style="display: none;">
-                        <label>自定义背景图片URL</<</label>
+                        <label>自定义背景图片URL</label>
                         <input type="text" id="customBgUrl" placeholder="输入图片链接...">
-                        <button onclick="applyCustomBackground()">应用</<</button>
-                    </<</div>
+                        <button onclick="applyCustomBackground()">应用</button>
+                    </div>
                     <div class="setting-item">
-                        <label>模糊程度）span id="blurValue">8</<</span>px</<</label>
+                        <label>模糊程度）span id="blurValue">8</span>px</label>
                         <input type="range" id="blurRange" min="0" max="30" value="8" oninput="updateBlur(this.value)">
-                    </<</div>
+                    </div>
                     <div class="setting-item">
-                        <label>暗度）span id="darknessValue">30</<</span>%</<</label>
+                        <label>暗度）span id="darknessValue">30</span>%</label>
                         <input type="range" id="darknessRange" min="0" max="80" value="30" oninput="updateDarkness(this.value)">
-                    </<</div>
-                </<</div>
+                    </div>
+                </div>
 
                 <!-- 数据管理 -->
                 <div class="setting-group">
-                    <h4>💾 数据管理</<</h4>
+                    <h4>💾 数据管理</h4>
                     <div class="setting-item">
-                        <button class="data-btn" onclick="exportData()">📤 导出设置</<</button>
-                        <button class="data-btn" onclick="importData()">📥 导入设置</<</button>
+                        <button class="data-btn" onclick="exportData()">📤 导出设置</button>
+                        <button class="data-btn" onclick="importData()">📥 导入设置</button>
                         <button class="data-btn danger" onclick="clearAllData()">🗑️清空所有数据</button>
-                    </<</div>
-                </<</div>
-            </<</div>
-        </<</div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- 统计标-->
         <section class="stats-section">
             <div class="stat-card">
-                <div class="stat-icon">📸</<</div>
-                <div class="stat-value" id="photoCount">0</<</div>
-                <div class="stat-label">甜蜜瞬间</<</div>
-            </<</div>
+                <div class="stat-icon">📸</div>
+                <div class="stat-value" id="photoCount">0</div>
+                <div class="stat-label">甜蜜瞬间</div>
+            </div>
             <div class="stat-card">
-                <div class="stat-icon">📁</<</div>
-                <div class="stat-value" id="folderCount">0</<</div>
-                <div class="stat-label">回忆相册</<</div>
-            </<</div>
+                <div class="stat-icon">📁</div>
+                <div class="stat-value" id="folderCount">0</div>
+                <div class="stat-label">回忆相册</div>
+            </div>
             <div class="stat-card">
-                <div class="stat-icon">💾</<</div>
-                <div class="stat-value" id="storageUsed">0 MB</<</div>
-                <div class="stat-label">珍藏容量</<</div>
-            </<</div>
+                <div class="stat-icon">💾</div>
+                <div class="stat-value" id="storageUsed">0 MB</div>
+                <div class="stat-label">珍藏容量</div>
+            </div>
             <div class="stat-card">
-                <div class="stat-icon">📅</<</div>
-                <div class="stat-value" id="daysTogether2">0</<</div>
-                <div class="stat-label">相爱天数</<</div>
-            </<</div>
-        </<</section>
+                <div class="stat-icon">📅</div>
+                <div class="stat-value" id="daysTogether2">0</div>
+                <div class="stat-label">相爱天数</div>
+            </div>
+        </section>
 
         <!-- 上传区域 -->
         <section class="upload-section" id="uploadSection">
             <div class="upload-area" id="dropZone">
                 <div class="upload-content">
-                    <div class="upload-icon">💕</<</div>
+                    <div class="upload-icon">💕</div>
                     <div class="upload-title">上传我们的甜蜜瞬间</div>
-                    <div class="upload-hint">拖拽照片到此处，或点击选择</<</div>
-                    <label for="fileInput" class="upload-btn">选择照片</<</label>
+                    <div class="upload-hint">拖拽照片到此处，或点击选择</div>
+                    <label for="fileInput" class="upload-btn">选择照片</label>
                     <input type="file" id="fileInput" accept="image/*" multiple>
-                </<</div>
+                </div>
                 <div class="progress-container" id="progressContainer">
-                    <div class="progress-bar"><div class="progress-fill" id="progressFill"></<</div></<</div>
-                    <div class="progress-text" id="progressText"></<</div>
-                </<</div>
-                <div class="status" id="status"></<</div>
-            </<</div>
-        </<</section>
+                    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                    <div class="progress-text" id="progressText"></div>
+                </div>
+                <div class="status" id="status"></div>
+            </div>
+        </section>
 
         <!-- 筛选工具栏 -->
         <section class="filter-section">
             <div class="filter-group">
                 <select id="folderFilter" class="filter-select" onchange="filterPhotos()">
                     <option value="all">所有相册</option>
-                </<</select>
-            </<</div>
+                </select>
+            </div>
             <div class="filter-group">
                 <select id="timeFilter" class="filter-select" onchange="filterPhotos()">
                     <option value="all">所有时间</option>
-                    <option value="today">今天</<</option>
-                    <option value="week">本周</<</option>
-                    <option value="month">本月</<</option>
-                    <option value="year">今年</<</option>
-                </<</select>
-            </<</div>
+                    <option value="today">今天</option>
+                    <option value="week">本周</option>
+                    <option value="month">本月</option>
+                    <option value="year">今年</option>
+                </select>
+            </div>
             <div class="filter-group search-group">
                 <input type="text" id="searchInput" class="search-input" placeholder="搜索回忆..." oninput="filterPhotos()">
-            </<</div>
-        </<</section>
+            </div>
+        </section>
 
         <!-- 照片画廊 -->
         <section class="gallery-section">
-            <div class="gallery" id="gallery"></<</div>
+            <div class="gallery" id="gallery"></div>
             <div class="load-more" id="loadMore" style="display:none">
-                <button onclick="loadMorePhotos()">加载更多回忆</<</button>
-            </<</div>
-        </<</section>
+                <button onclick="loadMorePhotos()">加载更多回忆</button>
+            </div>
+        </section>
 
         <!-- 地图足迹 -->
         <section class="map-section">
             <div class="map-header">
-                <h2>🗺️地图足迹</<</h2>
+                <h2>🗺️地图足迹</h2>
                 <div class="map-actions">
-                    <button class="refresh-btn" onclick="refreshLocations()" title="刷新足迹">🔄</<</button>
-                    <button class="add-location-btn" onclick="toggleAddLocationPanel()">➤添加足迹</<</button>
-                </<</div>
-            </<</div>
+                    <button class="refresh-btn" onclick="refreshLocations()" title="刷新足迹">🔄</button>
+                    <button class="add-location-btn" onclick="toggleAddLocationPanel()">➤添加足迹</button>
+                </div>
+            </div>
             <div class="map-stats">
                 <div class="map-stat">
-                    <span class="stat-number" id="locationCount">0</<</span>
+                    <span class="stat-number" id="locationCount">0</span>
                     <span class="stat-label">去过的地新</span>
-                </<</div>
+                </div>
                 <div class="map-stat">
-                    <span class="stat-number" id="cityCount">0</<</span>
+                    <span class="stat-number" id="cityCount">0</span>
                     <span class="stat-label">去过的城市</span>
-                </<</div>
-            </<</div>
-            <div class="map-container" id="mapContainer"></<</div>
+                </div>
+            </div>
+            <div class="map-container" id="mapContainer"></div>
             <div class="empty-map" id="emptyMap" style="display: none;">
                 <div class="empty-icon">🗺️</div>
                 <p>还没有添加足迹</p>
                 <button class="add-location-btn" onclick="toggleAddLocationPanel()">添加第一个足迹</button>
-            </<</div>
-        </<</section>
+            </div>
+        </section>
 
         <!-- 添加足迹面板 -->
         <div class="add-location-panel" id="locationPanel" style="display: none;">
             <div class="panel-header">
-                <h3>➤添加足迹</<</h3>
-                <button class="close-btn" onclick="toggleAddLocationPanel()">×</<</button>
-            </<</div>
+                <h3>➤添加足迹</h3>
+                <button class="close-btn" onclick="toggleAddLocationPanel()">×</button>
+            </div>
             <div class="panel-content">
                 <div class="form-group">
-                    <label>地点名称</<</label>
+                    <label>地点名称</label>
                     <input type="text" id="locationName" placeholder="例如：北京故宫、上海外满.." maxlength="50">
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>城市</<</label>
+                    <label>城市</label>
                     <input type="text" id="locationCity" placeholder="例如：北京、上海.." maxlength="30">
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>经度</<</label>
+                    <label>经度</label>
                     <input type="number" id="locationLng" step="0.000001" placeholder="例如）16.4074">
-                    <button class="small-btn" onclick="getCurrentLocation()">📍 获取当前位置</<</button>
-                </<</div>
+                    <button class="small-btn" onclick="getCurrentLocation()">📍 获取当前位置</button>
+                </div>
                 <div class="form-group">
-                    <label>纬度</<</label>
+                    <label>纬度</label>
                     <input type="number" id="locationLat" step="0.000001" placeholder="例如）9.9042">
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>访问日期</<</label>
+                    <label>访问日期</label>
                     <input type="date" id="locationDate">
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>回忆文字</<</label>
+                    <label>回忆文字</label>
                     <textarea id="locationMemory" placeholder="写下在这里的美好回忆..." maxlength="500" rows="4"></textarea>
-                </<</div>
+                </div>
                 <div class="form-group">
-                    <label>照片（可选）</<</label>
+                    <label>照片（可选）</label>
                     <input type="file" id="locationPhoto" accept="image/*">
-                </<</div>
+                </div>
                 <div class="form-actions">
-                    <button class="cancel-btn" onclick="toggleAddLocationPanel()">取消</<</button>
-                    <button class="submit-btn" onclick="saveLocation()">保存</<</button>
-                </<</div>
-            </<</div>
-        </<</section>
+                    <button class="cancel-btn" onclick="toggleAddLocationPanel()">取消</button>
+                    <button class="submit-btn" onclick="saveLocation()">保存</button>
+                </div>
+            </div>
+        </section>
 
         <!-- 空状急-->
         <div class="empty-state" id="emptyState">
-            <div class="empty-icon">💕</<</div>
+            <div class="empty-icon">💕</div>
             <h2>还没有照片</h2>
-            <p>上传第一张照片，开启我们的甜蜜回忆</<</p>
-            <button class="upload-btn" onclick="scrollToUpload()">上传照片</<</button>
-        </<</div>
-    </<</div>
+            <p>上传第一张照片，开启我们的甜蜜回忆</p>
+            <button class="upload-btn" onclick="scrollToUpload()">上传照片</button>
+        </div>
+    </div>
 
     <!-- 灯箱 -->
     <div class="lightbox" id="lightbox">
-        <button class="lightbox-close" onclick="closeLightbox()">×</<</button>
+        <button class="lightbox-close" onclick="closeLightbox()">×</button>
         <button class="lightbox-nav lightbox-prev" onclick="prevPhoto()">’</button>
         <button class="lightbox-nav lightbox-next" onclick="nextPhoto()">’</button>
         <button class="lightbox-bg-btn" onclick="setLightboxPhotoAsBg()" title="设为背景">🖼️</button>
         <div class="lightbox-content">
             <img src="" id="lightboxImg">
             <div class="lightbox-info">
-                <div class="lightbox-title" id="lightboxTitle"></<</div>
-                <div class="lightbox-meta" id="lightboxMeta"></<</div>
-            </<</div>
-        </<</div>
-    </<</div>
+                <div class="lightbox-title" id="lightboxTitle"></div>
+                <div class="lightbox-meta" id="lightboxMeta"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- 地图足迹 -->
         <div class="fs-slide" id="fsSlide">
             <img src="" id="fsImg">
-            <div class="fs-caption" id="fsCaption"></<</div>
-        </<</div>
-        <div class="fs-progress" id="fsProgress"></<</div>
-    </<</div>
+            <div class="fs-caption" id="fsCaption"></div>
+        </div>
+        <div class="fs-progress" id="fsProgress"></div>
+    </div>
 
     <!-- Leaflet 地图 -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -509,12 +509,12 @@
     <!-- 网易云音乐播放器 -->
     <div class="music-player" id="musicPlayer">
         <div class="music-toggle" onclick="toggleMusicPlayer()" title="打开/关闭音乐">
-            <span class="music-icon">🎵</<</span>
-        </<</div>
+            <span class="music-icon">🎵</span>
+        </div>
         <div class="music-frame" id="musicFrame" style="display: none;">
             <iframe frameborder="no" border="0" marginwidth="0" marginheight="0" width="330" height="86" src="https://music.163.com/outchain/player?type=0&id=5478518829&auto=0&height=66"></iframe>
-        </<</div>
-    </<</div>
+        </div>
+    </div>
 
     <script>
         // 音乐播放器开关控到        function toggleMusicPlayer() {
@@ -682,12 +682,12 @@
                 // 弹出窗口
                 let popupContent = `
                     <div class="location-popup">
-                        <h3>${loc.name}</<</h3>
-                        <p class="location-city">📍 ${loc.city}</<</p>
-                        <p class="location-date">📅 ${loc.date}</<</p>
-                        <p class="location-memory">${loc.memory || ''}</<</p>
+                        <h3>${loc.name}</h3>
+                        <p class="location-city">📍 ${loc.city}</p>
+                        <p class="location-date">📅 ${loc.date}</p>
+                        <p class="location-memory">${loc.memory || ''}</p>
                         ${loc.photo ? `<img src="${loc.photo}" style="width:100%;margin-top:10px;border-radius:8px;">` : ''}
-                    </<</div>
+                    </div>
                 `;
                 
                 marker.bindPopup(popupContent);
@@ -936,5 +936,5 @@
 
     <script src="app.js"></script>
 
-</<</body>
+</body>
 </html>
