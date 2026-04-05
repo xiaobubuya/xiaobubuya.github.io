@@ -112,7 +112,8 @@ async function init() {
             if (e.key === 'ArrowLeft') prevPhoto();
             if (e.key === 'ArrowRight') nextPhoto();
         }
-        if (document.getElementById('fullscreenSlideshow').style.display === 'flex') {
+        const fullscreenEl = document.getElementById('fullscreenSlideshow');
+        if (fullscreenEl && fullscreenEl.style.display === 'flex') {
             if (e.key === 'Escape') toggleFullscreenSlideshow();
             if (e.key === 'ArrowLeft') prevSlide();
             if (e.key === 'ArrowRight') nextSlide();
