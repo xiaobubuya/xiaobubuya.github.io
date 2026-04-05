@@ -554,6 +554,32 @@
             }
         }
 
+        // 愿望面板开关
+        function toggleWishPanel() {
+            const panel = document.getElementById('wishPanel');
+            let overlay = document.getElementById('modalOverlay');
+            if (panel) {
+                if (panel.style.display === 'none' || !panel.style.display) {
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.id = 'modalOverlay';
+                        overlay.className = 'modal-overlay';
+                        overlay.onclick = toggleWishPanel;
+                        document.body.appendChild(overlay);
+                    }
+                    panel.style.display = 'block';
+                    document.getElementById('wishContent').value = '';
+                    document.getElementById('wishCategory').value = 'travel';
+                    document.getElementById('wishPriority').value = 'normal';
+                    document.getElementById('wishDeadline').value = '';
+                    document.getElementById('wishPanelTitle').textContent = '➕ 添加愿望';
+                } else {
+                    panel.style.display = 'none';
+                    if (overlay) overlay.remove();
+                }
+            }
+        }
+
         // 音乐播放器开关控制
         function toggleMusicPlayer() {
             const frame = document.getElementById('musicFrame');
