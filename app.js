@@ -1,3 +1,24 @@
+
+// Base64 解码为 UTF-8 字符串
+function base64ToUtf8(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder('utf-8').decode(bytes);
+}
+
+// UTF-8 字符串转 Base64
+function utf8ToBase64(str) {
+    const bytes = new TextEncoder('utf-8').encode(str);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+}
+
 // 账号配置
 const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
 
@@ -611,7 +632,7 @@ async function loadWishes() {
 
         if (res.ok) {
             const data = await res.json();
-            const content = atob(data.content);
+            const content = base64ToUtf8(data.content);
             wishes = JSON.parse(content);
             console.log(`加载愿望：${wishes.length}个`);
         } else if (res.status === 404) {
@@ -642,7 +663,7 @@ async function saveWishes() {
             sha = getData.sha;
         }
 
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(wishes, null, 2))));
+        const content = utf8ToBase64(JSON.stringify(wishes, null, 2));
         const body = {
             message: '更新愿望清单',
             content: content,
@@ -927,7 +948,7 @@ async function loadCountdownEvents() {
 
         if (res.ok) {
             const data = await res.json();
-            const content = atob(data.content);
+            const content = base64ToUtf8(data.content);
             countdownEvents = JSON.parse(content);
             console.log(`加载倒计时事件：${countdownEvents.length}个`);
         } else if (res.status === 404) {
@@ -962,7 +983,7 @@ async function saveCountdownEvents() {
         }
 
         // 保存文件
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(countdownEvents, null, 2))));
+        const content = utf8ToBase64(JSON.stringify(countdownEvents, null, 2));
         const body = {
             message: '更新倒计时事件',
             content: content,
