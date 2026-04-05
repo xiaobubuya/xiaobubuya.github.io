@@ -292,7 +292,7 @@ async function loadSlideshowPhotos() {
         console.log(`加载幻灯片目录：${CONFIG.slideshowFolder}`);
 
         // 获取 slideshow 目录
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${CONFIG.slideshowFolder}?ref=main`, {
+        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${CONFIG.slideshowFolder}?ref=master`, {
             headers: headers
         });
 
@@ -1386,7 +1386,7 @@ async function fetchFromServer() {
     if (githubToken) headers['Authorization'] = `token ${githubToken}`;
 
     // 获取根目录
-    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/?ref=main`, {
+    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/?ref=master`, {
         headers: headers
     });
 
