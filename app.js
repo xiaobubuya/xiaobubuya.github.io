@@ -289,7 +289,7 @@ async function loadSlideshowPhotos() {
         console.log(`加载幻灯片目录：${CONFIG.slideshowFolder}`);
 
         // 获取 slideshow 目录
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${CONFIG.slideshowFolder}?ref=master`, {
+        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${CONFIG.slideshowFolder}?ref=main`, {
             headers: headers
         });
 
@@ -1345,7 +1345,7 @@ async function uploadFile(file, folder = '未分类') {
 function getImageUrl(filename) {
     // 使用 jsDelivr CDN 加速图片加载
     // jsDelivr 是免费的全球 CDN，基于 GitHub 仓库
-    return `https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/${filename}`;
+    return `https://cdn.jsdelivr.net/gh/xiaobubuya/image@main/${filename}`;
 }
 
 async function fetchFromServer() {
@@ -1353,7 +1353,7 @@ async function fetchFromServer() {
     if (githubToken) headers['Authorization'] = `token ${githubToken}`;
 
     // 获取根目录
-    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/?ref=master`, {
+    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/?ref=main`, {
         headers: headers
     });
 
