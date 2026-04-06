@@ -89,6 +89,9 @@ async function init() {
     await loadCountdownEvents();
     await loadWishes();
 
+    // 加载照片
+    await loadPhotos();
+
     // 初始化标签点击事件
     document.querySelectorAll('.tag-item').forEach(tag => {
         tag.addEventListener('click', function() {
