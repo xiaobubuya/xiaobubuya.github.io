@@ -1418,25 +1418,33 @@ async function loadPhotos() {
     const gallery = document.getElementById('gallery');
     const empty = document.getElementById('emptyState');
 
+    console.log('开始加载照片...');
+
     // 同时加载幻灯片照片
     await loadSlideshowPhotos();
 
     const cached = await getCachedPhotos();
+    console.log('缓存照片数量:', cached ? cached.length : 0);
 
     if (cached && cached.length > 0) {
+        console.log('使用缓存照片');
         photos = cached;
         updateStats();
         filterPhotos();
         initSlideshow();
     } else {
+        console.log('无缓存，显示骨架屏');
         gallery.innerHTML = '<div class="skeleton" style="height:200px"></div>'.repeat(6);
     }
 
     try {
+        console.log('请求 GitHub API...');
         const res = await fetchFromServer();
+        console.log('API 响应状态:', res.status);
 
         if (!res.ok) {
             if (res.status === 404) {
+                console.log('仓库或目录不存在');
                 photos = [];
                 gallery.innerHTML = '';
                 empty.classList.add('active');
@@ -1448,13 +1456,24 @@ async function loadPhotos() {
             throw new Error(`HTTP ${res.status}`);
         }
 
+        console.log('解析 API 响应...');
         const files = await res.json();
-        const { photos: newPhotos } = await parseFilesAndFolders(files);
+        console.log('根目录文件/文件夹数量:', files.length);
+
+        const { photos: newPhotos, folders: newFolders } = await parseFilesAndFolders(files);
+        console.log('解析后照片数量:', newPhotos.length);
+        console.log('解析后文件夹数量:', newFolders.length);
+        if (newPhotos.length > 0) {
+            console.log('前 3 张照片:', newPhotos.slice(0, 3).map(p => p.name));
+        }
 
         const hasChanged = JSON.stringify(newPhotos) !== JSON.stringify(photos);
+        console.log('照片是否有变化:', hasChanged);
 
         if (hasChanged || photos.length === 0) {
+            console.log('更新照片列表');
             photos = newPhotos;
+            folders = newFolders;
             await cachePhotos(photos);
             updateStats();
             filterPhotos();
