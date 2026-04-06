@@ -1373,7 +1373,9 @@ async function parseFilesAndFolders(files) {
     // 处理每个文件夹
     for (const folder of folderItems) {
         try {
-            const folderRes = await fetch(folder.url, {
+            // 使用 folder.url 并添加 ?ref=main 参数确保获取正确分支
+            const folderUrl = folder.url.includes('?') ? `${folder.url}&ref=main` : `${folder.url}?ref=main`;
+            const folderRes = await fetch(folderUrl, {
                 headers: { 'Accept': 'application/vnd.github.v3+json' }
             });
 
@@ -1382,7 +1384,7 @@ async function parseFilesAndFolders(files) {
                 const folderPhotos = folderFiles
                     .filter(f => f.type === 'file' && /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name))
                     .map(f => ({
-                        name: `${folder.name}/${f.name}`,
+                        name: `${folder.path}/${f.name}`,
                         sha: f.sha,
                         size: f.size,
                         timestamp: parseInt(f.name.split('_')[0]) || Date.now(),
@@ -1395,9 +1397,11 @@ async function parseFilesAndFolders(files) {
                     name: folder.name === '%E6%9C%AA%E5%88%86%E7%B1%BB' ? '未分类' : folder.name,
                     count: folderPhotos.length
                 });
+            } else {
+                console.error(`加载文件夹 ${folder.name} 失败：HTTP ${folderRes.status}`);
             }
         } catch (e) {
-            console.error(`加载文件夹 ${folder.name} 失败:`, e);
+            console.error(`加载文件夹 ${folder.name} 异常:`, e);
         }
     }
 
