@@ -19,11 +19,7 @@ function utf8ToBase64(str) {
     return btoa(binary);
 }
 
-// 账号配置
-const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
-
 // 全局变量（必须在函数之前声明）
-let currentUser = null;
 let githubToken = null;
 let photos = [];
 let filteredPhotos = [];
@@ -66,51 +62,6 @@ let locationMarkers = [];
 let locations = [];
 let lastLocationsHash = '';
 
-// 登录函数（必须在顶部，HTML onclick 需要）
-function login() {
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value.trim();
-    const errorDiv = document.getElementById('loginError');
-    if (!username || !password) {
-        errorDiv.textContent = '请输入用户名和密码';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    if (ACCOUNTS[username] === password) {
-        currentUser = username;
-        localStorage.setItem('galleryUser', username);
-        showMainPage();
-    } else {
-        errorDiv.textContent = '用户名或密码错误';
-        errorDiv.style.display = 'block';
-    }
-}
-
-function logout() {
-    localStorage.removeItem('galleryUser');
-    location.reload();
-}
-
-// 设置面板开关（HTML onclick 需要）
-function toggleSettings() {
-    const panel = document.getElementById('settingsPanel');
-    if (panel) {
-        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    }
-}
-
-// 背景模式设置别名（HTML onclick 需要）
-function setBackgroundMode(mode) {
-    setBackground(mode);
-}
-
-// 设当前照片为背景别名（HTML onclick 需要）
-function setCurrentPhotoAsBg() {
-    if (photos.length > 0) {
-        setPhotoAsBackground(currentSlideIndex >= 0 ? currentSlideIndex : 0);
-    }
-}
-
 // GitHub 配置
 const CONFIG = {
     owner: 'xiaobubuya',
@@ -133,16 +84,10 @@ async function init() {
     await initDB();
     loadSettings();
     loadAnniversary();
-    loadSlideshowSettings();  // 加载幻灯片设置
-    loadAchievements();  // 加载成就数据
-    await loadCountdownEvents();  // 加载倒计时数据
-    await loadWishes();  // 加载愿望数据
-
-    const savedUser = localStorage.getItem('galleryUser');
-    if (savedUser) {
-        currentUser = savedUser;
-        showMainPage();
-    }
+    loadSlideshowSettings();
+    loadAchievements();
+    await loadCountdownEvents();
+    await loadWishes();
 
     // 初始化标签点击事件
     document.querySelectorAll('.tag-item').forEach(tag => {
@@ -1318,13 +1263,6 @@ function scrollToUpload() {
 }
 
 // ========== 原有功能 ==========
-
-async function showMainPage() {
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('mainPage').classList.add('active');
-    document.getElementById('welcomeUser').textContent = `欢迎，${currentUser}`;
-    await loadPhotos();
-}
 
 function setupDragDrop() {
     const dropZone = document.getElementById('dropZone');

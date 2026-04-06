@@ -7,33 +7,6 @@
     <link rel="stylesheet" href="style.css?v=20260404">
     <script src="app.js"></script>
     <script>
-        // 账号配置
-        const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
-        // 登录函数
-        function login() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-            const errorDiv = document.getElementById('loginError');
-            if (!username || !password) {
-                errorDiv.textContent = '请输入用户名和密码';
-                errorDiv.style.display = 'block';
-                return;
-            }
-            if (ACCOUNTS[username] === password) {
-                localStorage.setItem('galleryUser', username);
-                document.getElementById('loginPage').style.display = 'none';
-                document.getElementById('mainPage').classList.add('active');
-                document.getElementById('welcomeUser').textContent = '欢迎，' + username;
-            } else {
-                errorDiv.textContent = '用户名或密码错误';
-                errorDiv.style.display = 'block';
-            }
-        }
-        // 登出函数
-        function logout() {
-            localStorage.removeItem('galleryUser');
-            location.reload();
-        }
         // 愿望面板开关
         function toggleWishPanel() {
             const panel = document.getElementById('wishPanel');
@@ -93,19 +66,7 @@
     <!-- 漂浮爱心 -->
     <div class="floating-hearts" id="floatingHearts"></div>
 
-    <div class="login-container" id="loginPage">
-        <div class="login-box">
-            <div class="login-hearts">💕 💕 💕</div>
-            <h1>我们的小天地</h1>
-            <p>记录属于我们的甜蜜时光</p>
-            <input type="text" id="username" placeholder="用户名">
-            <input type="password" id="password" placeholder="密码">
-            <button onclick="login()">进入我们的世界</button>
-            <div class="login-error" id="loginError"></div>
-        </div>
-    </div>
-
-    <div class="main-container" id="mainPage">
+    <div class="main-container">
         <!-- 顶部导航 -->
         <nav class="top-nav">
             <div class="nav-brand">
@@ -113,9 +74,7 @@
                 <span>我们的小天地</span>
             </div>
             <div class="nav-user">
-                <span id="welcomeUser"></span>
                 <button onclick="toggleSettings()" class="nav-btn" title="设置">⚙️</button>
-                <button onclick="logout()" class="nav-btn">退出</button>
             </div>
         </nav>
 
