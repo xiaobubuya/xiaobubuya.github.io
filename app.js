@@ -22,6 +22,53 @@ function utf8ToBase64(str) {
 // 账号配置
 const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
 
+// 登录函数（必须在顶部，HTML onclick 需要）
+function login() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const errorDiv = document.getElementById('loginError');
+    if (!username || !password) {
+        errorDiv.textContent = '请输入用户名和密码';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    if (ACCOUNTS[username] === password) {
+        currentUser = username;
+        localStorage.setItem('galleryUser', username);
+        showMainPage();
+    } else {
+        errorDiv.textContent = '用户名或密码错误';
+        errorDiv.style.display = 'block';
+    }
+}
+
+function logout() {
+    localStorage.removeItem('galleryUser');
+    location.reload();
+}
+
+// 设置面板开关
+function toggleSettings() {
+    const panel = document.getElementById('settingsPanel');
+    if (panel) {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+// 背景模式设置（别名，兼容 HTML 中的 onclick）
+function setBackgroundMode(mode) {
+    setBackground(mode);
+}
+
+// 设当前幻灯片照片为背景（兼容 HTML 中的 onclick）
+function setCurrentPhotoAsBg() {
+    if (photos.length > 0 && currentSlideIndex >= 0) {
+        setPhotoAsBackground(currentSlideIndex);
+    } else if (photos.length > 0) {
+        setPhotoAsBackground(0);
+    }
+}
+
 // GitHub 配置
 const CONFIG = {
     owner: 'xiaobubuya',

@@ -5,35 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>💕 我们的情侣空间</title>
     <link rel="stylesheet" href="style.css?v=20260404">
-    <script>
-        // 账号配置
-        const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
-        // 登录函数
-        function login() {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value.trim();
-            const errorDiv = document.getElementById('loginError');
-            if (!username || !password) {
-                errorDiv.textContent = '请输入用户名和密码';
-                errorDiv.style.display = 'block';
-                return;
-            }
-            if (ACCOUNTS[username] === password) {
-                localStorage.setItem('galleryUser', username);
-                document.getElementById('loginPage').style.display = 'none';
-                document.getElementById('mainPage').classList.add('active');
-                document.getElementById('welcomeUser').textContent = '欢迎，' + username;
-            } else {
-                errorDiv.textContent = '用户名或密码错误';
-                errorDiv.style.display = 'block';
-            }
-        }
-        // 登出函数
-        function logout() {
-            localStorage.removeItem('galleryUser');
-            location.reload();
-        }
-    </script>
+    <script src="app.js"></script>
 </head>
 <body>
     <!-- 动态背景-->
@@ -546,40 +518,6 @@
     </div>
 
     <script>
-        // 设置面板开关
-        function toggleSettings() {
-            const panel = document.getElementById('settingsPanel');
-            if (panel) {
-                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-            }
-        }
-
-        // 愿望面板开关
-        function toggleWishPanel() {
-            const panel = document.getElementById('wishPanel');
-            let overlay = document.getElementById('modalOverlay');
-            if (panel) {
-                if (panel.style.display === 'none' || !panel.style.display) {
-                    if (!overlay) {
-                        overlay = document.createElement('div');
-                        overlay.id = 'modalOverlay';
-                        overlay.className = 'modal-overlay';
-                        overlay.onclick = toggleWishPanel;
-                        document.body.appendChild(overlay);
-                    }
-                    panel.style.display = 'block';
-                    document.getElementById('wishContent').value = '';
-                    document.getElementById('wishCategory').value = 'travel';
-                    document.getElementById('wishPriority').value = 'normal';
-                    document.getElementById('wishDeadline').value = '';
-                    document.getElementById('wishPanelTitle').textContent = '➕ 添加愿望';
-                } else {
-                    panel.style.display = 'none';
-                    if (overlay) overlay.remove();
-                }
-            }
-        }
-
         // 音乐播放器开关控制
         function toggleMusicPlayer() {
             const frame = document.getElementById('musicFrame');
@@ -1001,8 +939,6 @@
         // 页面加载后初始化地图
         setTimeout(() => initMap(), 1000);
     </script>
-
-    <script src="app.js"></script>
 
 </body>
 </html>
