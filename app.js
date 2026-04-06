@@ -1,5 +1,5 @@
-
-// Base64 解码�?UTF-8 字符�?
+﻿
+// Base64 解码为 UTF-8 字符串
 function base64ToUtf8(base64) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -19,7 +19,7 @@ function utf8ToBase64(str) {
     return btoa(binary);
 }
 
-// 全局变量（必须在函数之前声明�?
+// 全局变量（必须在函数之前声明）
 let githubToken = null;
 let photos = [];
 let filteredPhotos = [];
@@ -70,14 +70,14 @@ const CONFIG = {
     imageRepo: 'image',
     cdnBase: 'https://cdn.jsdelivr.net/gh/xiaobubuya/image@main',
     rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image@main',
-    slideshowFolder: 'slideshow'  // 幻灯片专用目�?
+    slideshowFolder: 'slideshow'  // 幻灯片专用目录
 };
 
 // GitHub Token
 const HARDCODED_TOKEN = 'WjJod1gzQnNWa3RrZURJM1pHb3dXa3BvWWxNNFZIUjVSM2t5U0dOalpWVmlSREZMZWt0bmJnPT0=';
 githubToken = base64Decode(base64Decode(HARDCODED_TOKEN));
 
-// 初始�?
+// 初始化
 init();
 
 async function init() {
@@ -92,7 +92,7 @@ async function init() {
     // 加载照片
     await loadPhotos();
 
-    // 初始化标签点击事�?
+    // 初始化标签点击事件
     document.querySelectorAll('.tag-item').forEach(tag => {
         tag.addEventListener('click', function() {
             document.querySelectorAll('.tag-item').forEach(t => t.classList.remove('active'));
@@ -133,7 +133,7 @@ async function init() {
     // 初始化幻灯片触摸滑动
     initSlideshowTouch();
 
-    // 渲染倒计时卡�?
+    // 渲染倒计时卡片
     renderCountdownCards();
     
     // 渲染成就卡片
@@ -142,13 +142,13 @@ async function init() {
     // 渲染愿望卡片
     renderWishes();
     
-    // 检查成�?
+    // 检查成就
     setTimeout(() => {
         checkAchievements(getAchievementData());
     }, 1000);
 }
 
-// 初始�?IndexedDB
+// 初始化 IndexedDB
 function initDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -196,7 +196,7 @@ function setBackground(mode) {
     saveSettings();
     applyBackgroundSettings();
 
-    // 更新按钮状�?
+    // 更新按钮状态
     document.querySelectorAll('.bg-option').forEach(btn => {
         btn.classList.remove('active');
     });
@@ -219,7 +219,7 @@ function applyBackgroundSettings() {
     const bgSlideshow = document.getElementById('bgSlideshow');
     const overlay = document.querySelector('.bg-overlay');
 
-    // 应用模糊和暗�?
+    // 应用模糊和暗度
     bgSlideshow.style.filter = `blur(${bgSettings.blur}px)`;
     overlay.style.background = `rgba(255, 240, 245, ${bgSettings.darkness / 100})`;
 
@@ -252,7 +252,7 @@ function startBackgroundSlideshow() {
     }, 10000);
 }
 
-// ========== 纪念日功�?==========
+// ========== 纪念日功能 ==========
 
 function loadAnniversary() {
     const saved = localStorage.getItem('anniversaryDate');
@@ -273,14 +273,14 @@ function updateAnniversaryDisplay() {
 }
 
 function formatDate(date) {
-    return `${date.getFullYear()}�?{date.getMonth() + 1}�?{date.getDate()}日`;
+    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-// ========== 幻灯片功能（从独�?slideshow/ 目录加载�?==========
+// ========== 幻灯片功能（从独立 slideshow/ 目录加载） ==========
 
-let slideshowPhotos = [];  // 幻灯片专用照片列�?
+let slideshowPhotos = [];  // 幻灯片专用照片列表
 
-// �?slideshow/ 目录加载幻灯片照�?
+// 从 slideshow/ 目录加载幻灯片照片
 async function loadSlideshowPhotos() {
     try {
         // 确保使用最新的配置
@@ -312,25 +312,25 @@ async function loadSlideshowPhotos() {
                 console.log(`幻灯片加载成功：${slideshowPhotos.length}张`);
             }
         } else {
-            console.log(`幻灯片目录不存在或无权限�?{CONFIG.slideshowFolder}`);
+            console.log(`幻灯片目录不存在或无权限：${CONFIG.slideshowFolder}`);
         }
     } catch (e) {
-        console.error('加载幻灯片目录失�?', e);
+        console.error('加载幻灯片目录失败:', e);
     }
 }
 
 function initSlideshow() {
-    // 优先使用 slideshow/ 目录的照片，如果没有则使用全部照�?
+    // 优先使用 slideshow/ 目录的照片，如果没有则使用全部照片
     const sourcePhotos = slideshowPhotos.length > 0 ? slideshowPhotos : photos;
     
     if (sourcePhotos.length === 0) {
-        // 显示空状�?
+        // 显示空状态
         const container = document.getElementById('slideshowContainer');
         container.innerHTML = `
             <div class="slideshow-empty">
                 <div class="slideshow-empty-icon">📷</div>
-                <p>幻灯片目录暂无照�?/p>
-                <p style="font-size: 0.9rem; margin-top: 10px; opacity: 0.7;">请将照片上传�?${CONFIG.slideshowFolder}/ 目录</p>
+                <p>幻灯片目录暂无照片</p>
+                <p style="font-size: 0.9rem; margin-top: 10px; opacity: 0.7;">请将照片上传到 ${CONFIG.slideshowFolder}/ 目录</p>
             </div>
         `;
         console.log('幻灯片初始化：无照片');
@@ -342,17 +342,17 @@ function initSlideshow() {
     const slideshowText = document.getElementById('slideshowText');
     const slideshowDots = document.getElementById('slideshowDots');
 
-    // 使用设置中的最大数�?
+    // 使用设置中的最大数量
     const displayCount = Math.min(sourcePhotos.length, slideshowSettings.maxCount);
     
-    console.log(`幻灯片初始化�?{sourcePhotos.length}张照片，显示${displayCount}张，自动播放=${slideshowSettings.autoPlay}`);
+    console.log(`幻灯片初始化：${sourcePhotos.length}张照片，显示${displayCount}张，自动播放=${slideshowSettings.autoPlay}`);
     
-    // 创建导航�?
+    // 创建导航点
     slideshowDots.innerHTML = Array.from({ length: displayCount }, (_, i) => `
         <div class="slideshow-dot ${i === 0 ? 'active' : ''}" onclick="goToSlide(${i})"></div>
     `).join('');
 
-    // 显示第一�?
+    // 显示第一张
     updateSlideshowSlide(0, sourcePhotos);
 
     // 自动播放（延迟一点启动，确保设置已加载）
@@ -388,7 +388,7 @@ function updateSlideshowSlide(index, sourcePhotos = null) {
         new Date(photo.timestamp).toLocaleDateString('zh-CN') : '';
     slideshowText.textContent = photo.name.split('/').pop().replace(/^\d+_/, '').replace(/\.[^/.]+$/, '');
 
-    // 更新导航�?
+    // 更新导航点
     document.querySelectorAll('.slideshow-dot').forEach((dot, i) => {
         dot.classList.toggle('active', i === index);
     });
@@ -403,7 +403,7 @@ function startSlideshow(sourcePhotos = null) {
         slideshowInterval = null;
     }
     
-    // 检查是否启用自动播�?
+    // 检查是否启用自动播放
     if (!slideshowSettings.autoPlay) {
         isSlideshowPlaying = false;
         return;
@@ -414,16 +414,16 @@ function startSlideshow(sourcePhotos = null) {
     const photosToUse = sourcePhotos || (slideshowPhotos.length > 0 ? slideshowPhotos : photos);
     if (photosToUse.length === 0) return;
 
-    // 使用设置中的间隔时间（转换为毫秒�?
+    // 使用设置中的间隔时间（转换为毫秒）
     const intervalMs = slideshowSettings.interval * 1000;
     
-    // 立即切换到下一张，然后开始定�?
+    // 立即切换到下一张，然后开始定时
     setTimeout(() => {
         if (!slideshowSettings.autoPlay) return;
         const next = (currentSlideIndex + 1) % photosToUse.length;
         updateSlideshowSlide(next, photosToUse);
         
-        // 启动定时�?
+        // 启动定时器
         slideshowInterval = setInterval(() => {
             if (!slideshowSettings.autoPlay) {
                 clearInterval(slideshowInterval);
@@ -492,7 +492,7 @@ function goToSlide(index) {
     }
 }
 
-// ========== 幻灯片触摸滑动支�?==========
+// ========== 幻灯片触摸滑动支持 ==========
 
 let touchStartX = 0;
 let touchEndX = 0;
@@ -501,7 +501,7 @@ function initSlideshowTouch() {
     const container = document.getElementById('slideshowContainer');
     if (!container) return;
 
-    // 触摸开�?
+    // 触摸开始
     container.addEventListener('touchstart', (e) => {
         touchStartX = e.changedTouches[0].screenX;
     }, { passive: true });
@@ -519,23 +519,23 @@ function initSlideshowTouch() {
 }
 
 function handleSwipe() {
-    const threshold = 50; // 最小滑动距�?
+    const threshold = 50; // 最小滑动距离
     const diff = touchStartX - touchEndX;
 
     if (Math.abs(diff) < threshold) {
-        return; // 滑动距离太短，忽�?
+        return; // 滑动距离太短，忽略
     }
 
     if (diff > 0) {
-        // 向左滑动，下一�?
+        // 向左滑动，下一张
         nextSlide();
     } else {
-        // 向右滑动，上一�?
+        // 向右滑动，上一张
         prevSlide();
     }
 }
 
-// ========== 重要日期倒计时功�?==========
+// ========== 重要日期倒计时功能 ==========
 
 let countdownEvents = [];
 
@@ -543,18 +543,18 @@ let countdownEvents = [];
 
 // 成就列表定义
 const achievementDefinitions = [
-    { id: 'first_photo', name: '第一张照�?, desc: '上传第一张照�?, icon: '📸', check: (data) => data.photoCount >= 1 },
-    { id: 'ten_photos', name: '十全十美', desc: '上传 10 张照�?, icon: '💯', check: (data) => data.photoCount >= 10 },
-    { id: 'hundred_photos', name: '百张照片', desc: '上传 100 张照�?, icon: '🖼�?, check: (data) => data.photoCount >= 100 },
-    { id: 'first_wish', name: '心怀憧憬', desc: '添加第一个愿�?, icon: '🌟', check: (data) => data.wishCount >= 1 },
-    { id: 'five_wishes', name: '五福临门', desc: '添加 5 个愿�?, icon: '🎋', check: (data) => data.wishCount >= 5 },
-    { id: 'first_complete', name: '梦想成真', desc: '完成第一个愿�?, icon: '�?, check: (data) => data.completedWishes >= 1 },
-    { id: 'ten_complete', name: '十全十美', desc: '完成 10 个愿�?, icon: '🏆', check: (data) => data.completedWishes >= 10 },
-    { id: 'first_event', name: '重要时刻', desc: '添加第一个重要日�?, icon: '📅', check: (data) => data.eventCount >= 1 },
-    { id: 'five_events', name: '五周年纪�?, desc: '添加 5 个重要日�?, icon: '🎊', check: (data) => data.eventCount >= 5 },
-    { id: '100_days', name: '百日情侣', desc: '在一�?100 �?, icon: '💕', check: (data) => data.daysTogether >= 100 },
-    { id: '365_days', name: '周年快乐', desc: '在一�?365 �?, icon: '🎉', check: (data) => data.daysTogether >= 365 },
-    { id: 'slideshow', name: '精彩瞬间', desc: '设置幻灯片背�?, icon: '🎬', check: (data) => data.hasSlideshowBg },
+    { id: 'first_photo', name: '第一张照片', desc: '上传第一张照片', icon: '📸', check: (data) => data.photoCount >= 1 },
+    { id: 'ten_photos', name: '十全十美', desc: '上传 10 张照片', icon: '💯', check: (data) => data.photoCount >= 10 },
+    { id: 'hundred_photos', name: '百张照片', desc: '上传 100 张照片', icon: '🖼️', check: (data) => data.photoCount >= 100 },
+    { id: 'first_wish', name: '心怀憧憬', desc: '添加第一个愿望', icon: '🌟', check: (data) => data.wishCount >= 1 },
+    { id: 'five_wishes', name: '五福临门', desc: '添加 5 个愿望', icon: '🎋', check: (data) => data.wishCount >= 5 },
+    { id: 'first_complete', name: '梦想成真', desc: '完成第一个愿望', icon: '✨', check: (data) => data.completedWishes >= 1 },
+    { id: 'ten_complete', name: '十全十美', desc: '完成 10 个愿望', icon: '🏆', check: (data) => data.completedWishes >= 10 },
+    { id: 'first_event', name: '重要时刻', desc: '添加第一个重要日期', icon: '📅', check: (data) => data.eventCount >= 1 },
+    { id: 'five_events', name: '五周年纪念', desc: '添加 5 个重要日期', icon: '🎊', check: (data) => data.eventCount >= 5 },
+    { id: '100_days', name: '百日情侣', desc: '在一起 100 天', icon: '💕', check: (data) => data.daysTogether >= 100 },
+    { id: '365_days', name: '周年快乐', desc: '在一起 365 天', icon: '🎉', check: (data) => data.daysTogether >= 365 },
+    { id: 'slideshow', name: '精彩瞬间', desc: '设置幻灯片背景', icon: '🎬', check: (data) => data.hasSlideshowBg },
 ];
 
 let unlockedAchievements = [];
@@ -581,7 +581,7 @@ function checkAchievements(data) {
             if (achievement.check(data)) {
                 unlockedAchievements.push(achievement.id);
                 newUnlock = true;
-                console.log(`🎉 解锁成就�?{achievement.name}`);
+                console.log(`🎉 解锁成就：${achievement.name}`);
             }
         }
     });
@@ -613,7 +613,7 @@ function renderAchievements() {
                 <div class="achievement-icon">${achievement.icon}</div>
                 <div class="achievement-name">${achievement.name}</div>
                 <div class="achievement-desc">${achievement.desc}</div>
-                <div class="achievement-progress">${isUnlocked ? '�?已解�? : '🔒 未解�?}</div>
+                <div class="achievement-progress">${isUnlocked ? '✅ 已解锁' : '🔒 未解锁'}</div>
             </div>
         `;
     }).join('');
@@ -624,7 +624,7 @@ function renderAchievements() {
 let wishes = [];
 let currentWishFilter = 'all';
 
-// �?GitHub 加载愿望数据
+// 从 GitHub 加载愿望数据
 async function loadWishes() {
     try {
         const headers = { 'Accept': 'application/vnd.github.v3+json' };
@@ -638,7 +638,7 @@ async function loadWishes() {
             const data = await res.json();
             const content = base64ToUtf8(data.content);
             wishes = JSON.parse(content);
-            console.log(`加载愿望�?{wishes.length}个`);
+            console.log(`加载愿望：${wishes.length}个`);
         } else if (res.status === 404) {
             wishes = [];
         }
@@ -648,7 +648,7 @@ async function loadWishes() {
     }
 }
 
-// 保存愿望数据�?GitHub
+// 保存愿望数据到 GitHub
 async function saveWishes() {
     try {
         const headers = {
@@ -695,7 +695,7 @@ const wishIcons = {
     gift: '🎁',
     experience: '🎭',
     skill: '📚',
-    other: '�?
+    other: '⭐'
 };
 
 const categoryNames = {
@@ -703,7 +703,7 @@ const categoryNames = {
     food: '美食',
     gift: '礼物',
     experience: '体验',
-    skill: '技�?,
+    skill: '技能',
     other: '其他'
 };
 
@@ -717,7 +717,7 @@ function renderWishes() {
     
     if (!grid || !empty) return;
     
-    // 筛�?
+    // 筛选
     let filteredWishes = wishes;
     if (currentWishFilter === 'pending') {
         filteredWishes = wishes.filter(w => !w.completed);
@@ -754,13 +754,13 @@ function renderWishes() {
             <div class="wish-card ${wish.completed ? 'completed' : ''} ${isUrgent ? 'urgent' : ''}">
                 <div class="wish-header">
                     <span class="wish-category">${wishIcons[wish.category]} ${categoryNames[wish.category]}</span>
-                    <span class="wish-priority ${wish.priority}">${wish.priority === 'normal' ? '普�? : wish.priority === 'important' ? '重要' : '紧�?}</span>
+                    <span class="wish-priority ${wish.priority}">${wish.priority === 'normal' ? '普通' : wish.priority === 'important' ? '重要' : '紧急'}</span>
                 </div>
                 <div class="wish-content">${wish.completed ? '<s>' : ''}${wish.content}${wish.completed ? '</s>' : ''}</div>
-                ${wish.deadline ? `<div class="wish-meta"><span class="wish-deadline">📅 ${wish.deadline} ${daysLeft !== null && daysLeft >= 0 ? '(还剩' + daysLeft + '�?' : ''}</span></div>` : ''}
+                ${wish.deadline ? `<div class="wish-meta"><span class="wish-deadline">📅 ${wish.deadline} ${daysLeft !== null && daysLeft >= 0 ? '(还剩' + daysLeft + '天)' : ''}</span></div>` : ''}
                 <div class="wish-actions">
                     <button class="wish-action-btn complete ${wish.completed ? 'completed' : ''}" onclick="toggleWishComplete(${actualIndex})" ${wish.completed ? 'disabled' : ''}>
-                        ${wish.completed ? '�?已完�? : '�?完成'}
+                        ${wish.completed ? '✓ 已完成' : '○ 完成'}
                     </button>
                     <button class="wish-action-btn edit" onclick="editWish(${actualIndex})">编辑</button>
                     <button class="wish-action-btn delete" onclick="deleteWish(${actualIndex})">删除</button>
@@ -789,14 +789,14 @@ function toggleWishPanel() {
         document.getElementById('wishCategory').value = 'travel';
         document.getElementById('wishPriority').value = 'normal';
         document.getElementById('wishDeadline').value = '';
-        document.getElementById('wishPanelTitle').textContent = '�?添加愿望';
+        document.getElementById('wishPanelTitle').textContent = '➕ 添加愿望';
     } else {
         panel.style.display = 'none';
         if (overlay) overlay.remove();
     }
 }
 
-// 保存愿望（添加或编辑�?
+// 保存愿望（添加或编辑）
 async function saveWish() {
     const content = document.getElementById('wishContent').value.trim();
     const category = document.getElementById('wishCategory').value;
@@ -804,11 +804,11 @@ async function saveWish() {
     const deadline = document.getElementById('wishDeadline').value;
     
     if (!content) {
-        alert('请填写愿望内�?);
+        alert('请填写愿望内容');
         return;
     }
     
-    // 检查是否是编辑模式（通过面板标题判断�?
+    // 检查是否是编辑模式（通过面板标题判断）
     const isEdit = document.getElementById('wishPanelTitle').textContent.includes('编辑');
     
     if (isEdit) {
@@ -825,9 +825,9 @@ async function saveWish() {
                 renderWishes();
                 toggleWishPanel();
                 checkAchievements(getAchievementData());
-                showStatus('更新成功�?, 'success');
+                showStatus('更新成功！', 'success');
             } else {
-                alert('保存失败，请检查网�?);
+                alert('保存失败，请检查网络');
             }
         }
     } else {
@@ -849,9 +849,9 @@ async function saveWish() {
             renderWishes();
             toggleWishPanel();
             checkAchievements(getAchievementData());
-            showStatus('添加成功�?, 'success');
+            showStatus('添加成功！', 'success');
         } else {
-            alert('保存失败，请检查网�?);
+            alert('保存失败，请检查网络');
         }
     }
 }
@@ -872,7 +872,7 @@ function editWish(index) {
     toggleWishPanel();
 }
 
-// 切换完成状�?
+// 切换完成状态
 async function toggleWishComplete(index) {
     wishes[index].completed = !wishes[index].completed;
     if (wishes[index].completed) {
@@ -885,7 +885,7 @@ async function toggleWishComplete(index) {
     if (success) {
         renderWishes();
         checkAchievements(getAchievementData());
-        showStatus(wishes[index].completed ? '恭喜完成愿望！�? : '已取消完�?, 'success');
+        showStatus(wishes[index].completed ? '恭喜完成愿望！🎉' : '已取消完成', 'success');
     }
 }
 
@@ -903,19 +903,19 @@ async function deleteWish(index) {
     }
 }
 
-// 筛选愿�?
+// 筛选愿望
 function filterWishes(filter) {
     currentWishFilter = filter;
     
-    // 更新按钮状�?
+    // 更新按钮状态
     document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent === (filter === 'all' ? '全部' : filter === 'pending' ? '进行�? : '已完�?));
+        btn.classList.toggle('active', btn.textContent === (filter === 'all' ? '全部' : filter === 'pending' ? '进行中' : '已完成'));
     });
     
     renderWishes();
 }
 
-// 获取成就检查数�?
+// 获取成就检查数据
 function getAchievementData() {
     const start = new Date(anniversaryDate);
     const now = new Date();
@@ -937,10 +937,10 @@ const typeIcons = {
     anniversary: '💕',
     travel: '✈️',
     event: '📅',
-    custom: '�?
+    custom: '⭐'
 };
 
-// �?GitHub 加载倒计时数�?
+// 从 GitHub 加载倒计时数据
 async function loadCountdownEvents() {
     try {
         const headers = { 'Accept': 'application/vnd.github.v3+json' };
@@ -956,12 +956,12 @@ async function loadCountdownEvents() {
             countdownEvents = JSON.parse(content);
             console.log(`加载倒计时事件：${countdownEvents.length}个`);
         } else if (res.status === 404) {
-            // 文件不存在，创建空数�?
+            // 文件不存在，创建空数组
             countdownEvents = [];
-            console.log('倒计时文件不存在，将创建新文�?);
+            console.log('倒计时文件不存在，将创建新文件');
         }
     } catch (e) {
-        console.error('加载倒计时失�?', e);
+        console.error('加载倒计时失败:', e);
         countdownEvents = [];
     }
 }
@@ -989,7 +989,7 @@ async function saveCountdownEvents() {
         // 保存文件
         const content = utf8ToBase64(JSON.stringify(countdownEvents, null, 2));
         const body = {
-            message: '更新倒计时事�?,
+            message: '更新倒计时事件',
             content: content,
             branch: CONFIG.branch
         };
@@ -1009,12 +1009,12 @@ async function saveCountdownEvents() {
             return false;
         }
     } catch (e) {
-        console.error('保存倒计时失�?', e);
+        console.error('保存倒计时失败:', e);
         return false;
     }
 }
 
-// 渲染倒计时卡�?
+// 渲染倒计时卡片
 function renderCountdownCards() {
     const grid = document.getElementById('countdownGrid');
     const empty = document.getElementById('emptyCountdown');
@@ -1039,7 +1039,7 @@ function renderCountdownCards() {
 
         let daysDiff = Math.ceil((eventDate - now) / (1000 * 60 * 60 * 24));
 
-        // 如果是重复事件且已过期，计算明年的日�?
+        // 如果是重复事件且已过期，计算明年的日期
         let isUrgent = false;
         if (daysDiff < 0 && event.repeat) {
             const nextYear = now.getFullYear() + 1;
@@ -1050,11 +1050,11 @@ function renderCountdownCards() {
         isUrgent = daysDiff <= 7 && daysDiff >= 0;
 
         const daysText = daysDiff < 0 ? '已过' : `还剩 ${daysDiff} 天`;
-        const label = daysDiff === 0 ? '🎉 就是今天�? : (daysDiff < 0 ? '已经过去' : '�?);
+        const label = daysDiff === 0 ? '🎉 就是今天！' : (daysDiff < 0 ? '已经过去' : '天');
 
         return `
             <div class="countdown-card ${isUrgent ? 'urgent' : ''}">
-                <div class="countdown-icon">${typeIcons[event.type] || '�?}</div>
+                <div class="countdown-icon">${typeIcons[event.type] || '⭐'}</div>
                 <div class="countdown-name">${event.name}</div>
                 <div class="countdown-days">${daysDiff < 0 ? Math.abs(daysDiff) : daysDiff}</div>
                 <div class="countdown-label">${label}</div>
@@ -1074,7 +1074,7 @@ function toggleAddCountdownPanel() {
     const overlay = document.getElementById('modalOverlay');
 
     if (panel.style.display === 'none' || !panel.style.display) {
-        // 创建遮罩�?
+        // 创建遮罩层
         if (!overlay) {
             const newOverlay = document.createElement('div');
             newOverlay.id = 'modalOverlay';
@@ -1094,7 +1094,7 @@ function toggleAddCountdownPanel() {
     }
 }
 
-// 添加倒计�?
+// 添加倒计时
 async function addCountdown() {
     const name = document.getElementById('countdownName').value.trim();
     const date = document.getElementById('countdownDate').value;
@@ -1102,7 +1102,7 @@ async function addCountdown() {
     const repeat = document.getElementById('countdownRepeat').checked;
 
     if (!name || !date) {
-        alert('请填写完整信�?);
+        alert('请填写完整信息');
         return;
     }
 
@@ -1121,13 +1121,13 @@ async function addCountdown() {
     if (success) {
         renderCountdownCards();
         toggleAddCountdownPanel();
-        showStatus('添加成功�?, 'success');
+        showStatus('添加成功！', 'success');
     } else {
-        alert('保存失败，请检查网�?);
+        alert('保存失败，请检查网络');
     }
 }
 
-// 编辑倒计�?
+// 编辑倒计时
 function editCountdown(index) {
     const event = countdownEvents[index];
     document.getElementById('countdownName').value = event.name;
@@ -1150,7 +1150,7 @@ function editCountdown(index) {
         const repeat = document.getElementById('countdownRepeat').checked;
 
         if (!name || !date) {
-            alert('请填写完整信�?);
+            alert('请填写完整信息');
             return;
         }
 
@@ -1169,18 +1169,18 @@ function editCountdown(index) {
         if (success) {
             renderCountdownCards();
             toggleAddCountdownPanel();
-            document.querySelector('.add-countdown-panel .panel-header h3').textContent = '�?添加重要日期';
+            document.querySelector('.add-countdown-panel .panel-header h3').textContent = '➕ 添加重要日期';
             submitBtn.onclick = addCountdown;
-            showStatus('更新成功�?, 'success');
+            showStatus('更新成功！', 'success');
         } else {
-            alert('保存失败，请检查网�?);
+            alert('保存失败，请检查网络');
         }
     };
 }
 
-// 删除倒计�?
+// 删除倒计时
 async function deleteCountdown(index) {
-    if (!confirm('确定删除这个倒计时吗�?)) return;
+    if (!confirm('确定删除这个倒计时吗？')) return;
 
     countdownEvents.splice(index, 1);
 
@@ -1189,7 +1189,7 @@ async function deleteCountdown(index) {
         renderCountdownCards();
         showStatus('删除成功', 'success');
     } else {
-        alert('删除失败，请检查网�?);
+        alert('删除失败，请检查网络');
     }
 }
 
@@ -1232,7 +1232,7 @@ function updateFullscreenSlide() {
     document.getElementById('fsCaption').textContent =
         `${photo.name.split('/').pop().replace(/^\d+_/, '')} · ${new Date(photo.timestamp).toLocaleDateString('zh-CN')}`;
 
-    // 进度�?
+    // 进度条
     const progress = ((fullscreenIndex + 1) / photos.length) * 100;
     document.getElementById('fsProgress').style.width = progress + '%';
 }
@@ -1295,7 +1295,7 @@ function updateProgress(current, total, filename) {
     const pct = total > 0 ? (current / total) * 100 : 0;
     c.classList.add('active');
     f.style.width = pct + '%';
-    t.textContent = filename ? `上传�?${filename} (${current}/${total})` : '';
+    t.textContent = filename ? `上传中 ${filename} (${current}/${total})` : '';
     if (pct >= 100) setTimeout(() => c.classList.remove('active'), 1000);
 }
 
@@ -1320,7 +1320,7 @@ async function handleFiles(fileList, folder = '99-临时') {
     document.getElementById('fileInput').value = '';
 }
 
-async function uploadFile(file, folder = '未分�?) {
+async function uploadFile(file, folder = '未分类') {
     const filename = `${folder}/${Date.now()}_${file.name}`;
     const base64 = await new Promise(r => {
         const reader = new FileReader();
@@ -1346,8 +1346,8 @@ async function uploadFile(file, folder = '未分�?) {
 }
 
 function getImageUrl(filename) {
-    // 使用 jsDelivr CDN 加速图片加�?
-    // jsDelivr 是免费的全球 CDN，基�?GitHub 仓库
+    // 使用 jsDelivr CDN 加速图片加载
+    // jsDelivr 是免费的全球 CDN，基于 GitHub 仓库
     return `https://cdn.jsdelivr.net/gh/xiaobubuya/image@main/${filename}`;
 }
 
@@ -1355,7 +1355,7 @@ async function fetchFromServer() {
     const headers = { 'Accept': 'application/vnd.github.v3+json' };
     if (githubToken) headers['Authorization'] = `token ${githubToken}`;
 
-    // 获取根目�?
+    // 获取根目录
     const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/?ref=main`, {
         headers: headers
     });
@@ -1369,14 +1369,14 @@ async function parseFilesAndFolders(files) {
 
     if (!Array.isArray(files)) return { photos: photoList, folders: folderList };
 
-    // 识别文件�?
+    // 识别文件夹
     const folderItems = files.filter(f => f.type === 'dir');
-    folderList.push({ id: 'all', name: '所有相�?, count: 0 });
+    folderList.push({ id: 'all', name: '所有相册', count: 0 });
 
-    // 处理每个文件�?
+    // 处理每个文件夹
     for (const folder of folderItems) {
         try {
-            // 使用 folder.url 并添�??ref=main 参数确保获取正确分支
+            // 使用 folder.url 并添加 ?ref=main 参数确保获取正确分支
             const folderUrl = folder.url.includes('?') ? `${folder.url}&ref=main` : `${folder.url}?ref=main`;
             const folderRes = await fetch(folderUrl, {
                 headers: { 'Accept': 'application/vnd.github.v3+json' }
@@ -1397,14 +1397,14 @@ async function parseFilesAndFolders(files) {
                 photoList.push(...folderPhotos);
                 folderList.push({
                     id: folder.name,
-                    name: folder.name === '%E6%9C%AA%E5%88%86%E7%B1%BB' ? '未分�? : folder.name,
+                    name: folder.name === '%E6%9C%AA%E5%88%86%E7%B1%BB' ? '未分类' : folder.name,
                     count: folderPhotos.length
                 });
             } else {
-                console.error(`加载文件�?${folder.name} 失败：HTTP ${folderRes.status}`);
+                console.error(`加载文件夹 ${folder.name} 失败：HTTP ${folderRes.status}`);
             }
         } catch (e) {
-            console.error(`加载文件�?${folder.name} 异常:`, e);
+            console.error(`加载文件夹 ${folder.name} 异常:`, e);
         }
     }
 
@@ -1421,9 +1421,9 @@ async function loadPhotos() {
     const gallery = document.getElementById('gallery');
     const empty = document.getElementById('emptyState');
 
-    console.log('开始加载照�?..');
+    console.log('开始加载照片...');
 
-    // 同时加载幻灯片照�?
+    // 同时加载幻灯片照片
     await loadSlideshowPhotos();
 
     const cached = await getCachedPhotos();
@@ -1436,14 +1436,14 @@ async function loadPhotos() {
         filterPhotos();
         initSlideshow();
     } else {
-        console.log('无缓存，显示骨架�?);
+        console.log('无缓存，显示骨架屏');
         gallery.innerHTML = '<div class="skeleton" style="height:200px"></div>'.repeat(6);
     }
 
     try {
         console.log('请求 GitHub API...');
         const res = await fetchFromServer();
-        console.log('API 响应状�?', res.status);
+        console.log('API 响应状态:', res.status);
 
         if (!res.ok) {
             if (res.status === 404) {
@@ -1461,17 +1461,17 @@ async function loadPhotos() {
 
         console.log('解析 API 响应...');
         const files = await res.json();
-        console.log('根目录文�?文件夹数�?', files.length);
+        console.log('根目录文件/文件夹数量:', files.length);
 
         const { photos: newPhotos, folders: newFolders } = await parseFilesAndFolders(files);
-        console.log('解析后照片数�?', newPhotos.length);
+        console.log('解析后照片数量:', newPhotos.length);
         console.log('解析后文件夹数量:', newFolders.length);
         if (newPhotos.length > 0) {
-            console.log('�?3 张照�?', newPhotos.slice(0, 3).map(p => p.name));
+            console.log('前 3 张照片:', newPhotos.slice(0, 3).map(p => p.name));
         }
 
         const hasChanged = JSON.stringify(newPhotos) !== JSON.stringify(photos);
-        console.log('照片是否有变�?', hasChanged);
+        console.log('照片是否有变化:', hasChanged);
 
         if (hasChanged || photos.length === 0) {
             console.log('更新照片列表');
@@ -1481,15 +1481,15 @@ async function loadPhotos() {
             updateStats();
             filterPhotos();
             initSlideshow();
-            showStatus(`已加�?${photos.length} 张照片`, 'success');
-            // 检查照片相关成�?
+            showStatus(`已加载 ${photos.length} 张照片`, 'success');
+            // 检查照片相关成就
             checkAchievements(getAchievementData());
         }
 
     } catch (e) {
         console.error('Load error:', e);
         if (!cached || cached.length === 0) {
-            showStatus('加载失败，请检查网�?, 'error');
+            showStatus('加载失败，请检查网络', 'error');
         }
     }
 }
@@ -1519,17 +1519,17 @@ function filterPhotos() {
     currentFilter.search = document.getElementById('searchInput').value.toLowerCase();
 
     filteredPhotos = photos.filter(photo => {
-        // 文件夹筛�?
+        // 文件夹筛选
         if (currentFilter.folder !== 'all' && photo.folder !== currentFilter.folder) {
             return false;
         }
 
-        // 搜索筛�?
+        // 搜索筛选
         if (currentFilter.search && !photo.name.toLowerCase().includes(currentFilter.search)) {
             return false;
         }
 
-        // 时间筛�?
+        // 时间筛选
         const photoDate = new Date(photo.timestamp);
         const now = new Date();
 
@@ -1602,7 +1602,7 @@ function renderPhotos(append = false) {
                 <div class="photo-overlay" onclick="event.stopPropagation()">
                     <div class="photo-actions">
                         <button class="photo-action-btn" onclick="openLightbox(${actualIndex})" title="查看">👁</button>
-                        <button class="photo-action-btn" onclick="setPhotoAsBackground(${actualIndex})" title="设为背景">🖼�?/button>
+                        <button class="photo-action-btn" onclick="setPhotoAsBackground(${actualIndex})" title="设为背景">🖼️</button>
                         <button class="photo-action-btn delete" onclick="deletePhoto('${p.name}', '${p.sha}')" title="删除">🗑</button>
                     </div>
                 </div>
@@ -1653,7 +1653,7 @@ function setPhotoAsBackground(index) {
     const bgSlideshow = document.getElementById('bgSlideshow');
     bgSlideshow.innerHTML = `<div class="bg-slide active" style="background-image: url('${bgSettings.customPhoto}')"></div>`;
 
-    showStatus('已设为背景图�?, 'success');
+    showStatus('已设为背景图片', 'success');
 }
 
 function loadMorePhotos() {
@@ -1662,7 +1662,7 @@ function loadMorePhotos() {
 
 async function deletePhoto(filename, sha) {
     if (!confirm('确定删除这张照片吗？')) return;
-    showStatus('删除�?..', 'loading');
+    showStatus('删除中...', 'loading');
     try {
         const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${filename}`, {
             method: 'DELETE',
@@ -1754,21 +1754,21 @@ async function clearCache() {
     tx1.objectStore('photos').clear();
     const tx2 = db.transaction('folders', 'readwrite');
     tx2.objectStore('folders').clear();
-    showStatus('缓存已清�?, 'success');
+    showStatus('缓存已清空', 'success');
 }
 
-// ========== 幻灯片设置功�?==========
+// ========== 幻灯片设置功能 ==========
 
-// 幻灯片配�?
+// 幻灯片配置
 let slideshowSettings = {
-    interval: 5,           // 播放间隔（秒�?
+    interval: 5,           // 播放间隔（秒）
     transition: 'fade',    // 过渡效果：fade, slide, zoom
-    folder: 'slideshow',   // 幻灯片目�?
-    maxCount: 10,          // 最大显示数�?
+    folder: 'slideshow',   // 幻灯片目录
+    maxCount: 10,          // 最大显示数量
     autoPlay: true         // 自动播放
 };
 
-// 加载幻灯片设�?
+// 加载幻灯片设置
 function loadSlideshowSettings() {
     const saved = localStorage.getItem('slideshowSettings');
     if (saved) {
@@ -1779,7 +1779,7 @@ function loadSlideshowSettings() {
     const intervalValue = document.getElementById('intervalValue');
     if (intervalInput) {
         intervalInput.value = slideshowSettings.interval;
-        intervalValue.textContent = slideshowSettings.interval + '�?;
+        intervalValue.textContent = slideshowSettings.interval + '秒';
     }
     const transitionSelect = document.getElementById('transitionEffect');
     if (transitionSelect) {
@@ -1793,7 +1793,7 @@ function loadSlideshowSettings() {
     const maxCountValue = document.getElementById('maxCountValue');
     if (maxCountInput) {
         maxCountInput.value = slideshowSettings.maxCount;
-        maxCountValue.textContent = slideshowSettings.maxCount + '�?;
+        maxCountValue.textContent = slideshowSettings.maxCount + '张';
     }
     const autoPlayCheckbox = document.getElementById('slideshowAutoPlay');
     if (autoPlayCheckbox) {
@@ -1803,22 +1803,22 @@ function loadSlideshowSettings() {
     CONFIG.slideshowFolder = slideshowSettings.folder;
 }
 
-// 保存幻灯片设�?
+// 保存幻灯片设置
 function saveSlideshowSettings() {
     localStorage.setItem('slideshowSettings', JSON.stringify(slideshowSettings));
 }
 
-// 更新幻灯片间�?
+// 更新幻灯片间隔
 function updateSlideshowInterval(value) {
     slideshowSettings.interval = parseInt(value);
-    document.getElementById('intervalValue').textContent = value + '�?;
+    document.getElementById('intervalValue').textContent = value + '秒';
     saveSlideshowSettings();
     // 重新开始幻灯片
     stopSlideshow();
     if (slideshowSettings.autoPlay) {
         startSlideshow();
     }
-    showStatus(`幻灯片间隔已更新�?${value}秒`, 'success');
+    showStatus(`幻灯片间隔已更新为 ${value}秒`, 'success');
 }
 
 // 更新过渡效果
@@ -1832,21 +1832,21 @@ function updateTransitionEffect(value) {
     showStatus(`过渡效果已更新为 ${value === 'fade' ? '淡入淡出' : value === 'slide' ? '滑动' : '缩放'}`, 'success');
 }
 
-// 更新幻灯片目�?
+// 更新幻灯片目录
 function updateSlideshowFolder(value) {
     slideshowSettings.folder = value.trim() || 'slideshow';
     saveSlideshowSettings();
     CONFIG.slideshowFolder = slideshowSettings.folder;
-    showStatus(`幻灯片目录已更新�?${slideshowSettings.folder}`, 'success');
+    showStatus(`幻灯片目录已更新为 ${slideshowSettings.folder}`, 'success');
 }
 
-// 更新最大显示数�?
+// 更新最大显示数量
 function updateSlideshowMaxCount(value) {
     slideshowSettings.maxCount = parseInt(value);
-    document.getElementById('maxCountValue').textContent = value + '�?;
+    document.getElementById('maxCountValue').textContent = value + '张';
     saveSlideshowSettings();
     initSlideshow();
-    showStatus(`最大显示数量已更新�?${value}张`, 'success');
+    showStatus(`最大显示数量已更新为 ${value}张`, 'success');
 }
 
 // 更新自动播放
@@ -1858,12 +1858,12 @@ function updateSlideshowAutoPlay(value) {
     } else {
         stopSlideshow();
     }
-    showStatus(`自动播放�?{value ? '开�? : '关闭'}`, 'success');
+    showStatus(`自动播放已${value ? '开启' : '关闭'}`, 'success');
 }
 
-// 重新加载幻灯�?
+// 重新加载幻灯片
 async function reloadSlideshowPhotos() {
-    showStatus('正在重新加载幻灯�?..', 'loading');
+    showStatus('正在重新加载幻灯片...', 'loading');
     await loadSlideshowPhotos();
     initSlideshow();
     showStatus(`幻灯片已更新，共 ${slideshowPhotos.length} 张照片`, 'success');
