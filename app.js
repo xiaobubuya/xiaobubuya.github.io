@@ -1,5 +1,5 @@
-
-// Base64 解码为 UTF-8 字符串
+﻿
+// Base64 瑙ｇ爜涓?UTF-8 瀛楃涓?
 function base64ToUtf8(base64) {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -9,7 +9,7 @@ function base64ToUtf8(base64) {
     return new TextDecoder('utf-8').decode(bytes);
 }
 
-// UTF-8 字符串转 Base64
+// UTF-8 瀛楃涓茶浆 Base64
 function utf8ToBase64(str) {
     const bytes = new TextEncoder('utf-8').encode(str);
     let binary = '';
@@ -19,7 +19,7 @@ function utf8ToBase64(str) {
     return btoa(binary);
 }
 
-// 全局变量（必须在函数之前声明）
+// 鍏ㄥ眬鍙橀噺锛堝繀椤诲湪鍑芥暟涔嬪墠澹版槑锛?
 let githubToken = null;
 let photos = [];
 let filteredPhotos = [];
@@ -62,7 +62,7 @@ let locationMarkers = [];
 let locations = [];
 let lastLocationsHash = '';
 
-// GitHub 配置
+// GitHub 閰嶇疆
 const CONFIG = {
     owner: 'xiaobubuya',
     repo: 'xiaobubuya.github.io',
@@ -70,14 +70,14 @@ const CONFIG = {
     imageRepo: 'image',
     cdnBase: 'https://cdn.jsdelivr.net/gh/xiaobubuya/image@main',
     rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image@main',
-    slideshowFolder: 'slideshow'  // 幻灯片专用目录
+    slideshowFolder: 'slideshow'  // 骞荤伅鐗囦笓鐢ㄧ洰褰?
 };
 
 // GitHub Token
 const HARDCODED_TOKEN = 'WjJod1gzQnNWa3RrZURJM1pHb3dXa3BvWWxNNFZIUjVSM2t5U0dOalpWVmlSREZMZWt0bmJnPT0=';
 githubToken = base64Decode(base64Decode(HARDCODED_TOKEN));
 
-// 初始化
+// 鍒濆鍖?
 init();
 
 async function init() {
@@ -89,10 +89,10 @@ async function init() {
     await loadCountdownEvents();
     await loadWishes();
 
-    // 加载照片
+    // 鍔犺浇鐓х墖
     await loadPhotos();
 
-    // 初始化标签点击事件
+    // 鍒濆鍖栨爣绛剧偣鍑讳簨浠?
     document.querySelectorAll('.tag-item').forEach(tag => {
         tag.addEventListener('click', function() {
             document.querySelectorAll('.tag-item').forEach(t => t.classList.remove('active'));
@@ -102,10 +102,10 @@ async function init() {
         });
     });
 
-    // 文件输入监听
+    // 鏂囦欢杈撳叆鐩戝惉
     document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files));
 
-    // 键盘导航
+    // 閿洏瀵艰埅
     document.addEventListener('keydown', e => {
         if (document.getElementById('lightbox').classList.contains('active')) {
             if (e.key === 'Escape') closeLightbox();
@@ -124,31 +124,31 @@ async function init() {
         }
     });
 
-    // 拖拽上传
+    // 鎷栨嫿涓婁紶
     setupDragDrop();
 
-    // 创建漂浮爱心
+    // 鍒涘缓婕傛诞鐖卞績
     createFloatingHearts();
 
-    // 初始化幻灯片触摸滑动
+    // 鍒濆鍖栧够鐏墖瑙︽懜婊戝姩
     initSlideshowTouch();
 
-    // 渲染倒计时卡片
+    // 娓叉煋鍊掕鏃跺崱鐗?
     renderCountdownCards();
     
-    // 渲染成就卡片
+    // 娓叉煋鎴愬氨鍗＄墖
     renderAchievements();
     
-    // 渲染愿望卡片
+    // 娓叉煋鎰挎湜鍗＄墖
     renderWishes();
     
-    // 检查成就
+    // 妫€鏌ユ垚灏?
     setTimeout(() => {
         checkAchievements(getAchievementData());
     }, 1000);
 }
 
-// 初始化 IndexedDB
+// 鍒濆鍖?IndexedDB
 function initDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -172,7 +172,7 @@ function initDB() {
     });
 }
 
-// ========== 设置功能 ==========
+// ========== 璁剧疆鍔熻兘 ==========
 
 function loadSettings() {
     const saved = localStorage.getItem('coupleSettings');
@@ -196,7 +196,7 @@ function setBackground(mode) {
     saveSettings();
     applyBackgroundSettings();
 
-    // 更新按钮状态
+    // 鏇存柊鎸夐挳鐘舵€?
     document.querySelectorAll('.bg-option').forEach(btn => {
         btn.classList.remove('active');
     });
@@ -219,11 +219,11 @@ function applyBackgroundSettings() {
     const bgSlideshow = document.getElementById('bgSlideshow');
     const overlay = document.querySelector('.bg-overlay');
 
-    // 应用模糊和暗度
+    // 搴旂敤妯＄硦鍜屾殫搴?
     bgSlideshow.style.filter = `blur(${bgSettings.blur}px)`;
     overlay.style.background = `rgba(255, 240, 245, ${bgSettings.darkness / 100})`;
 
-    // 根据模式设置背景
+    // 鏍规嵁妯″紡璁剧疆鑳屾櫙
     if (bgSettings.mode === 'default') {
         bgSlideshow.style.background = 'linear-gradient(135deg, #fff0f5 0%, #ffe4ec 50%, #ffd6e0 100%)';
         bgSlideshow.innerHTML = '';
@@ -252,7 +252,7 @@ function startBackgroundSlideshow() {
     }, 10000);
 }
 
-// ========== 纪念日功能 ==========
+// ========== 绾康鏃ュ姛鑳?==========
 
 function loadAnniversary() {
     const saved = localStorage.getItem('anniversaryDate');
@@ -273,25 +273,25 @@ function updateAnniversaryDisplay() {
 }
 
 function formatDate(date) {
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    return `${date.getFullYear()}骞?{date.getMonth() + 1}鏈?{date.getDate()}鏃;
 }
 
-// ========== 幻灯片功能（从独立 slideshow/ 目录加载） ==========
+// ========== 骞荤伅鐗囧姛鑳斤紙浠庣嫭绔?slideshow/ 鐩綍鍔犺浇锛?==========
 
-let slideshowPhotos = [];  // 幻灯片专用照片列表
+let slideshowPhotos = [];  // 骞荤伅鐗囦笓鐢ㄧ収鐗囧垪琛?
 
-// 从 slideshow/ 目录加载幻灯片照片
+// 浠?slideshow/ 鐩綍鍔犺浇骞荤伅鐗囩収鐗?
 async function loadSlideshowPhotos() {
     try {
-        // 确保使用最新的配置
+        // 纭繚浣跨敤鏈€鏂扮殑閰嶇疆
         CONFIG.slideshowFolder = slideshowSettings.folder;
         
         const headers = { 'Accept': 'application/vnd.github.v3+json' };
         if (githubToken) headers['Authorization'] = `token ${githubToken}`;
 
-        console.log(`加载幻灯片目录：${CONFIG.slideshowFolder}`);
+        console.log(`鍔犺浇骞荤伅鐗囩洰褰曪細${CONFIG.slideshowFolder}`);
 
-        // 获取 slideshow 目录
+        // 鑾峰彇 slideshow 鐩綍
         const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${CONFIG.slideshowFolder}?ref=main`, {
             headers: headers
         });
@@ -309,31 +309,31 @@ async function loadSlideshowPhotos() {
                         folder: CONFIG.slideshowFolder
                     }))
                     .sort((a, b) => b.timestamp - a.timestamp);
-                console.log(`幻灯片加载成功：${slideshowPhotos.length}张`);
+                console.log(`骞荤伅鐗囧姞杞芥垚鍔燂細${slideshowPhotos.length}寮燻);
             }
         } else {
-            console.log(`幻灯片目录不存在或无权限：${CONFIG.slideshowFolder}`);
+            console.log(`骞荤伅鐗囩洰褰曚笉瀛樺湪鎴栨棤鏉冮檺锛?{CONFIG.slideshowFolder}`);
         }
     } catch (e) {
-        console.error('加载幻灯片目录失败:', e);
+        console.error('鍔犺浇骞荤伅鐗囩洰褰曞け璐?', e);
     }
 }
 
 function initSlideshow() {
-    // 优先使用 slideshow/ 目录的照片，如果没有则使用全部照片
+    // 浼樺厛浣跨敤 slideshow/ 鐩綍鐨勭収鐗囷紝濡傛灉娌℃湁鍒欎娇鐢ㄥ叏閮ㄧ収鐗?
     const sourcePhotos = slideshowPhotos.length > 0 ? slideshowPhotos : photos;
     
     if (sourcePhotos.length === 0) {
-        // 显示空状态
+        // 鏄剧ず绌虹姸鎬?
         const container = document.getElementById('slideshowContainer');
         container.innerHTML = `
             <div class="slideshow-empty">
-                <div class="slideshow-empty-icon">📷</div>
-                <p>幻灯片目录暂无照片</p>
-                <p style="font-size: 0.9rem; margin-top: 10px; opacity: 0.7;">请将照片上传到 ${CONFIG.slideshowFolder}/ 目录</p>
+                <div class="slideshow-empty-icon">馃摲</div>
+                <p>骞荤伅鐗囩洰褰曟殏鏃犵収鐗?/p>
+                <p style="font-size: 0.9rem; margin-top: 10px; opacity: 0.7;">璇峰皢鐓х墖涓婁紶鍒?${CONFIG.slideshowFolder}/ 鐩綍</p>
             </div>
         `;
-        console.log('幻灯片初始化：无照片');
+        console.log('骞荤伅鐗囧垵濮嬪寲锛氭棤鐓х墖');
         return;
     }
 
@@ -342,20 +342,20 @@ function initSlideshow() {
     const slideshowText = document.getElementById('slideshowText');
     const slideshowDots = document.getElementById('slideshowDots');
 
-    // 使用设置中的最大数量
+    // 浣跨敤璁剧疆涓殑鏈€澶ф暟閲?
     const displayCount = Math.min(sourcePhotos.length, slideshowSettings.maxCount);
     
-    console.log(`幻灯片初始化：${sourcePhotos.length}张照片，显示${displayCount}张，自动播放=${slideshowSettings.autoPlay}`);
+    console.log(`骞荤伅鐗囧垵濮嬪寲锛?{sourcePhotos.length}寮犵収鐗囷紝鏄剧ず${displayCount}寮狅紝鑷姩鎾斁=${slideshowSettings.autoPlay}`);
     
-    // 创建导航点
+    // 鍒涘缓瀵艰埅鐐?
     slideshowDots.innerHTML = Array.from({ length: displayCount }, (_, i) => `
         <div class="slideshow-dot ${i === 0 ? 'active' : ''}" onclick="goToSlide(${i})"></div>
     `).join('');
 
-    // 显示第一张
+    // 鏄剧ず绗竴寮?
     updateSlideshowSlide(0, sourcePhotos);
 
-    // 自动播放（延迟一点启动，确保设置已加载）
+    // 鑷姩鎾斁锛堝欢杩熶竴鐐瑰惎鍔紝纭繚璁剧疆宸插姞杞斤級
     setTimeout(() => {
         if (slideshowSettings.autoPlay) {
             startSlideshow(sourcePhotos);
@@ -376,34 +376,34 @@ function updateSlideshowSlide(index, sourcePhotos = null) {
 
     if (!slideshowImg || !container) return;
 
-    // 强制重绘，确保移动端立即响应
+    // 寮哄埗閲嶇粯锛岀‘淇濈Щ鍔ㄧ绔嬪嵆鍝嶅簲
     container.style.display = 'none';
-    container.offsetHeight; // 触发重绘
+    container.offsetHeight; // 瑙﹀彂閲嶇粯
     container.style.display = '';
 
-    // 立即更新图片
+    // 绔嬪嵆鏇存柊鍥剧墖
     if (photo && photo.name) {
         slideshowImg.src = getImageUrl(photo.name);
     slideshowDate.textContent = photo.timestamp ?
         new Date(photo.timestamp).toLocaleDateString('zh-CN') : '';
     slideshowText.textContent = photo.name.split('/').pop().replace(/^\d+_/, '').replace(/\.[^/.]+$/, '');
 
-    // 更新导航点
+    // 鏇存柊瀵艰埅鐐?
     document.querySelectorAll('.slideshow-dot').forEach((dot, i) => {
         dot.classList.toggle('active', i === index);
     });
 
-    console.log(`切换到第 ${index + 1} 张：${photo.name}`);
+    console.log(`鍒囨崲鍒扮 ${index + 1} 寮狅細${photo.name}`);
 }
 
 function startSlideshow(sourcePhotos = null) {
-    // 清除之前的定时器
+    // 娓呴櫎涔嬪墠鐨勫畾鏃跺櫒
     if (slideshowInterval) {
         clearInterval(slideshowInterval);
         slideshowInterval = null;
     }
     
-    // 检查是否启用自动播放
+    // 妫€鏌ユ槸鍚﹀惎鐢ㄨ嚜鍔ㄦ挱鏀?
     if (!slideshowSettings.autoPlay) {
         isSlideshowPlaying = false;
         return;
@@ -414,16 +414,16 @@ function startSlideshow(sourcePhotos = null) {
     const photosToUse = sourcePhotos || (slideshowPhotos.length > 0 ? slideshowPhotos : photos);
     if (photosToUse.length === 0) return;
 
-    // 使用设置中的间隔时间（转换为毫秒）
+    // 浣跨敤璁剧疆涓殑闂撮殧鏃堕棿锛堣浆鎹负姣锛?
     const intervalMs = slideshowSettings.interval * 1000;
     
-    // 立即切换到下一张，然后开始定时
+    // 绔嬪嵆鍒囨崲鍒颁笅涓€寮狅紝鐒跺悗寮€濮嬪畾鏃?
     setTimeout(() => {
         if (!slideshowSettings.autoPlay) return;
         const next = (currentSlideIndex + 1) % photosToUse.length;
         updateSlideshowSlide(next, photosToUse);
         
-        // 启动定时器
+        // 鍚姩瀹氭椂鍣?
         slideshowInterval = setInterval(() => {
             if (!slideshowSettings.autoPlay) {
                 clearInterval(slideshowInterval);
@@ -459,7 +459,7 @@ function prevSlide() {
     const prev = (currentSlideIndex - 1 + photosToUse.length) % photosToUse.length;
     updateSlideshowSlide(prev, photosToUse);
     
-    // 如果启用了自动播放，重新启动
+    // 濡傛灉鍚敤浜嗚嚜鍔ㄦ挱鏀撅紝閲嶆柊鍚姩
     if (slideshowSettings.autoPlay) {
         startSlideshow(photosToUse);
     }
@@ -473,7 +473,7 @@ function nextSlide() {
     const next = (currentSlideIndex + 1) % photosToUse.length;
     updateSlideshowSlide(next, photosToUse);
     
-    // 如果启用了自动播放，重新启动
+    // 濡傛灉鍚敤浜嗚嚜鍔ㄦ挱鏀撅紝閲嶆柊鍚姩
     if (slideshowSettings.autoPlay) {
         startSlideshow(photosToUse);
     }
@@ -486,13 +486,13 @@ function goToSlide(index) {
     stopSlideshow();
     updateSlideshowSlide(index, photosToUse);
     
-    // 如果启用了自动播放，重新启动
+    // 濡傛灉鍚敤浜嗚嚜鍔ㄦ挱鏀撅紝閲嶆柊鍚姩
     if (slideshowSettings.autoPlay) {
         startSlideshow(photosToUse);
     }
 }
 
-// ========== 幻灯片触摸滑动支持 ==========
+// ========== 骞荤伅鐗囪Е鎽告粦鍔ㄦ敮鎸?==========
 
 let touchStartX = 0;
 let touchEndX = 0;
@@ -501,65 +501,65 @@ function initSlideshowTouch() {
     const container = document.getElementById('slideshowContainer');
     if (!container) return;
 
-    // 触摸开始
+    // 瑙︽懜寮€濮?
     container.addEventListener('touchstart', (e) => {
         touchStartX = e.changedTouches[0].screenX;
     }, { passive: true });
 
-    // 触摸结束
+    // 瑙︽懜缁撴潫
     container.addEventListener('touchend', (e) => {
         touchEndX = e.changedTouches[0].screenX;
         handleSwipe();
     }, { passive: true });
 
-    // 阻止默认滚动行为
+    // 闃绘榛樿婊氬姩琛屼负
     container.addEventListener('touchmove', (e) => {
         e.preventDefault();
     }, { passive: false });
 }
 
 function handleSwipe() {
-    const threshold = 50; // 最小滑动距离
+    const threshold = 50; // 鏈€灏忔粦鍔ㄨ窛绂?
     const diff = touchStartX - touchEndX;
 
     if (Math.abs(diff) < threshold) {
-        return; // 滑动距离太短，忽略
+        return; // 婊戝姩璺濈澶煭锛屽拷鐣?
     }
 
     if (diff > 0) {
-        // 向左滑动，下一张
+        // 鍚戝乏婊戝姩锛屼笅涓€寮?
         nextSlide();
     } else {
-        // 向右滑动，上一张
+        // 鍚戝彸婊戝姩锛屼笂涓€寮?
         prevSlide();
     }
 }
 
-// ========== 重要日期倒计时功能 ==========
+// ========== 閲嶈鏃ユ湡鍊掕鏃跺姛鑳?==========
 
 let countdownEvents = [];
 
-// ========== 成就系统 ==========
+// ========== 鎴愬氨绯荤粺 ==========
 
-// 成就列表定义
+// 鎴愬氨鍒楄〃瀹氫箟
 const achievementDefinitions = [
-    { id: 'first_photo', name: '第一张照片', desc: '上传第一张照片', icon: '📸', check: (data) => data.photoCount >= 1 },
-    { id: 'ten_photos', name: '十全十美', desc: '上传 10 张照片', icon: '💯', check: (data) => data.photoCount >= 10 },
-    { id: 'hundred_photos', name: '百张照片', desc: '上传 100 张照片', icon: '🖼️', check: (data) => data.photoCount >= 100 },
-    { id: 'first_wish', name: '心怀憧憬', desc: '添加第一个愿望', icon: '🌟', check: (data) => data.wishCount >= 1 },
-    { id: 'five_wishes', name: '五福临门', desc: '添加 5 个愿望', icon: '🎋', check: (data) => data.wishCount >= 5 },
-    { id: 'first_complete', name: '梦想成真', desc: '完成第一个愿望', icon: '✨', check: (data) => data.completedWishes >= 1 },
-    { id: 'ten_complete', name: '十全十美', desc: '完成 10 个愿望', icon: '🏆', check: (data) => data.completedWishes >= 10 },
-    { id: 'first_event', name: '重要时刻', desc: '添加第一个重要日期', icon: '📅', check: (data) => data.eventCount >= 1 },
-    { id: 'five_events', name: '五周年纪念', desc: '添加 5 个重要日期', icon: '🎊', check: (data) => data.eventCount >= 5 },
-    { id: '100_days', name: '百日情侣', desc: '在一起 100 天', icon: '💕', check: (data) => data.daysTogether >= 100 },
-    { id: '365_days', name: '周年快乐', desc: '在一起 365 天', icon: '🎉', check: (data) => data.daysTogether >= 365 },
-    { id: 'slideshow', name: '精彩瞬间', desc: '设置幻灯片背景', icon: '🎬', check: (data) => data.hasSlideshowBg },
+    { id: 'first_photo', name: '绗竴寮犵収鐗?, desc: '涓婁紶绗竴寮犵収鐗?, icon: '馃摳', check: (data) => data.photoCount >= 1 },
+    { id: 'ten_photos', name: '鍗佸叏鍗佺編', desc: '涓婁紶 10 寮犵収鐗?, icon: '馃挴', check: (data) => data.photoCount >= 10 },
+    { id: 'hundred_photos', name: '鐧惧紶鐓х墖', desc: '涓婁紶 100 寮犵収鐗?, icon: '馃柤锔?, check: (data) => data.photoCount >= 100 },
+    { id: 'first_wish', name: '蹇冩€€鎲ф啲', desc: '娣诲姞绗竴涓効鏈?, icon: '馃専', check: (data) => data.wishCount >= 1 },
+    { id: 'five_wishes', name: '浜旂涓撮棬', desc: '娣诲姞 5 涓効鏈?, icon: '馃帇', check: (data) => data.wishCount >= 5 },
+    { id: 'first_complete', name: '姊︽兂鎴愮湡', desc: '瀹屾垚绗竴涓効鏈?, icon: '鉁?, check: (data) => data.completedWishes >= 1 },
+    { id: 'ten_complete', name: '鍗佸叏鍗佺編', desc: '瀹屾垚 10 涓効鏈?, icon: '馃弳', check: (data) => data.completedWishes >= 10 },
+    { id: 'first_event', name: '閲嶈鏃跺埢', desc: '娣诲姞绗竴涓噸瑕佹棩鏈?, icon: '馃搮', check: (data) => data.eventCount >= 1 },
+    { id: 'five_events', name: '浜斿懆骞寸邯蹇?, desc: '娣诲姞 5 涓噸瑕佹棩鏈?, icon: '馃帄', check: (data) => data.eventCount >= 5 },
+    { id: '100_days', name: '鐧炬棩鎯呬荆', desc: '鍦ㄤ竴璧?100 澶?, icon: '馃挄', check: (data) => data.daysTogether >= 100 },
+    { id: '365_days', name: '鍛ㄥ勾蹇箰', desc: '鍦ㄤ竴璧?365 澶?, icon: '馃帀', check: (data) => data.daysTogether >= 365 },
+    { id: 'slideshow', name: '绮惧僵鐬棿', desc: '璁剧疆骞荤伅鐗囪儗鏅?, icon: '馃幀', check: (data) => data.hasSlideshowBg },
 ];
 
 let unlockedAchievements = [];
 
-// 加载成就数据
+// 鍔犺浇鎴愬氨鏁版嵁
 function loadAchievements() {
     const saved = localStorage.getItem('achievements');
     if (saved) {
@@ -567,12 +567,12 @@ function loadAchievements() {
     }
 }
 
-// 保存成就数据
+// 淇濆瓨鎴愬氨鏁版嵁
 function saveAchievements() {
     localStorage.setItem('achievements', JSON.stringify(unlockedAchievements));
 }
 
-// 检查并解锁成就
+// 妫€鏌ュ苟瑙ｉ攣鎴愬氨
 function checkAchievements(data) {
     let newUnlock = false;
     
@@ -581,7 +581,7 @@ function checkAchievements(data) {
             if (achievement.check(data)) {
                 unlockedAchievements.push(achievement.id);
                 newUnlock = true;
-                console.log(`🎉 解锁成就：${achievement.name}`);
+                console.log(`馃帀 瑙ｉ攣鎴愬氨锛?{achievement.name}`);
             }
         }
     });
@@ -592,7 +592,7 @@ function checkAchievements(data) {
     }
 }
 
-// 渲染成就卡片
+// 娓叉煋鎴愬氨鍗＄墖
 function renderAchievements() {
     const grid = document.getElementById('achievementsGrid');
     const unlockedCount = document.getElementById('unlockedCount');
@@ -613,18 +613,18 @@ function renderAchievements() {
                 <div class="achievement-icon">${achievement.icon}</div>
                 <div class="achievement-name">${achievement.name}</div>
                 <div class="achievement-desc">${achievement.desc}</div>
-                <div class="achievement-progress">${isUnlocked ? '✅ 已解锁' : '🔒 未解锁'}</div>
+                <div class="achievement-progress">${isUnlocked ? '鉁?宸茶В閿? : '馃敀 鏈В閿?}</div>
             </div>
         `;
     }).join('');
 }
 
-// ========== 愿望清单功能 ==========
+// ========== 鎰挎湜娓呭崟鍔熻兘 ==========
 
 let wishes = [];
 let currentWishFilter = 'all';
 
-// 从 GitHub 加载愿望数据
+// 浠?GitHub 鍔犺浇鎰挎湜鏁版嵁
 async function loadWishes() {
     try {
         const headers = { 'Accept': 'application/vnd.github.v3+json' };
@@ -638,17 +638,17 @@ async function loadWishes() {
             const data = await res.json();
             const content = base64ToUtf8(data.content);
             wishes = JSON.parse(content);
-            console.log(`加载愿望：${wishes.length}个`);
+            console.log(`鍔犺浇鎰挎湜锛?{wishes.length}涓猔);
         } else if (res.status === 404) {
             wishes = [];
         }
     } catch (e) {
-        console.error('加载愿望失败:', e);
+        console.error('鍔犺浇鎰挎湜澶辫触:', e);
         wishes = [];
     }
 }
 
-// 保存愿望数据到 GitHub
+// 淇濆瓨鎰挎湜鏁版嵁鍒?GitHub
 async function saveWishes() {
     try {
         const headers = {
@@ -669,7 +669,7 @@ async function saveWishes() {
 
         const content = utf8ToBase64(JSON.stringify(wishes, null, 2));
         const body = {
-            message: '更新愿望清单',
+            message: '鏇存柊鎰挎湜娓呭崟',
             content: content,
             branch: CONFIG.branch
         };
@@ -683,31 +683,31 @@ async function saveWishes() {
 
         return res.ok;
     } catch (e) {
-        console.error('保存愿望失败:', e);
+        console.error('淇濆瓨鎰挎湜澶辫触:', e);
         return false;
     }
 }
 
-// 图标映射
+// 鍥炬爣鏄犲皠
 const wishIcons = {
-    travel: '✈️',
-    food: '🍳',
-    gift: '🎁',
-    experience: '🎭',
-    skill: '📚',
-    other: '⭐'
+    travel: '鉁堬笍',
+    food: '馃嵆',
+    gift: '馃巵',
+    experience: '馃幁',
+    skill: '馃摎',
+    other: '猸?
 };
 
 const categoryNames = {
-    travel: '旅行',
-    food: '美食',
-    gift: '礼物',
-    experience: '体验',
-    skill: '技能',
-    other: '其他'
+    travel: '鏃呰',
+    food: '缇庨',
+    gift: '绀肩墿',
+    experience: '浣撻獙',
+    skill: '鎶€鑳?,
+    other: '鍏朵粬'
 };
 
-// 渲染愿望卡片
+// 娓叉煋鎰挎湜鍗＄墖
 function renderWishes() {
     const grid = document.getElementById('wishlistGrid');
     const empty = document.getElementById('emptyWishlist');
@@ -717,7 +717,7 @@ function renderWishes() {
     
     if (!grid || !empty) return;
     
-    // 筛选
+    // 绛涢€?
     let filteredWishes = wishes;
     if (currentWishFilter === 'pending') {
         filteredWishes = wishes.filter(w => !w.completed);
@@ -725,7 +725,7 @@ function renderWishes() {
         filteredWishes = wishes.filter(w => w.completed);
     }
     
-    // 统计
+    // 缁熻
     const total = wishes.length;
     const completed = wishes.filter(w => w.completed).length;
     const pending = total - completed;
@@ -754,23 +754,23 @@ function renderWishes() {
             <div class="wish-card ${wish.completed ? 'completed' : ''} ${isUrgent ? 'urgent' : ''}">
                 <div class="wish-header">
                     <span class="wish-category">${wishIcons[wish.category]} ${categoryNames[wish.category]}</span>
-                    <span class="wish-priority ${wish.priority}">${wish.priority === 'normal' ? '普通' : wish.priority === 'important' ? '重要' : '紧急'}</span>
+                    <span class="wish-priority ${wish.priority}">${wish.priority === 'normal' ? '鏅€? : wish.priority === 'important' ? '閲嶈' : '绱ф€?}</span>
                 </div>
                 <div class="wish-content">${wish.completed ? '<s>' : ''}${wish.content}${wish.completed ? '</s>' : ''}</div>
-                ${wish.deadline ? `<div class="wish-meta"><span class="wish-deadline">📅 ${wish.deadline} ${daysLeft !== null && daysLeft >= 0 ? '(还剩' + daysLeft + '天)' : ''}</span></div>` : ''}
+                ${wish.deadline ? `<div class="wish-meta"><span class="wish-deadline">馃搮 ${wish.deadline} ${daysLeft !== null && daysLeft >= 0 ? '(杩樺墿' + daysLeft + '澶?' : ''}</span></div>` : ''}
                 <div class="wish-actions">
                     <button class="wish-action-btn complete ${wish.completed ? 'completed' : ''}" onclick="toggleWishComplete(${actualIndex})" ${wish.completed ? 'disabled' : ''}>
-                        ${wish.completed ? '✓ 已完成' : '○ 完成'}
+                        ${wish.completed ? '鉁?宸插畬鎴? : '鈼?瀹屾垚'}
                     </button>
-                    <button class="wish-action-btn edit" onclick="editWish(${actualIndex})">编辑</button>
-                    <button class="wish-action-btn delete" onclick="deleteWish(${actualIndex})">删除</button>
+                    <button class="wish-action-btn edit" onclick="editWish(${actualIndex})">缂栬緫</button>
+                    <button class="wish-action-btn delete" onclick="deleteWish(${actualIndex})">鍒犻櫎</button>
                 </div>
             </div>
         `;
     }).join('');
 }
 
-// 显示/隐藏愿望面板
+// 鏄剧ず/闅愯棌鎰挎湜闈㈡澘
 function toggleWishPanel() {
     const panel = document.getElementById('wishPanel');
     const overlay = document.getElementById('modalOverlay');
@@ -784,19 +784,19 @@ function toggleWishPanel() {
             document.body.appendChild(newOverlay);
         }
         panel.style.display = 'block';
-        // 清空表单
+        // 娓呯┖琛ㄥ崟
         document.getElementById('wishContent').value = '';
         document.getElementById('wishCategory').value = 'travel';
         document.getElementById('wishPriority').value = 'normal';
         document.getElementById('wishDeadline').value = '';
-        document.getElementById('wishPanelTitle').textContent = '➕ 添加愿望';
+        document.getElementById('wishPanelTitle').textContent = '鉃?娣诲姞鎰挎湜';
     } else {
         panel.style.display = 'none';
         if (overlay) overlay.remove();
     }
 }
 
-// 保存愿望（添加或编辑）
+// 淇濆瓨鎰挎湜锛堟坊鍔犳垨缂栬緫锛?
 async function saveWish() {
     const content = document.getElementById('wishContent').value.trim();
     const category = document.getElementById('wishCategory').value;
@@ -804,15 +804,15 @@ async function saveWish() {
     const deadline = document.getElementById('wishDeadline').value;
     
     if (!content) {
-        alert('请填写愿望内容');
+        alert('璇峰～鍐欐効鏈涘唴瀹?);
         return;
     }
     
-    // 检查是否是编辑模式（通过面板标题判断）
-    const isEdit = document.getElementById('wishPanelTitle').textContent.includes('编辑');
+    // 妫€鏌ユ槸鍚︽槸缂栬緫妯″紡锛堥€氳繃闈㈡澘鏍囬鍒ゆ柇锛?
+    const isEdit = document.getElementById('wishPanelTitle').textContent.includes('缂栬緫');
     
     if (isEdit) {
-        // 编辑模式：更新当前编辑的愿望
+        // 缂栬緫妯″紡锛氭洿鏂板綋鍓嶇紪杈戠殑鎰挎湜
         editingWishIndex = parseInt(editingWishIndex);
         if (!isNaN(editingWishIndex) && wishes[editingWishIndex]) {
             wishes[editingWishIndex].content = content;
@@ -825,13 +825,13 @@ async function saveWish() {
                 renderWishes();
                 toggleWishPanel();
                 checkAchievements(getAchievementData());
-                showStatus('更新成功！', 'success');
+                showStatus('鏇存柊鎴愬姛锛?, 'success');
             } else {
-                alert('保存失败，请检查网络');
+                alert('淇濆瓨澶辫触锛岃妫€鏌ョ綉缁?);
             }
         }
     } else {
-        // 添加模式
+        // 娣诲姞妯″紡
         const newWish = {
             id: Date.now(),
             content: content,
@@ -849,14 +849,14 @@ async function saveWish() {
             renderWishes();
             toggleWishPanel();
             checkAchievements(getAchievementData());
-            showStatus('添加成功！', 'success');
+            showStatus('娣诲姞鎴愬姛锛?, 'success');
         } else {
-            alert('保存失败，请检查网络');
+            alert('淇濆瓨澶辫触锛岃妫€鏌ョ綉缁?);
         }
     }
 }
 
-// 编辑愿望
+// 缂栬緫鎰挎湜
 let editingWishIndex = null;
 
 function editWish(index) {
@@ -867,12 +867,12 @@ function editWish(index) {
     document.getElementById('wishCategory').value = wish.category;
     document.getElementById('wishPriority').value = wish.priority;
     document.getElementById('wishDeadline').value = wish.deadline || '';
-    document.getElementById('wishPanelTitle').textContent = '✏️ 编辑愿望';
+    document.getElementById('wishPanelTitle').textContent = '鉁忥笍 缂栬緫鎰挎湜';
     
     toggleWishPanel();
 }
 
-// 切换完成状态
+// 鍒囨崲瀹屾垚鐘舵€?
 async function toggleWishComplete(index) {
     wishes[index].completed = !wishes[index].completed;
     if (wishes[index].completed) {
@@ -885,13 +885,13 @@ async function toggleWishComplete(index) {
     if (success) {
         renderWishes();
         checkAchievements(getAchievementData());
-        showStatus(wishes[index].completed ? '恭喜完成愿望！🎉' : '已取消完成', 'success');
+        showStatus(wishes[index].completed ? '鎭枩瀹屾垚鎰挎湜锛侌煄? : '宸插彇娑堝畬鎴?, 'success');
     }
 }
 
-// 删除愿望
+// 鍒犻櫎鎰挎湜
 async function deleteWish(index) {
-    if (!confirm('确定删除这个愿望吗？')) return;
+    if (!confirm('纭畾鍒犻櫎杩欎釜鎰挎湜鍚楋紵')) return;
     
     wishes.splice(index, 1);
     
@@ -899,23 +899,23 @@ async function deleteWish(index) {
     if (success) {
         renderWishes();
         checkAchievements(getAchievementData());
-        showStatus('删除成功', 'success');
+        showStatus('鍒犻櫎鎴愬姛', 'success');
     }
 }
 
-// 筛选愿望
+// 绛涢€夋効鏈?
 function filterWishes(filter) {
     currentWishFilter = filter;
     
-    // 更新按钮状态
+    // 鏇存柊鎸夐挳鐘舵€?
     document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent === (filter === 'all' ? '全部' : filter === 'pending' ? '进行中' : '已完成'));
+        btn.classList.toggle('active', btn.textContent === (filter === 'all' ? '鍏ㄩ儴' : filter === 'pending' ? '杩涜涓? : '宸插畬鎴?));
     });
     
     renderWishes();
 }
 
-// 获取成就检查数据
+// 鑾峰彇鎴愬氨妫€鏌ユ暟鎹?
 function getAchievementData() {
     const start = new Date(anniversaryDate);
     const now = new Date();
@@ -931,16 +931,16 @@ function getAchievementData() {
     };
 }
 
-// 图标映射
+// 鍥炬爣鏄犲皠
 const typeIcons = {
-    birthday: '🎂',
-    anniversary: '💕',
-    travel: '✈️',
-    event: '📅',
-    custom: '⭐'
+    birthday: '馃巶',
+    anniversary: '馃挄',
+    travel: '鉁堬笍',
+    event: '馃搮',
+    custom: '猸?
 };
 
-// 从 GitHub 加载倒计时数据
+// 浠?GitHub 鍔犺浇鍊掕鏃舵暟鎹?
 async function loadCountdownEvents() {
     try {
         const headers = { 'Accept': 'application/vnd.github.v3+json' };
@@ -954,19 +954,19 @@ async function loadCountdownEvents() {
             const data = await res.json();
             const content = base64ToUtf8(data.content);
             countdownEvents = JSON.parse(content);
-            console.log(`加载倒计时事件：${countdownEvents.length}个`);
+            console.log(`鍔犺浇鍊掕鏃朵簨浠讹細${countdownEvents.length}涓猔);
         } else if (res.status === 404) {
-            // 文件不存在，创建空数组
+            // 鏂囦欢涓嶅瓨鍦紝鍒涘缓绌烘暟缁?
             countdownEvents = [];
-            console.log('倒计时文件不存在，将创建新文件');
+            console.log('鍊掕鏃舵枃浠朵笉瀛樺湪锛屽皢鍒涘缓鏂版枃浠?);
         }
     } catch (e) {
-        console.error('加载倒计时失败:', e);
+        console.error('鍔犺浇鍊掕鏃跺け璐?', e);
         countdownEvents = [];
     }
 }
 
-// 保存倒计时数据到 GitHub
+// 淇濆瓨鍊掕鏃舵暟鎹埌 GitHub
 async function saveCountdownEvents() {
     try {
         const headers = {
@@ -975,7 +975,7 @@ async function saveCountdownEvents() {
         };
         if (githubToken) headers['Authorization'] = `token ${githubToken}`;
 
-        // 先获取文件的 SHA
+        // 鍏堣幏鍙栨枃浠剁殑 SHA
         let sha = null;
         const getRes = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/events.json?ref=${CONFIG.branch}`, {
             headers: headers
@@ -986,10 +986,10 @@ async function saveCountdownEvents() {
             sha = getData.sha;
         }
 
-        // 保存文件
+        // 淇濆瓨鏂囦欢
         const content = utf8ToBase64(JSON.stringify(countdownEvents, null, 2));
         const body = {
-            message: '更新倒计时事件',
+            message: '鏇存柊鍊掕鏃朵簨浠?,
             content: content,
             branch: CONFIG.branch
         };
@@ -1002,19 +1002,19 @@ async function saveCountdownEvents() {
         });
 
         if (res.ok) {
-            console.log('倒计时事件已保存');
+            console.log('鍊掕鏃朵簨浠跺凡淇濆瓨');
             return true;
         } else {
-            console.error('保存失败:', await res.text());
+            console.error('淇濆瓨澶辫触:', await res.text());
             return false;
         }
     } catch (e) {
-        console.error('保存倒计时失败:', e);
+        console.error('淇濆瓨鍊掕鏃跺け璐?', e);
         return false;
     }
 }
 
-// 渲染倒计时卡片
+// 娓叉煋鍊掕鏃跺崱鐗?
 function renderCountdownCards() {
     const grid = document.getElementById('countdownGrid');
     const empty = document.getElementById('emptyCountdown');
@@ -1039,7 +1039,7 @@ function renderCountdownCards() {
 
         let daysDiff = Math.ceil((eventDate - now) / (1000 * 60 * 60 * 24));
 
-        // 如果是重复事件且已过期，计算明年的日期
+        // 濡傛灉鏄噸澶嶄簨浠朵笖宸茶繃鏈燂紝璁＄畻鏄庡勾鐨勬棩鏈?
         let isUrgent = false;
         if (daysDiff < 0 && event.repeat) {
             const nextYear = now.getFullYear() + 1;
@@ -1049,32 +1049,32 @@ function renderCountdownCards() {
 
         isUrgent = daysDiff <= 7 && daysDiff >= 0;
 
-        const daysText = daysDiff < 0 ? '已过' : `还剩 ${daysDiff} 天`;
-        const label = daysDiff === 0 ? '🎉 就是今天！' : (daysDiff < 0 ? '已经过去' : '天');
+        const daysText = daysDiff < 0 ? '宸茶繃' : `杩樺墿 ${daysDiff} 澶ー;
+        const label = daysDiff === 0 ? '馃帀 灏辨槸浠婂ぉ锛? : (daysDiff < 0 ? '宸茬粡杩囧幓' : '澶?);
 
         return `
             <div class="countdown-card ${isUrgent ? 'urgent' : ''}">
-                <div class="countdown-icon">${typeIcons[event.type] || '⭐'}</div>
+                <div class="countdown-icon">${typeIcons[event.type] || '猸?}</div>
                 <div class="countdown-name">${event.name}</div>
                 <div class="countdown-days">${daysDiff < 0 ? Math.abs(daysDiff) : daysDiff}</div>
                 <div class="countdown-label">${label}</div>
                 <div class="countdown-date">${event.date}</div>
                 <div class="countdown-actions">
-                    <button class="countdown-action-btn edit" onclick="editCountdown(${index})">编辑</button>
-                    <button class="countdown-action-btn delete" onclick="deleteCountdown(${index})">删除</button>
+                    <button class="countdown-action-btn edit" onclick="editCountdown(${index})">缂栬緫</button>
+                    <button class="countdown-action-btn delete" onclick="deleteCountdown(${index})">鍒犻櫎</button>
                 </div>
             </div>
         `;
     }).join('');
 }
 
-// 显示/隐藏添加面板
+// 鏄剧ず/闅愯棌娣诲姞闈㈡澘
 function toggleAddCountdownPanel() {
     const panel = document.getElementById('addCountdownPanel');
     const overlay = document.getElementById('modalOverlay');
 
     if (panel.style.display === 'none' || !panel.style.display) {
-        // 创建遮罩层
+        // 鍒涘缓閬僵灞?
         if (!overlay) {
             const newOverlay = document.createElement('div');
             newOverlay.id = 'modalOverlay';
@@ -1083,7 +1083,7 @@ function toggleAddCountdownPanel() {
             document.body.appendChild(newOverlay);
         }
         panel.style.display = 'block';
-        // 清空表单
+        // 娓呯┖琛ㄥ崟
         document.getElementById('countdownName').value = '';
         document.getElementById('countdownDate').value = '';
         document.getElementById('countdownType').value = 'birthday';
@@ -1094,7 +1094,7 @@ function toggleAddCountdownPanel() {
     }
 }
 
-// 添加倒计时
+// 娣诲姞鍊掕鏃?
 async function addCountdown() {
     const name = document.getElementById('countdownName').value.trim();
     const date = document.getElementById('countdownDate').value;
@@ -1102,7 +1102,7 @@ async function addCountdown() {
     const repeat = document.getElementById('countdownRepeat').checked;
 
     if (!name || !date) {
-        alert('请填写完整信息');
+        alert('璇峰～鍐欏畬鏁翠俊鎭?);
         return;
     }
 
@@ -1121,13 +1121,13 @@ async function addCountdown() {
     if (success) {
         renderCountdownCards();
         toggleAddCountdownPanel();
-        showStatus('添加成功！', 'success');
+        showStatus('娣诲姞鎴愬姛锛?, 'success');
     } else {
-        alert('保存失败，请检查网络');
+        alert('淇濆瓨澶辫触锛岃妫€鏌ョ綉缁?);
     }
 }
 
-// 编辑倒计时
+// 缂栬緫鍊掕鏃?
 function editCountdown(index) {
     const event = countdownEvents[index];
     document.getElementById('countdownName').value = event.name;
@@ -1135,13 +1135,13 @@ function editCountdown(index) {
     document.getElementById('countdownType').value = event.type;
     document.getElementById('countdownRepeat').checked = event.repeat;
 
-    // 删除旧的，保存时添加新的
+    // 鍒犻櫎鏃х殑锛屼繚瀛樻椂娣诲姞鏂扮殑
     countdownEvents.splice(index, 1);
 
     toggleAddCountdownPanel();
-    document.querySelector('.add-countdown-panel .panel-header h3').textContent = '✏️ 编辑重要日期';
+    document.querySelector('.add-countdown-panel .panel-header h3').textContent = '鉁忥笍 缂栬緫閲嶈鏃ユ湡';
 
-    // 修改保存按钮行为
+    // 淇敼淇濆瓨鎸夐挳琛屼负
     const submitBtn = document.querySelector('.submit-btn');
     submitBtn.onclick = async () => {
         const name = document.getElementById('countdownName').value.trim();
@@ -1150,7 +1150,7 @@ function editCountdown(index) {
         const repeat = document.getElementById('countdownRepeat').checked;
 
         if (!name || !date) {
-            alert('请填写完整信息');
+            alert('璇峰～鍐欏畬鏁翠俊鎭?);
             return;
         }
 
@@ -1169,27 +1169,27 @@ function editCountdown(index) {
         if (success) {
             renderCountdownCards();
             toggleAddCountdownPanel();
-            document.querySelector('.add-countdown-panel .panel-header h3').textContent = '➕ 添加重要日期';
+            document.querySelector('.add-countdown-panel .panel-header h3').textContent = '鉃?娣诲姞閲嶈鏃ユ湡';
             submitBtn.onclick = addCountdown;
-            showStatus('更新成功！', 'success');
+            showStatus('鏇存柊鎴愬姛锛?, 'success');
         } else {
-            alert('保存失败，请检查网络');
+            alert('淇濆瓨澶辫触锛岃妫€鏌ョ綉缁?);
         }
     };
 }
 
-// 删除倒计时
+// 鍒犻櫎鍊掕鏃?
 async function deleteCountdown(index) {
-    if (!confirm('确定删除这个倒计时吗？')) return;
+    if (!confirm('纭畾鍒犻櫎杩欎釜鍊掕鏃跺悧锛?)) return;
 
     countdownEvents.splice(index, 1);
 
     const success = await saveCountdownEvents();
     if (success) {
         renderCountdownCards();
-        showStatus('删除成功', 'success');
+        showStatus('鍒犻櫎鎴愬姛', 'success');
     } else {
-        alert('删除失败，请检查网络');
+        alert('鍒犻櫎澶辫触锛岃妫€鏌ョ綉缁?);
     }
 }
 
@@ -1230,14 +1230,14 @@ function updateFullscreenSlide() {
     const photo = photos[fullscreenIndex];
     document.getElementById('fsImg').src = getImageUrl(photo.name);
     document.getElementById('fsCaption').textContent =
-        `${photo.name.split('/').pop().replace(/^\d+_/, '')} · ${new Date(photo.timestamp).toLocaleDateString('zh-CN')}`;
+        `${photo.name.split('/').pop().replace(/^\d+_/, '')} 路 ${new Date(photo.timestamp).toLocaleDateString('zh-CN')}`;
 
-    // 进度条
+    // 杩涘害鏉?
     const progress = ((fullscreenIndex + 1) / photos.length) * 100;
     document.getElementById('fsProgress').style.width = progress + '%';
 }
 
-// ========== 其他功能 ==========
+// ========== 鍏朵粬鍔熻兘 ==========
 
 function createFloatingHearts() {
     const container = document.getElementById('floatingHearts');
@@ -1245,7 +1245,7 @@ function createFloatingHearts() {
     setInterval(() => {
         const heart = document.createElement('div');
         heart.className = 'heart';
-        heart.textContent = ['💕', '💖', '💗', '💓', '💝'][Math.floor(Math.random() * 5)];
+        heart.textContent = ['馃挄', '馃挅', '馃挆', '馃挀', '馃挐'][Math.floor(Math.random() * 5)];
         heart.style.left = Math.random() * 100 + '%';
         heart.style.animationDuration = (Math.random() * 3 + 4) + 's';
         heart.style.opacity = Math.random() * 0.5 + 0.3;
@@ -1265,7 +1265,7 @@ function scrollToUpload() {
     document.getElementById('uploadSection').scrollIntoView({ behavior: 'smooth' });
 }
 
-// ========== 原有功能 ==========
+// ========== 鍘熸湁鍔熻兘 ==========
 
 function setupDragDrop() {
     const dropZone = document.getElementById('dropZone');
@@ -1295,11 +1295,11 @@ function updateProgress(current, total, filename) {
     const pct = total > 0 ? (current / total) * 100 : 0;
     c.classList.add('active');
     f.style.width = pct + '%';
-    t.textContent = filename ? `上传中 ${filename} (${current}/${total})` : '';
+    t.textContent = filename ? `涓婁紶涓?${filename} (${current}/${total})` : '';
     if (pct >= 100) setTimeout(() => c.classList.remove('active'), 1000);
 }
 
-async function handleFiles(fileList, folder = '99-临时') {
+async function handleFiles(fileList, folder = '99-涓存椂') {
     const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
     if (!files.length) return;
 
@@ -1312,7 +1312,7 @@ async function handleFiles(fileList, folder = '99-临时') {
         } catch (e) { console.error(e); }
     }
     updateProgress(files.length, files.length);
-    showStatus(success > 0 ? `成功上传 ${success} 张照片` : '上传失败', success > 0 ? 'success' : 'error');
+    showStatus(success > 0 ? `鎴愬姛涓婁紶 ${success} 寮犵収鐗嘸 : '涓婁紶澶辫触', success > 0 ? 'success' : 'error');
     if (success) {
         await clearCache();
         setTimeout(() => refreshPhotos(), 2000);
@@ -1320,7 +1320,7 @@ async function handleFiles(fileList, folder = '99-临时') {
     document.getElementById('fileInput').value = '';
 }
 
-async function uploadFile(file, folder = '未分类') {
+async function uploadFile(file, folder = '鏈垎绫?) {
     const filename = `${folder}/${Date.now()}_${file.name}`;
     const base64 = await new Promise(r => {
         const reader = new FileReader();
@@ -1346,8 +1346,8 @@ async function uploadFile(file, folder = '未分类') {
 }
 
 function getImageUrl(filename) {
-    // 使用 jsDelivr CDN 加速图片加载
-    // jsDelivr 是免费的全球 CDN，基于 GitHub 仓库
+    // 浣跨敤 jsDelivr CDN 鍔犻€熷浘鐗囧姞杞?
+    // jsDelivr 鏄厤璐圭殑鍏ㄧ悆 CDN锛屽熀浜?GitHub 浠撳簱
     return `https://cdn.jsdelivr.net/gh/xiaobubuya/image@main/${filename}`;
 }
 
@@ -1355,7 +1355,7 @@ async function fetchFromServer() {
     const headers = { 'Accept': 'application/vnd.github.v3+json' };
     if (githubToken) headers['Authorization'] = `token ${githubToken}`;
 
-    // 获取根目录
+    // 鑾峰彇鏍圭洰褰?
     const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/?ref=main`, {
         headers: headers
     });
@@ -1369,14 +1369,14 @@ async function parseFilesAndFolders(files) {
 
     if (!Array.isArray(files)) return { photos: photoList, folders: folderList };
 
-    // 识别文件夹
+    // 璇嗗埆鏂囦欢澶?
     const folderItems = files.filter(f => f.type === 'dir');
-    folderList.push({ id: 'all', name: '所有相册', count: 0 });
+    folderList.push({ id: 'all', name: '鎵€鏈夌浉鍐?, count: 0 });
 
-    // 处理每个文件夹
+    // 澶勭悊姣忎釜鏂囦欢澶?
     for (const folder of folderItems) {
         try {
-            // 使用 folder.url 并添加 ?ref=main 参数确保获取正确分支
+            // 浣跨敤 folder.url 骞舵坊鍔??ref=main 鍙傛暟纭繚鑾峰彇姝ｇ‘鍒嗘敮
             const folderUrl = folder.url.includes('?') ? `${folder.url}&ref=main` : `${folder.url}?ref=main`;
             const folderRes = await fetch(folderUrl, {
                 headers: { 'Accept': 'application/vnd.github.v3+json' }
@@ -1397,20 +1397,20 @@ async function parseFilesAndFolders(files) {
                 photoList.push(...folderPhotos);
                 folderList.push({
                     id: folder.name,
-                    name: folder.name === '%E6%9C%AA%E5%88%86%E7%B1%BB' ? '未分类' : folder.name,
+                    name: folder.name === '%E6%9C%AA%E5%88%86%E7%B1%BB' ? '鏈垎绫? : folder.name,
                     count: folderPhotos.length
                 });
             } else {
-                console.error(`加载文件夹 ${folder.name} 失败：HTTP ${folderRes.status}`);
+                console.error(`鍔犺浇鏂囦欢澶?${folder.name} 澶辫触锛欻TTP ${folderRes.status}`);
             }
         } catch (e) {
-            console.error(`加载文件夹 ${folder.name} 异常:`, e);
+            console.error(`鍔犺浇鏂囦欢澶?${folder.name} 寮傚父:`, e);
         }
     }
 
     photoList.sort((a, b) => b.timestamp - a.timestamp);
 
-    // 更新总数
+    // 鏇存柊鎬绘暟
     const allFolder = folderList.find(f => f.id === 'all');
     if (allFolder) allFolder.count = photoList.length;
 
@@ -1421,33 +1421,33 @@ async function loadPhotos() {
     const gallery = document.getElementById('gallery');
     const empty = document.getElementById('emptyState');
 
-    console.log('开始加载照片...');
+    console.log('寮€濮嬪姞杞界収鐗?..');
 
-    // 同时加载幻灯片照片
+    // 鍚屾椂鍔犺浇骞荤伅鐗囩収鐗?
     await loadSlideshowPhotos();
 
     const cached = await getCachedPhotos();
-    console.log('缓存照片数量:', cached ? cached.length : 0);
+    console.log('缂撳瓨鐓х墖鏁伴噺:', cached ? cached.length : 0);
 
     if (cached && cached.length > 0) {
-        console.log('使用缓存照片');
+        console.log('浣跨敤缂撳瓨鐓х墖');
         photos = cached;
         updateStats();
         filterPhotos();
         initSlideshow();
     } else {
-        console.log('无缓存，显示骨架屏');
+        console.log('鏃犵紦瀛橈紝鏄剧ず楠ㄦ灦灞?);
         gallery.innerHTML = '<div class="skeleton" style="height:200px"></div>'.repeat(6);
     }
 
     try {
-        console.log('请求 GitHub API...');
+        console.log('璇锋眰 GitHub API...');
         const res = await fetchFromServer();
-        console.log('API 响应状态:', res.status);
+        console.log('API 鍝嶅簲鐘舵€?', res.status);
 
         if (!res.ok) {
             if (res.status === 404) {
-                console.log('仓库或目录不存在');
+                console.log('浠撳簱鎴栫洰褰曚笉瀛樺湪');
                 photos = [];
                 gallery.innerHTML = '';
                 empty.classList.add('active');
@@ -1459,37 +1459,37 @@ async function loadPhotos() {
             throw new Error(`HTTP ${res.status}`);
         }
 
-        console.log('解析 API 响应...');
+        console.log('瑙ｆ瀽 API 鍝嶅簲...');
         const files = await res.json();
-        console.log('根目录文件/文件夹数量:', files.length);
+        console.log('鏍圭洰褰曟枃浠?鏂囦欢澶规暟閲?', files.length);
 
         const { photos: newPhotos, folders: newFolders } = await parseFilesAndFolders(files);
-        console.log('解析后照片数量:', newPhotos.length);
-        console.log('解析后文件夹数量:', newFolders.length);
+        console.log('瑙ｆ瀽鍚庣収鐗囨暟閲?', newPhotos.length);
+        console.log('瑙ｆ瀽鍚庢枃浠跺す鏁伴噺:', newFolders.length);
         if (newPhotos.length > 0) {
-            console.log('前 3 张照片:', newPhotos.slice(0, 3).map(p => p.name));
+            console.log('鍓?3 寮犵収鐗?', newPhotos.slice(0, 3).map(p => p.name));
         }
 
         const hasChanged = JSON.stringify(newPhotos) !== JSON.stringify(photos);
-        console.log('照片是否有变化:', hasChanged);
+        console.log('鐓х墖鏄惁鏈夊彉鍖?', hasChanged);
 
         if (hasChanged || photos.length === 0) {
-            console.log('更新照片列表');
+            console.log('鏇存柊鐓х墖鍒楄〃');
             photos = newPhotos;
             folders = newFolders;
             await cachePhotos(photos);
             updateStats();
             filterPhotos();
             initSlideshow();
-            showStatus(`已加载 ${photos.length} 张照片`, 'success');
-            // 检查照片相关成就
+            showStatus(`宸插姞杞?${photos.length} 寮犵収鐗嘸, 'success');
+            // 妫€鏌ョ収鐗囩浉鍏虫垚灏?
             checkAchievements(getAchievementData());
         }
 
     } catch (e) {
         console.error('Load error:', e);
         if (!cached || cached.length === 0) {
-            showStatus('加载失败，请检查网络', 'error');
+            showStatus('鍔犺浇澶辫触锛岃妫€鏌ョ綉缁?, 'error');
         }
     }
 }
@@ -1499,7 +1499,7 @@ function updateStats() {
     document.getElementById('folderCount').textContent = folders.length > 0 ? folders.length - 1 : 0;
     document.getElementById('storageUsed').textContent = calculateStorageUsage(photos);
 
-    // 更新文件夹筛选器
+    // 鏇存柊鏂囦欢澶圭瓫閫夊櫒
     const folderFilter = document.getElementById('folderFilter');
     const currentValue = folderFilter.value;
     folderFilter.innerHTML = folders.map(f =>
@@ -1519,17 +1519,17 @@ function filterPhotos() {
     currentFilter.search = document.getElementById('searchInput').value.toLowerCase();
 
     filteredPhotos = photos.filter(photo => {
-        // 文件夹筛选
+        // 鏂囦欢澶圭瓫閫?
         if (currentFilter.folder !== 'all' && photo.folder !== currentFilter.folder) {
             return false;
         }
 
-        // 搜索筛选
+        // 鎼滅储绛涢€?
         if (currentFilter.search && !photo.name.toLowerCase().includes(currentFilter.search)) {
             return false;
         }
 
-        // 时间筛选
+        // 鏃堕棿绛涢€?
         const photoDate = new Date(photo.timestamp);
         const now = new Date();
 
@@ -1601,9 +1601,9 @@ function renderPhotos(append = false) {
                 <img data-src="${getImageUrl(p.name)}" alt="${name}" loading="lazy">
                 <div class="photo-overlay" onclick="event.stopPropagation()">
                     <div class="photo-actions">
-                        <button class="photo-action-btn" onclick="openLightbox(${actualIndex})" title="查看">👁</button>
-                        <button class="photo-action-btn" onclick="setPhotoAsBackground(${actualIndex})" title="设为背景">🖼️</button>
-                        <button class="photo-action-btn delete" onclick="deletePhoto('${p.name}', '${p.sha}')" title="删除">🗑</button>
+                        <button class="photo-action-btn" onclick="openLightbox(${actualIndex})" title="鏌ョ湅">馃憗</button>
+                        <button class="photo-action-btn" onclick="setPhotoAsBackground(${actualIndex})" title="璁句负鑳屾櫙">馃柤锔?/button>
+                        <button class="photo-action-btn delete" onclick="deletePhoto('${p.name}', '${p.sha}')" title="鍒犻櫎">馃棏</button>
                     </div>
                 </div>
             </div>
@@ -1653,7 +1653,7 @@ function setPhotoAsBackground(index) {
     const bgSlideshow = document.getElementById('bgSlideshow');
     bgSlideshow.innerHTML = `<div class="bg-slide active" style="background-image: url('${bgSettings.customPhoto}')"></div>`;
 
-    showStatus('已设为背景图片', 'success');
+    showStatus('宸茶涓鸿儗鏅浘鐗?, 'success');
 }
 
 function loadMorePhotos() {
@@ -1661,8 +1661,8 @@ function loadMorePhotos() {
 }
 
 async function deletePhoto(filename, sha) {
-    if (!confirm('确定删除这张照片吗？')) return;
-    showStatus('删除中...', 'loading');
+    if (!confirm('纭畾鍒犻櫎杩欏紶鐓х墖鍚楋紵')) return;
+    showStatus('鍒犻櫎涓?..', 'loading');
     try {
         const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${filename}`, {
             method: 'DELETE',
@@ -1677,11 +1677,11 @@ async function deletePhoto(filename, sha) {
             })
         });
         if (!res.ok) throw new Error('Delete failed');
-        showStatus('删除成功', 'success');
+        showStatus('鍒犻櫎鎴愬姛', 'success');
         await clearCache();
         setTimeout(() => refreshPhotos(), 1000);
     } catch (e) {
-        showStatus('删除失败', 'error');
+        showStatus('鍒犻櫎澶辫触', 'error');
         console.error(e);
     }
 }
@@ -1700,7 +1700,7 @@ function openLightbox(index) {
     const date = new Date(photo.timestamp).toLocaleString('zh-CN');
     const size = (photo.size / 1024).toFixed(1) + ' KB';
 
-    meta.textContent = `${date} · ${size}`;
+    meta.textContent = `${date} 路 ${size}`;
 
     lb.classList.add('active');
     document.body.style.overflow = 'hidden';
@@ -1729,7 +1729,7 @@ async function refreshPhotos() {
     initSlideshow();
 }
 
-// 缓存操作
+// 缂撳瓨鎿嶄綔
 async function getCachedPhotos() {
     if (!db) return null;
     return new Promise((resolve) => {
@@ -1754,32 +1754,32 @@ async function clearCache() {
     tx1.objectStore('photos').clear();
     const tx2 = db.transaction('folders', 'readwrite');
     tx2.objectStore('folders').clear();
-    showStatus('缓存已清空', 'success');
+    showStatus('缂撳瓨宸叉竻绌?, 'success');
 }
 
-// ========== 幻灯片设置功能 ==========
+// ========== 骞荤伅鐗囪缃姛鑳?==========
 
-// 幻灯片配置
+// 骞荤伅鐗囬厤缃?
 let slideshowSettings = {
-    interval: 5,           // 播放间隔（秒）
-    transition: 'fade',    // 过渡效果：fade, slide, zoom
-    folder: 'slideshow',   // 幻灯片目录
-    maxCount: 10,          // 最大显示数量
-    autoPlay: true         // 自动播放
+    interval: 5,           // 鎾斁闂撮殧锛堢锛?
+    transition: 'fade',    // 杩囨浮鏁堟灉锛歠ade, slide, zoom
+    folder: 'slideshow',   // 骞荤伅鐗囩洰褰?
+    maxCount: 10,          // 鏈€澶ф樉绀烘暟閲?
+    autoPlay: true         // 鑷姩鎾斁
 };
 
-// 加载幻灯片设置
+// 鍔犺浇骞荤伅鐗囪缃?
 function loadSlideshowSettings() {
     const saved = localStorage.getItem('slideshowSettings');
     if (saved) {
         slideshowSettings = { ...slideshowSettings, ...JSON.parse(saved) };
     }
-    // 更新 UI 显示
+    // 鏇存柊 UI 鏄剧ず
     const intervalInput = document.getElementById('slideshowInterval');
     const intervalValue = document.getElementById('intervalValue');
     if (intervalInput) {
         intervalInput.value = slideshowSettings.interval;
-        intervalValue.textContent = slideshowSettings.interval + '秒';
+        intervalValue.textContent = slideshowSettings.interval + '绉?;
     }
     const transitionSelect = document.getElementById('transitionEffect');
     if (transitionSelect) {
@@ -1793,35 +1793,35 @@ function loadSlideshowSettings() {
     const maxCountValue = document.getElementById('maxCountValue');
     if (maxCountInput) {
         maxCountInput.value = slideshowSettings.maxCount;
-        maxCountValue.textContent = slideshowSettings.maxCount + '张';
+        maxCountValue.textContent = slideshowSettings.maxCount + '寮?;
     }
     const autoPlayCheckbox = document.getElementById('slideshowAutoPlay');
     if (autoPlayCheckbox) {
         autoPlayCheckbox.checked = slideshowSettings.autoPlay;
     }
-    // 更新 CONFIG
+    // 鏇存柊 CONFIG
     CONFIG.slideshowFolder = slideshowSettings.folder;
 }
 
-// 保存幻灯片设置
+// 淇濆瓨骞荤伅鐗囪缃?
 function saveSlideshowSettings() {
     localStorage.setItem('slideshowSettings', JSON.stringify(slideshowSettings));
 }
 
-// 更新幻灯片间隔
+// 鏇存柊骞荤伅鐗囬棿闅?
 function updateSlideshowInterval(value) {
     slideshowSettings.interval = parseInt(value);
-    document.getElementById('intervalValue').textContent = value + '秒';
+    document.getElementById('intervalValue').textContent = value + '绉?;
     saveSlideshowSettings();
-    // 重新开始幻灯片
+    // 閲嶆柊寮€濮嬪够鐏墖
     stopSlideshow();
     if (slideshowSettings.autoPlay) {
         startSlideshow();
     }
-    showStatus(`幻灯片间隔已更新为 ${value}秒`, 'success');
+    showStatus(`骞荤伅鐗囬棿闅斿凡鏇存柊涓?${value}绉抈, 'success');
 }
 
-// 更新过渡效果
+// 鏇存柊杩囨浮鏁堟灉
 function updateTransitionEffect(value) {
     slideshowSettings.transition = value;
     saveSlideshowSettings();
@@ -1829,27 +1829,27 @@ function updateTransitionEffect(value) {
     container.style.transition = value === 'fade' ? 'opacity 1s ease-in-out' : 
                                   value === 'slide' ? 'transform 0.8s ease-in-out, opacity 0.8s ease-in-out' :
                                   'transform 1s ease-in-out, opacity 1s ease-in-out';
-    showStatus(`过渡效果已更新为 ${value === 'fade' ? '淡入淡出' : value === 'slide' ? '滑动' : '缩放'}`, 'success');
+    showStatus(`杩囨浮鏁堟灉宸叉洿鏂颁负 ${value === 'fade' ? '娣″叆娣″嚭' : value === 'slide' ? '婊戝姩' : '缂╂斁'}`, 'success');
 }
 
-// 更新幻灯片目录
+// 鏇存柊骞荤伅鐗囩洰褰?
 function updateSlideshowFolder(value) {
     slideshowSettings.folder = value.trim() || 'slideshow';
     saveSlideshowSettings();
     CONFIG.slideshowFolder = slideshowSettings.folder;
-    showStatus(`幻灯片目录已更新为 ${slideshowSettings.folder}`, 'success');
+    showStatus(`骞荤伅鐗囩洰褰曞凡鏇存柊涓?${slideshowSettings.folder}`, 'success');
 }
 
-// 更新最大显示数量
+// 鏇存柊鏈€澶ф樉绀烘暟閲?
 function updateSlideshowMaxCount(value) {
     slideshowSettings.maxCount = parseInt(value);
-    document.getElementById('maxCountValue').textContent = value + '张';
+    document.getElementById('maxCountValue').textContent = value + '寮?;
     saveSlideshowSettings();
     initSlideshow();
-    showStatus(`最大显示数量已更新为 ${value}张`, 'success');
+    showStatus(`鏈€澶ф樉绀烘暟閲忓凡鏇存柊涓?${value}寮燻, 'success');
 }
 
-// 更新自动播放
+// 鏇存柊鑷姩鎾斁
 function updateSlideshowAutoPlay(value) {
     slideshowSettings.autoPlay = value;
     saveSlideshowSettings();
@@ -1858,18 +1858,18 @@ function updateSlideshowAutoPlay(value) {
     } else {
         stopSlideshow();
     }
-    showStatus(`自动播放已${value ? '开启' : '关闭'}`, 'success');
+    showStatus(`鑷姩鎾斁宸?{value ? '寮€鍚? : '鍏抽棴'}`, 'success');
 }
 
-// 重新加载幻灯片
+// 閲嶆柊鍔犺浇骞荤伅鐗?
 async function reloadSlideshowPhotos() {
-    showStatus('正在重新加载幻灯片...', 'loading');
+    showStatus('姝ｅ湪閲嶆柊鍔犺浇骞荤伅鐗?..', 'loading');
     await loadSlideshowPhotos();
     initSlideshow();
-    showStatus(`幻灯片已更新，共 ${slideshowPhotos.length} 张照片`, 'success');
+    showStatus(`骞荤伅鐗囧凡鏇存柊锛屽叡 ${slideshowPhotos.length} 寮犵収鐗嘸, 'success');
 }
 
-// 工具函数
+// 宸ュ叿鍑芥暟
 function base64Decode(str) {
     try {
         return decodeURIComponent(atob(str).split('').map(c => {
@@ -1881,3 +1881,4 @@ function base64Decode(str) {
 }
 
 }
+
