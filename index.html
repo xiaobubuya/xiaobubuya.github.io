@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>💕 我们的情侣空间</title>
     <link rel="stylesheet" href="style.css?v=20260404">
+    <script src="app.js"></script>
     <script>
         // 账号配置
         const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
@@ -32,6 +33,55 @@
         function logout() {
             localStorage.removeItem('galleryUser');
             location.reload();
+        }
+        // 愿望面板开关
+        function toggleWishPanel() {
+            const panel = document.getElementById('wishPanel');
+            let overlay = document.getElementById('modalOverlay');
+            if (panel) {
+                if (panel.style.display === 'none' || !panel.style.display) {
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.id = 'modalOverlay';
+                        overlay.className = 'modal-overlay';
+                        overlay.onclick = toggleWishPanel;
+                        document.body.appendChild(overlay);
+                    }
+                    panel.style.display = 'block';
+                    document.getElementById('wishContent').value = '';
+                    document.getElementById('wishCategory').value = 'travel';
+                    document.getElementById('wishPriority').value = 'normal';
+                    document.getElementById('wishDeadline').value = '';
+                    document.getElementById('wishPanelTitle').textContent = '➕ 添加愿望';
+                } else {
+                    panel.style.display = 'none';
+                    if (overlay) overlay.remove();
+                }
+            }
+        }
+        // 添加倒计时面板开关
+        function toggleAddCountdownPanel() {
+            const panel = document.getElementById('addCountdownPanel');
+            let overlay = document.getElementById('modalOverlay');
+            if (panel) {
+                if (panel.style.display === 'none' || !panel.style.display) {
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.id = 'modalOverlay';
+                        overlay.className = 'modal-overlay';
+                        overlay.onclick = toggleAddCountdownPanel;
+                        document.body.appendChild(overlay);
+                    }
+                    panel.style.display = 'block';
+                    document.getElementById('countdownName').value = '';
+                    document.getElementById('countdownDate').value = '';
+                    document.getElementById('countdownType').value = 'birthday';
+                    document.getElementById('countdownRepeat').checked = true;
+                } else {
+                    panel.style.display = 'none';
+                    if (overlay) overlay.remove();
+                }
+            }
         }
     </script>
 </head>
@@ -1001,8 +1051,6 @@
         // 页面加载后初始化地图
         setTimeout(() => initMap(), 1000);
     </script>
-
-    <script src="app.js"></script>
 
 </body>
 </html>
