@@ -47,7 +47,7 @@ function logout() {
     location.reload();
 }
 
-// 设置面板开关
+// 设置面板开关（HTML onclick 需要）
 function toggleSettings() {
     const panel = document.getElementById('settingsPanel');
     if (panel) {
@@ -55,17 +55,15 @@ function toggleSettings() {
     }
 }
 
-// 背景模式设置（别名，兼容 HTML 中的 onclick）
+// 背景模式设置别名（HTML onclick 需要）
 function setBackgroundMode(mode) {
     setBackground(mode);
 }
 
-// 设当前幻灯片照片为背景（兼容 HTML 中的 onclick）
+// 设当前照片为背景别名（HTML onclick 需要）
 function setCurrentPhotoAsBg() {
-    if (photos.length > 0 && currentSlideIndex >= 0) {
-        setPhotoAsBackground(currentSlideIndex);
-    } else if (photos.length > 0) {
-        setPhotoAsBackground(0);
+    if (photos.length > 0) {
+        setPhotoAsBackground(currentSlideIndex >= 0 ? currentSlideIndex : 0);
     }
 }
 
@@ -1314,37 +1312,11 @@ function scrollToUpload() {
 
 // ========== 原有功能 ==========
 
-function login() {
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value.trim();
-    const errorDiv = document.getElementById('loginError');
-
-    if (!username || !password) {
-        errorDiv.textContent = '请输入用户名和密码';
-        errorDiv.style.display = 'block';
-        return;
-    }
-
-    if (ACCOUNTS[username] === password) {
-        currentUser = username;
-        localStorage.setItem('galleryUser', username);
-        showMainPage();
-    } else {
-        errorDiv.textContent = '用户名或密码错误';
-        errorDiv.style.display = 'block';
-    }
-}
-
 async function showMainPage() {
     document.getElementById('loginPage').style.display = 'none';
     document.getElementById('mainPage').classList.add('active');
     document.getElementById('welcomeUser').textContent = `欢迎，${currentUser}`;
     await loadPhotos();
-}
-
-function logout() {
-    localStorage.removeItem('galleryUser');
-    location.reload();
 }
 
 function setupDragDrop() {
@@ -1935,4 +1907,6 @@ function base64Decode(str) {
     } catch (e) {
         return str;
     }
+}
+
 }
