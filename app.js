@@ -22,6 +22,50 @@ function utf8ToBase64(str) {
 // 账号配置
 const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
 
+// 全局变量（必须在函数之前声明）
+let currentUser = null;
+let githubToken = null;
+let photos = [];
+let filteredPhotos = [];
+let displayedPhotos = [];
+let currentPage = 0;
+const PHOTOS_PER_PAGE = 20;
+let currentLightboxIndex = 0;
+let folders = [];
+let currentFilter = {
+    folder: 'all',
+    time: 'all',
+    search: '',
+    tag: 'all'
+};
+let slideshowInterval = null;
+let isSlideshowPlaying = false;
+let currentSlideIndex = 0;
+let bgSettings = {
+    mode: 'default',
+    blur: 8,
+    darkness: 30,
+    photoIndex: 0
+};
+const DB_NAME = 'GalleryDB';
+const DB_VERSION = 5;
+let db = null;
+let anniversaryDate = '2025-09-18';
+let slideshowSettings = {
+    interval: 5,
+    transition: 'fade',
+    folder: 'slideshow',
+    maxCount: 10,
+    autoPlay: true
+};
+let countdownEvents = [];
+let wishes = [];
+let currentWishFilter = 'all';
+let map = null;
+let locationMarkers = [];
+let locations = [];
+let lastLocationsHash = '';
+
 // 登录函数（必须在顶部，HTML onclick 需要）
 function login() {
     const username = document.getElementById('username').value.trim();
@@ -80,44 +124,7 @@ const CONFIG = {
 
 // GitHub Token
 const HARDCODED_TOKEN = 'WjJod1gzQnNWa3RrZURJM1pHb3dXa3BvWWxNNFZIUjVSM2t5U0dOalpWVmlSREZMZWt0bmJnPT0=';
-const decodedToken = base64Decode(base64Decode(HARDCODED_TOKEN));
-
-let currentUser = null;
-let githubToken = decodedToken;
-let photos = [];
-let filteredPhotos = [];
-let displayedPhotos = [];
-let currentPage = 0;
-const PHOTOS_PER_PAGE = 20;
-let currentLightboxIndex = 0;
-let folders = [];
-let currentFilter = {
-    folder: 'all',
-    time: 'all',
-    search: '',
-    tag: 'all'
-};
-
-// 幻灯片状态
-let slideshowInterval = null;
-let isSlideshowPlaying = false;
-let currentSlideIndex = 0;
-
-// 背景设置
-let bgSettings = {
-    mode: 'default', // default, photo, gradient
-    blur: 8,
-    darkness: 30,
-    photoIndex: 0
-};
-
-// IndexedDB 配置
-const DB_NAME = 'GalleryDB';
-const DB_VERSION = 5;
-let db = null;
-
-// 纪念日
-let anniversaryDate = '2025-09-18';
+githubToken = base64Decode(base64Decode(HARDCODED_TOKEN));
 
 // 初始化
 init();
