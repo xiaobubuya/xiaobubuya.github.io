@@ -163,3 +163,35 @@ function updateStats() {
     document.getElementById('folderCount').textContent = folders.length > 0 ? folders.length - 1 : 0;
     document.getElementById('storageUsed').textContent = calculateStorageUsage(photos);
 }
+
+// 将所有需要全局访问的函数挂载到window对象
+window.toggleMusicPlayer = toggleMusicPlayer;
+window.toggleAddCountdownPanel = toggleAddCountdownPanel;
+window.toggleWishPanel = toggleWishPanel;
+window.filterWishes = filterWishes;
+window.scrollToUpload = scrollToUpload;
+window.toggleSlideshow = toggleSlideshow;
+window.randomPhoto = randomPhoto;
+window.filterPhotos = filterPhotos;
+window.loadMorePhotos = loadMorePhotos;
+window.setPhotoAsBackground = setPhotoAsBackground;
+window.deletePhoto = deletePhoto;
+window.openLightbox = openLightbox;
+window.closeLightbox = closeLightbox;
+window.prevPhoto = prevPhoto;
+window.nextPhoto = nextPhoto;
+window.toggleSettings = toggleSettings;
+window.updateAnniversary = updateAnniversary;
+window.setBackground = setBackground;
+window.updateBlur = updateBlur;
+window.updateDarkness = updateDarkness;
+window.saveWish = saveWish;
+window.editWish = editWish;
+window.toggleWishComplete = toggleWishComplete;
+window.deleteWish = deleteWish;
+window.addCountdown = addCountdown;
+window.editCountdown = editCountdown;
+window.deleteCountdown = deleteCountdown;
+window.handleFiles = handleFiles;
+window.uploadFile = uploadFile;
+window.setPhotoAsBackground = setPhotoAsBackground;
