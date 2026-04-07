@@ -5,10 +5,10 @@ const ACCOUNTS = { 'yuge': '20250918', 'meimei': '20250918' };
 const CONFIG = {
     owner: 'xiaobubuya',
     repo: 'xiaobubuya.github.io',
-    branch: 'master',
+    branch: 'main',
     imageRepo: 'image',
-    cdnBase: 'https://cdn.jsdelivr.net/gh/xiaobubuya/image@master',
-    rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image@master',
+    cdnBase: 'https://cdn.jsdelivr.net/gh/xiaobubuya/image@main',
+    rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image@main',
     slideshowFolder: 'slideshow'  // 幻灯片专用目录
 };
 
