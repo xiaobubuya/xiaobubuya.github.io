@@ -1864,3 +1864,48 @@ function base64Decode(str) {
         return str;
     }
 }
+
+// ========== 全局函数挂载 ==========
+// 将所有需要通过 onclick 调用的函数挂载到 window 对象，确保全局可访问
+(function() {
+    window.toggleSettings = toggleSettings;
+    window.toggleWishPanel = toggleWishPanel;
+    window.toggleAddCountdownPanel = toggleAddCountdownPanel;
+    window.toggleMusicPlayer = toggleMusicPlayer;
+    window.toggleSlideshow = toggleSlideshow;
+    window.filterWishes = filterWishes;
+    window.saveWish = saveWish;
+    window.editWish = editWish;
+    window.toggleWishComplete = toggleWishComplete;
+    window.deleteWish = deleteWish;
+    window.addCountdown = addCountdown;
+    window.editCountdown = editCountdown;
+    window.deleteCountdown = deleteCountdown;
+    window.setBackground = setBackground;
+    window.updateBlur = updateBlur;
+    window.updateDarkness = updateDarkness;
+    window.updateAnniversary = updateAnniversary;
+    window.scrollToUpload = scrollToUpload;
+    window.randomPhoto = randomPhoto;
+    window.filterPhotos = filterPhotos;
+    window.loadMorePhotos = loadMorePhotos;
+    window.openLightbox = openLightbox;
+    window.closeLightbox = closeLightbox;
+    window.prevPhoto = prevPhoto;
+    window.nextPhoto = nextPhoto;
+    window.setPhotoAsBackground = setPhotoAsBackground;
+    window.deletePhoto = deletePhoto;
+    window.handleFiles = handleFiles;
+    window.uploadFile = uploadFile;
+    window.prevSlide = prevSlide;
+    window.nextSlide = nextSlide;
+    window.goToSlide = goToSlide;
+    window.toggleFullscreenSlideshow = toggleFullscreenSlideshow;
+    window.reloadSlideshowPhotos = reloadSlideshowPhotos;
+    window.updateSlideshowInterval = updateSlideshowInterval;
+    window.updateTransitionEffect = updateTransitionEffect;
+    window.updateSlideshowMaxCount = updateSlideshowMaxCount;
+    window.updateSlideshowAutoPlay = updateSlideshowAutoPlay;
+    window.login = login;
+    window.logout = logout;
+})();
