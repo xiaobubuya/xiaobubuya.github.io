@@ -65,10 +65,15 @@ async function init() {
     await loadCountdownEvents();  // 加载倒计时数据
     await loadWishes();  // 加载愿望数据
 
+    // 本地测试自动加载照片，不需要登录
     const savedUser = localStorage.getItem('galleryUser');
     if (savedUser) {
         currentUser = savedUser;
         showMainPage();
+    } else {
+        // 本地测试模式：直接加载照片
+        console.log('本地测试模式：直接加载照片');
+        loadPhotos();
     }
 
     // 初始化标签点击事件
