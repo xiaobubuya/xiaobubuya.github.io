@@ -1,0 +1,305 @@
+:root {
+    --bg-1: #fff8ef;
+    --bg-2: #ffe3cf;
+    --bg-3: #ffc7b8;
+    --accent: #ef476f;
+    --accent-2: #ff7f51;
+    --accent-soft: #ffe5dc;
+    --ink: #2f2020;
+    --ink-soft: #6f5b57;
+    --line: rgba(255, 255, 255, 0.65);
+    --glass: rgba(255, 255, 255, 0.58);
+    --shadow: 0 22px 45px rgba(149, 64, 46, 0.18);
+    --radius: 24px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    min-height: 100%;
+}
+
+body {
+    font-family: 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+    color: var(--ink);
+    background: radial-gradient(circle at 15% 15%, #fff7d9 0%, transparent 35%),
+        radial-gradient(circle at 85% 10%, #ffd6cb 0%, transparent 30%),
+        linear-gradient(145deg, var(--bg-1), var(--bg-2) 48%, var(--bg-3));
+    overflow-x: hidden;
+    position: relative;
+}
+
+.bg-slideshow,
+.bg-overlay,
+.floating-hearts {
+    position: fixed;
+    inset: 0;
+}
+
+.bg-slideshow {
+    z-index: 0;
+    background: linear-gradient(120deg, rgba(255, 255, 255, 0.35), rgba(255, 233, 226, 0.35));
+}
+
+.bg-slide {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transform: scale(1.04);
+    transition: opacity 1s ease, transform 14s ease;
+}
+
+.bg-slide.active {
+    opacity: 0.38;
+    transform: scale(1);
+}
+
+.bg-overlay {
+    z-index: 1;
+    background: linear-gradient(180deg, rgba(255, 248, 239, 0.56), rgba(255, 241, 236, 0.72));
+    backdrop-filter: blur(8px);
+}
+
+.floating-hearts {
+    pointer-events: none;
+    z-index: 2;
+}
+
+.heart {
+    position: absolute;
+    font-size: 1.35rem;
+    color: rgba(239, 71, 111, 0.45);
+    animation: floatUp 8s linear forwards;
+}
+
+@keyframes floatUp {
+    from {
+        transform: translateY(15vh) scale(0.8) rotate(0deg);
+        opacity: 0;
+    }
+    15% {
+        opacity: 0.85;
+    }
+    to {
+        transform: translateY(-110vh) scale(1.2) rotate(240deg);
+        opacity: 0;
+    }
+}
+
+.login-page {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+}
+
+.login-card {
+    width: min(480px, 100%);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    box-shadow: var(--shadow);
+    padding: 2rem;
+}
+
+.login-card h1 {
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 2rem;
+    margin-bottom: 0.6rem;
+}
+
+.login-card p {
+    color: var(--ink-soft);
+    margin-bottom: 1.25rem;
+}
+
+.login-card input,
+.login-card button {
+    width: 100%;
+    border-radius: 12px;
+    font-size: 1rem;
+    padding: 0.85rem 0.95rem;
+    margin-top: 0.65rem;
+}
+
+.login-card input {
+    border: 1px solid #e8d0c4;
+}
+
+.login-card button {
+    border: 0;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.login-error {
+    margin-top: 0.85rem;
+    color: #cf214f;
+    min-height: 1.3rem;
+}
+
+.main-container {
+    position: relative;
+    z-index: 3;
+    width: min(1240px, 100% - 2rem);
+    margin: 2rem auto 3rem;
+    display: grid;
+    gap: 1.1rem;
+}
+
+.navbar,
+section {
+    background: var(--glass);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
+}
+
+.navbar {
+    position: sticky;
+    top: 1rem;
+    z-index: 35;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+}
+
+.nav-brand {
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: 1.8rem;
+    letter-spacing: 0.04em;
+    color: #8f2e2a;
+}
+
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+}
+
+.welcome-user {
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+}
+
+.nav-btn {
+    border: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1.2rem;
+    background: rgba(255, 255, 255, 0.8);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.nav-btn:hover {
+    transform: rotate(18deg) scale(1.05);
+    box-shadow: 0 6px 16px rgba(239, 71, 111, 0.25);
+}
+
+section {
+    padding: 1.35rem;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    margin-bottom: 1rem;
+}
+
+.section-header h2 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #842f2f;
+    letter-spacing: 0.01em;
+}
+
+.anniversary-card {
+    border-radius: 20px;
+    background: linear-gradient(140deg, #ef476f, #ff7f51 65%, #ffb48a);
+    color: #fff;
+    padding: clamp(1.3rem, 3vw, 2.2rem);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.anniversary-card::before {
+    content: '';
+    position: absolute;
+    inset: -30% 45% 40% -20%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.25), transparent 70%);
+    transform: rotate(-10deg);
+}
+
+.hero-tip {
+    letter-spacing: 0.18em;
+    font-size: 0.78rem;
+    opacity: 0.9;
+    margin-bottom: 0.55rem;
+}
+
+.anniversary-card h2 {
+    font-family: 'ZCOOL XiaoWei', serif;
+    font-size: clamp(1.3rem, 4.4vw, 2rem);
+    margin-bottom: 0.85rem;
+}
+
+.days-counter {
+    font-size: clamp(2.5rem, 9vw, 4.7rem);
+    font-weight: 900;
+    line-height: 1;
+}
+
+.days-label {
+    font-size: 0.45em;
+    margin-left: 0.3rem;
+    opacity: 0.95;
+}
+
+#anniversaryDate {
+    margin-top: 0.65rem;
+    font-size: 1.02rem;
+    opacity: 0.92;
+}
+
+.quote {
+    margin-top: 0.6rem;
+    font-size: 0.95rem;
+    opacity: 0.92;
+}
+
+.hero-sub-metric {
+    margin: 1rem auto 0;
+    width: fit-content;
+    border: 1px solid rgba(255, 255, 255, 0.38);
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.hero-sub-metric strong {
+    font-size: 1rem;
+}
+

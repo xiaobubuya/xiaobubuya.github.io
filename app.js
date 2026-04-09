@@ -61,7 +61,6 @@ async function init() {
     loadSettings();
     loadAnniversary();
     loadSlideshowSettings();  // 加载幻灯片设置
-    loadAchievements();  // 加载成就数据
     await loadCountdownEvents();  // 加载倒计时数据
     await loadWishes();  // 加载愿望数据
 
@@ -87,7 +86,7 @@ async function init() {
     });
 
     // 文件输入监听
-    document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files));
+    document.getElementById('fileInput').addEventListener('change', e => handleFiles(e.target.files, getSelectedUploadFolder()));
 
     // 键盘导航
     document.addEventListener('keydown', e => {
@@ -96,7 +95,8 @@ async function init() {
             if (e.key === 'ArrowLeft') prevPhoto();
             if (e.key === 'ArrowRight') nextPhoto();
         }
-        if (document.getElementById('fullscreenSlideshow').style.display === 'flex') {
+        const fullscreenSlideshow = document.getElementById('fullscreenSlideshow');
+        if (fullscreenSlideshow && fullscreenSlideshow.style.display === 'flex') {
             if (e.key === 'Escape') toggleFullscreenSlideshow();
             if (e.key === 'ArrowLeft') prevSlide();
             if (e.key === 'ArrowRight') nextSlide();
@@ -110,6 +110,19 @@ async function init() {
     // 拖拽上传
     setupDragDrop();
 
+    // 时间轴点击：打开对应照片
+    const storyTimeline = document.getElementById('storyTimeline');
+    if (storyTimeline) {
+        storyTimeline.addEventListener('click', (e) => {
+            const card = e.target.closest('.timeline-card[data-photo-index]');
+            if (!card) return;
+            const index = parseInt(card.dataset.photoIndex, 10);
+            if (!isNaN(index) && photos[index]) {
+                openLightbox(index);
+            }
+        });
+    }
+
     // 创建漂浮爱心
     createFloatingHearts();
 
@@ -119,16 +132,9 @@ async function init() {
     // 渲染倒计时卡片
     renderCountdownCards();
     
-    // 渲染成就卡片
-    renderAchievements();
-    
     // 渲染愿望卡片
     renderWishes();
-    
-    // 检查成就
-    setTimeout(() => {
-        checkAchievements(getAchievementData());
-    }, 1000);
+    renderStoryTimeline();
 }
 
 // 初始化 IndexedDB
@@ -171,7 +177,14 @@ function saveSettings() {
 
 function toggleBackgroundSettings() {
     const panel = document.getElementById('bgSettingsPanel');
+    if (!panel) return;
     panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleSettings() {
+    const panel = document.getElementById('settingsPanel');
+    if (!panel) return;
+    panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
 }
 
 function setBackground(mode) {
@@ -183,7 +196,8 @@ function setBackground(mode) {
     document.querySelectorAll('.bg-option').forEach(btn => {
         btn.classList.remove('active');
     });
-    event.target.classList.add('active');
+    const activeBtn = document.querySelector(`.bg-option[onclick="setBackground('${mode}')"]`);
+    if (activeBtn) activeBtn.classList.add('active');
 }
 
 function updateBlur(value) {
@@ -201,6 +215,7 @@ function updateDarkness(value) {
 function applyBackgroundSettings() {
     const bgSlideshow = document.getElementById('bgSlideshow');
     const overlay = document.querySelector('.bg-overlay');
+    if (!bgSlideshow || !overlay) return;
 
     // 应用模糊和暗度
     bgSlideshow.style.filter = `blur(${bgSettings.blur}px)`;
@@ -220,7 +235,7 @@ function applyBackgroundSettings() {
 
 function startBackgroundSlideshow() {
     const bgSlideshow = document.getElementById('bgSlideshow');
-    if (photos.length === 0) return;
+    if (!bgSlideshow || photos.length === 0) return;
 
     bgSlideshow.innerHTML = photos.map((p, i) => `
         <div class="bg-slide ${i === 0 ? 'active' : ''}" style="background-image: url('${getImageUrl(p.name)}')"></div>
@@ -250,9 +265,21 @@ function updateAnniversaryDisplay() {
     const now = new Date();
     const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24));
 
-    document.getElementById('daysTogether').textContent = diff;
-    document.getElementById('daysTogether2').textContent = diff;
-    document.getElementById('anniversaryDate').textContent = formatDate(start);
+    const daysTogether = document.getElementById('daysTogether');
+    const daysTogether2 = document.getElementById('daysTogether2');
+    const anniversaryDateEl = document.getElementById('anniversaryDate');
+    if (daysTogether) daysTogether.textContent = diff;
+    if (daysTogether2) daysTogether2.textContent = diff;
+    if (anniversaryDateEl) anniversaryDateEl.textContent = formatDate(start);
+}
+
+function updateAnniversary() {
+    const input = document.getElementById('anniversaryDateInput');
+    if (!input || !input.value) return;
+    anniversaryDate = input.value;
+    localStorage.setItem('anniversaryDate', anniversaryDate);
+    updateAnniversaryDisplay();
+    showStatus('纪念日已更新', 'success');
 }
 
 function formatDate(date) {
@@ -519,86 +546,6 @@ function handleSwipe() {
 
 let countdownEvents = [];
 
-// ========== 成就系统 ==========
-
-// 成就列表定义
-const achievementDefinitions = [
-    { id: 'first_photo', name: '第一张照片', desc: '上传第一张照片', icon: '📸', check: (data) => data.photoCount >= 1 },
-    { id: 'ten_photos', name: '十全十美', desc: '上传 10 张照片', icon: '💯', check: (data) => data.photoCount >= 10 },
-    { id: 'hundred_photos', name: '百张照片', desc: '上传 100 张照片', icon: '🖼️', check: (data) => data.photoCount >= 100 },
-    { id: 'first_wish', name: '心怀憧憬', desc: '添加第一个愿望', icon: '🌟', check: (data) => data.wishCount >= 1 },
-    { id: 'five_wishes', name: '五福临门', desc: '添加 5 个愿望', icon: '🎋', check: (data) => data.wishCount >= 5 },
-    { id: 'first_complete', name: '梦想成真', desc: '完成第一个愿望', icon: '✨', check: (data) => data.completedWishes >= 1 },
-    { id: 'ten_complete', name: '十全十美', desc: '完成 10 个愿望', icon: '🏆', check: (data) => data.completedWishes >= 10 },
-    { id: 'first_event', name: '重要时刻', desc: '添加第一个重要日期', icon: '📅', check: (data) => data.eventCount >= 1 },
-    { id: 'five_events', name: '五周年纪念', desc: '添加 5 个重要日期', icon: '🎊', check: (data) => data.eventCount >= 5 },
-    { id: '100_days', name: '百日情侣', desc: '在一起 100 天', icon: '💕', check: (data) => data.daysTogether >= 100 },
-    { id: '365_days', name: '周年快乐', desc: '在一起 365 天', icon: '🎉', check: (data) => data.daysTogether >= 365 },
-    { id: 'slideshow', name: '精彩瞬间', desc: '设置幻灯片背景', icon: '🎬', check: (data) => data.hasSlideshowBg },
-];
-
-let unlockedAchievements = [];
-
-// 加载成就数据
-function loadAchievements() {
-    const saved = localStorage.getItem('achievements');
-    if (saved) {
-        unlockedAchievements = JSON.parse(saved);
-    }
-}
-
-// 保存成就数据
-function saveAchievements() {
-    localStorage.setItem('achievements', JSON.stringify(unlockedAchievements));
-}
-
-// 检查并解锁成就
-function checkAchievements(data) {
-    let newUnlock = false;
-    
-    achievementDefinitions.forEach(achievement => {
-        if (!unlockedAchievements.includes(achievement.id)) {
-            if (achievement.check(data)) {
-                unlockedAchievements.push(achievement.id);
-                newUnlock = true;
-                console.log(`🎉 解锁成就：${achievement.name}`);
-            }
-        }
-    });
-    
-    if (newUnlock) {
-        saveAchievements();
-        renderAchievements();
-    }
-}
-
-// 渲染成就卡片
-function renderAchievements() {
-    const grid = document.getElementById('achievementsGrid');
-    const unlockedCount = document.getElementById('unlockedCount');
-    const progress = document.getElementById('achievementProgress');
-    
-    if (!grid) return;
-    
-    const total = achievementDefinitions.length;
-    const unlocked = unlockedAchievements.length;
-    
-    if (unlockedCount) unlockedCount.textContent = unlocked;
-    if (progress) progress.textContent = Math.round((unlocked / total) * 100) + '%';
-    
-    grid.innerHTML = achievementDefinitions.map(achievement => {
-        const isUnlocked = unlockedAchievements.includes(achievement.id);
-        return `
-            <div class="achievement-card ${isUnlocked ? 'unlocked' : 'locked'}">
-                <div class="achievement-icon">${achievement.icon}</div>
-                <div class="achievement-name">${achievement.name}</div>
-                <div class="achievement-desc">${achievement.desc}</div>
-                <div class="achievement-progress">${isUnlocked ? '✅ 已解锁' : '🔒 未解锁'}</div>
-            </div>
-        `;
-    }).join('');
-}
-
 // ========== 愿望清单功能 ==========
 
 let wishes = [];
@@ -804,7 +751,6 @@ async function saveWish() {
             if (success) {
                 renderWishes();
                 toggleWishPanel();
-                checkAchievements(getAchievementData());
                 showStatus('更新成功！', 'success');
             } else {
                 alert('保存失败，请检查网络');
@@ -828,7 +774,6 @@ async function saveWish() {
         if (success) {
             renderWishes();
             toggleWishPanel();
-            checkAchievements(getAchievementData());
             showStatus('添加成功！', 'success');
         } else {
             alert('保存失败，请检查网络');
@@ -864,7 +809,6 @@ async function toggleWishComplete(index) {
     const success = await saveWishes();
     if (success) {
         renderWishes();
-        checkAchievements(getAchievementData());
         showStatus(wishes[index].completed ? '恭喜完成愿望！🎉' : '已取消完成', 'success');
     }
 }
@@ -878,7 +822,6 @@ async function deleteWish(index) {
     const success = await saveWishes();
     if (success) {
         renderWishes();
-        checkAchievements(getAchievementData());
         showStatus('删除成功', 'success');
     }
 }
@@ -893,22 +836,6 @@ function filterWishes(filter) {
     });
     
     renderWishes();
-}
-
-// 获取成就检查数据
-function getAchievementData() {
-    const start = new Date(anniversaryDate);
-    const now = new Date();
-    const daysTogether = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-    
-    return {
-        photoCount: photos.length,
-        wishCount: wishes.length,
-        completedWishes: wishes.filter(w => w.completed).length,
-        eventCount: countdownEvents.length,
-        daysTogether: daysTogether,
-        hasSlideshowBg: bgSettings.mode === 'photo' || bgSettings.mode === 'custom'
-    };
 }
 
 // 图标映射
@@ -1175,6 +1102,7 @@ async function deleteCountdown(index) {
 
 function toggleFullscreenSlideshow() {
     const fs = document.getElementById('fullscreenSlideshow');
+    if (!fs) return;
     if (fs.style.display === 'flex') {
         fs.style.display = 'none';
         stopFullscreenSlideshow();
@@ -1207,20 +1135,26 @@ function stopFullscreenSlideshow() {
 }
 
 function updateFullscreenSlide() {
+    if (!photos[fullscreenIndex]) return;
     const photo = photos[fullscreenIndex];
-    document.getElementById('fsImg').src = getImageUrl(photo.name);
-    document.getElementById('fsCaption').textContent =
+    const fsImg = document.getElementById('fsImg');
+    const fsCaption = document.getElementById('fsCaption');
+    const fsProgress = document.getElementById('fsProgress');
+    if (!fsImg || !fsCaption || !fsProgress) return;
+    fsImg.src = getImageUrl(photo.name);
+    fsCaption.textContent =
         `${photo.name.split('/').pop().replace(/^\d+_/, '')} · ${new Date(photo.timestamp).toLocaleDateString('zh-CN')}`;
 
     // 进度条
     const progress = ((fullscreenIndex + 1) / photos.length) * 100;
-    document.getElementById('fsProgress').style.width = progress + '%';
+    fsProgress.style.width = progress + '%';
 }
 
 // ========== 其他功能 ==========
 
 function createFloatingHearts() {
     const container = document.getElementById('floatingHearts');
+    if (!container) return;
 
     setInterval(() => {
         const heart = document.createElement('div');
@@ -1242,10 +1176,19 @@ function randomPhoto() {
 }
 
 function scrollToUpload() {
-    document.getElementById('uploadSection').scrollIntoView({ behavior: 'smooth' });
+    const uploadSection = document.getElementById('uploadSection');
+    if (uploadSection) {
+        uploadSection.scrollIntoView({ behavior: 'smooth' });
+    }
 }
 
 // ========== 原有功能 ==========
+
+function toggleMusicPlayer() {
+    const frame = document.getElementById('musicFrame');
+    if (!frame) return;
+    frame.classList.toggle('active');
+}
 
 function login() {
     const username = document.getElementById('username').value.trim();
@@ -1269,9 +1212,12 @@ function login() {
 }
 
 async function showMainPage() {
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('mainPage').classList.add('active');
-    document.getElementById('welcomeUser').textContent = `欢迎，${currentUser}`;
+    const loginPage = document.getElementById('loginPage');
+    const mainPage = document.getElementById('mainPage');
+    const welcomeUser = document.getElementById('welcomeUser');
+    if (loginPage) loginPage.style.display = 'none';
+    if (mainPage) mainPage.classList.add('active');
+    if (welcomeUser) welcomeUser.textContent = `欢迎，${currentUser}`;
     await loadPhotos();
 }
 
@@ -1282,6 +1228,7 @@ function logout() {
 
 function setupDragDrop() {
     const dropZone = document.getElementById('dropZone');
+    if (!dropZone) return;
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => {
         dropZone.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }, false);
     });
@@ -1291,11 +1238,47 @@ function setupDragDrop() {
     ['dragleave', 'drop'].forEach(e => {
         dropZone.addEventListener(e, () => dropZone.classList.remove('dragover'), false);
     });
-    dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files), false);
+    dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files, getSelectedUploadFolder()), false);
+}
+
+function getSelectedUploadFolder() {
+    const customInput = document.getElementById('uploadFolderCustom');
+    const selectedInput = document.getElementById('uploadFolderSelect');
+
+    const custom = customInput?.value?.trim();
+    if (custom) {
+        return custom.replace(/\//g, '-');
+    }
+
+    if (selectedInput?.value) {
+        return selectedInput.value;
+    }
+
+    return '99-临时';
+}
+
+function syncUploadFolderOptions() {
+    const uploadFolderSelect = document.getElementById('uploadFolderSelect');
+    if (!uploadFolderSelect) return;
+
+    const current = uploadFolderSelect.value || '99-临时';
+    const existing = new Set(['99-临时']);
+    folders.forEach(f => {
+        if (f.id && f.id !== 'all') existing.add(f.id);
+    });
+
+    const options = Array.from(existing);
+    uploadFolderSelect.innerHTML = options
+        .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+        .map(name => `<option value="${name}">${name}</option>`)
+        .join('');
+
+    uploadFolderSelect.value = options.includes(current) ? current : '99-临时';
 }
 
 function showStatus(msg, type) {
     const s = document.getElementById('status');
+    if (!s) return;
     s.textContent = msg;
     s.className = 'status ' + type;
     if (type !== 'loading') setTimeout(() => s.className = 'status', 3000);
@@ -1305,6 +1288,7 @@ function updateProgress(current, total, filename) {
     const c = document.getElementById('progressContainer');
     const f = document.getElementById('progressFill');
     const t = document.getElementById('progressText');
+    if (!c || !f || !t) return;
     const pct = total > 0 ? (current / total) * 100 : 0;
     c.classList.add('active');
     f.style.width = pct + '%';
@@ -1351,7 +1335,7 @@ async function uploadFile(file, folder = '未分类') {
         body: JSON.stringify({
             message: `Upload ${file.name}`,
             content: base64,
-            branch: 'master'
+            branch: CONFIG.branch
         })
     });
 
@@ -1359,9 +1343,9 @@ async function uploadFile(file, folder = '未分类') {
 }
 
 function getImageUrl(filename) {
-    // 使用 jsDelivr CDN 加速图片加载
-    // jsDelivr 是免费的全球 CDN，基于 GitHub 仓库
-    return `https://cdn.jsdelivr.net/gh/xiaobubuya/image@master/${filename}`;
+    // 使用统一分支和 URL 编码，避免 main/master 不一致或中文路径问题
+    const encodedPath = encodeURI(filename).replace(/%2F/g, '/');
+    return `${CONFIG.cdnBase}/${encodedPath}`;
 }
 
 async function fetchFromServer() {
@@ -1389,8 +1373,11 @@ async function parseFilesAndFolders(files) {
     // 处理每个文件夹
     for (const folder of folderItems) {
         try {
+            const folderHeaders = { 'Accept': 'application/vnd.github.v3+json' };
+            if (githubToken) folderHeaders['Authorization'] = `token ${githubToken}`;
+
             const folderRes = await fetch(folder.url, {
-                headers: { 'Accept': 'application/vnd.github.v3+json' }
+                headers: folderHeaders
             });
 
             if (folderRes.ok) {
@@ -1437,9 +1424,11 @@ async function loadPhotos() {
 
     if (cached && cached.length > 0) {
         photos = cached;
+        folders = rebuildFoldersFromPhotos(photos);
         updateStats();
         filterPhotos();
         initSlideshow();
+        renderStoryTimeline();
     } else {
         gallery.innerHTML = '<div class="skeleton" style="height:200px"></div>'.repeat(6);
     }
@@ -1450,30 +1439,32 @@ async function loadPhotos() {
         if (!res.ok) {
             if (res.status === 404) {
                 photos = [];
+                folders = [{ id: 'all', name: '所有相册', count: 0 }];
                 gallery.innerHTML = '';
                 empty.classList.add('active');
                 document.getElementById('loadMore').style.display = 'none';
                 updateStats();
                 initSlideshow();
+                renderStoryTimeline();
                 return;
             }
             throw new Error(`HTTP ${res.status}`);
         }
 
         const files = await res.json();
-        const { photos: newPhotos } = await parseFilesAndFolders(files);
+        const { photos: newPhotos, folders: newFolders } = await parseFilesAndFolders(files);
 
         const hasChanged = JSON.stringify(newPhotos) !== JSON.stringify(photos);
 
         if (hasChanged || photos.length === 0) {
             photos = newPhotos;
+            folders = newFolders;
             await cachePhotos(photos);
             updateStats();
             filterPhotos();
             initSlideshow();
+            renderStoryTimeline();
             showStatus(`已加载 ${photos.length} 张照片`, 'success');
-            // 检查照片相关成就
-            checkAchievements(getAchievementData());
         }
 
     } catch (e) {
@@ -1485,22 +1476,42 @@ async function loadPhotos() {
 }
 
 function updateStats() {
-    document.getElementById('photoCount').textContent = photos.length;
-    document.getElementById('folderCount').textContent = folders.length > 0 ? folders.length - 1 : 0;
-    document.getElementById('storageUsed').textContent = calculateStorageUsage(photos);
+    const photoCount = document.getElementById('photoCount');
+    const folderCount = document.getElementById('folderCount');
+    const storageUsed = document.getElementById('storageUsed');
+    if (photoCount) photoCount.textContent = photos.length;
+    if (folderCount) folderCount.textContent = folders.length > 0 ? folders.length - 1 : 0;
+    if (storageUsed) storageUsed.textContent = calculateStorageUsage(photos);
 
     // 更新文件夹筛选器
     const folderFilter = document.getElementById('folderFilter');
+    if (!folderFilter) return;
     const currentValue = folderFilter.value;
     folderFilter.innerHTML = folders.map(f =>
         `<option value="${f.id}" ${f.id === currentValue ? 'selected' : ''}>${f.name} (${f.count})</option>`
     ).join('');
+
+    syncUploadFolderOptions();
 }
 
 function calculateStorageUsage(photos) {
     const totalBytes = photos.reduce((sum, photo) => sum + photo.size, 0);
     const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
     return `${totalMB} MB`;
+}
+
+function rebuildFoldersFromPhotos(photosList) {
+    const folderMap = new Map();
+    photosList.forEach(photo => {
+        const folderName = photo.folder || '未分类';
+        folderMap.set(folderName, (folderMap.get(folderName) || 0) + 1);
+    });
+
+    const result = [{ id: 'all', name: '所有相册', count: photosList.length }];
+    Array.from(folderMap.entries())
+        .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
+        .forEach(([name, count]) => result.push({ id: name, name, count }));
+    return result;
 }
 
 function filterPhotos() {
@@ -1550,88 +1561,116 @@ function filterPhotos() {
     renderPhotos();
 }
 
+function createPhotoCard(photo, idx = 0) {
+    const actualIndex = photos.findIndex(p => p.name === photo.name);
+    const name = photo.name.split('/').pop().replace(/^\d+_/, '');
+    const date = photo.timestamp ? new Date(photo.timestamp).toLocaleString('zh-CN') : '-';
+    const size = (photo.size / 1024).toFixed(1) + ' KB';
+
+    const card = document.createElement('div');
+    card.className = 'photo-card';
+    card.style.animationDelay = `${idx * 0.05}s`;
+    card.innerHTML = `
+        <div class="photo-wrapper">
+            <img data-src="${getImageUrl(photo.name)}" alt="${name}" loading="lazy">
+            <div class="photo-overlay" onclick="event.stopPropagation()">
+                <div class="photo-actions">
+                    <button class="photo-action-btn" onclick="openLightbox(${actualIndex})" title="查看">👁</button>
+                    <button class="photo-action-btn" onclick="setPhotoAsBackground(${actualIndex})" title="设为背景">🖼️</button>
+                    <button class="photo-action-btn delete" onclick="deletePhoto('${photo.name}', '${photo.sha}')" title="删除">🗑</button>
+                </div>
+            </div>
+        </div>
+        <div class="photo-info">
+            <div class="photo-name">${name}</div>
+            <div class="photo-meta">
+                <div>${date}</div>
+                <div>${size}</div>
+            </div>
+        </div>
+    `;
+    card.onclick = () => openLightbox(actualIndex);
+
+    const img = card.querySelector('img');
+    if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const target = entry.target;
+                    target.src = target.dataset.src;
+                    target.onload = () => target.classList.add('loaded');
+                    observer.unobserve(target);
+                }
+            });
+        }, { rootMargin: '50px' });
+        observer.observe(img);
+    } else {
+        img.src = img.dataset.src;
+        img.onload = () => img.classList.add('loaded');
+    }
+
+    return card;
+}
+
 function renderPhotos(append = false) {
     const gallery = document.getElementById('gallery');
     const empty = document.getElementById('emptyState');
     const loadMore = document.getElementById('loadMore');
 
-    const photosToRender = filteredPhotos.length > 0 ? filteredPhotos : photos;
+    const photosToRender = filteredPhotos;
 
     if (!photosToRender.length) {
         empty.classList.add('active');
         loadMore.style.display = 'none';
-        if (!append) gallery.innerHTML = '';
+        gallery.innerHTML = '';
         return;
     }
 
     empty.classList.remove('active');
+    gallery.innerHTML = '';
+    displayedPhotos = photosToRender;
 
-    const start = append ? displayedPhotos.length : 0;
-    const end = Math.min(start + PHOTOS_PER_PAGE, photosToRender.length);
-    const pagePhotos = photosToRender.slice(start, end);
+    if (currentFilter.folder === 'all') {
+        const grouped = new Map();
+        photosToRender.forEach(photo => {
+            const folderName = photo.folder || '未分类';
+            if (!grouped.has(folderName)) grouped.set(folderName, []);
+            grouped.get(folderName).push(photo);
+        });
 
-    if (!append) {
-        gallery.innerHTML = '';
-        displayedPhotos = [];
-    }
+        const orderedFolders = folders.filter(f => f.id !== 'all' && grouped.has(f.id)).map(f => f.id);
+        grouped.forEach((_, key) => {
+            if (!orderedFolders.includes(key)) orderedFolders.push(key);
+        });
 
-    displayedPhotos = displayedPhotos.concat(pagePhotos);
-
-    pagePhotos.forEach((p, idx) => {
-        const actualIndex = photos.findIndex(photo => photo.name === p.name);
-        const name = p.name.split('/').pop().replace(/^\d+_/, '');
-        const date = p.timestamp ? new Date(p.timestamp).toLocaleString('zh-CN') : '-';
-        const size = (p.size / 1024).toFixed(1) + ' KB';
-
-        const card = document.createElement('div');
-        card.className = 'photo-card';
-        card.style.animationDelay = `${idx * 0.05}s`;
-        card.innerHTML = `
-            <div class="photo-wrapper">
-                <img data-src="${getImageUrl(p.name)}" alt="${name}" loading="lazy">
-                <div class="photo-overlay" onclick="event.stopPropagation()">
-                    <div class="photo-actions">
-                        <button class="photo-action-btn" onclick="openLightbox(${actualIndex})" title="查看">👁</button>
-                        <button class="photo-action-btn" onclick="setPhotoAsBackground(${actualIndex})" title="设为背景">🖼️</button>
-                        <button class="photo-action-btn delete" onclick="deletePhoto('${p.name}', '${p.sha}')" title="删除">🗑</button>
-                    </div>
+        orderedFolders.forEach(folderName => {
+            const section = document.createElement('div');
+            section.className = 'album-section';
+            const albumPhotos = grouped.get(folderName) || [];
+            section.innerHTML = `
+                <div class="album-header">
+                    <h3>${folderName}</h3>
+                    <span>${albumPhotos.length} 张</span>
                 </div>
-            </div>
-            <div class="photo-info">
-                <div class="photo-name">${name}</div>
-                <div class="photo-meta">
-                    <div>${date}</div>
-                    <div>${size}</div>
-                </div>
-            </div>
-        `;
-        card.onclick = () => openLightbox(actualIndex);
-        gallery.appendChild(card);
+                <div class="album-grid gallery-grid"></div>
+            `;
 
-        const img = card.querySelector('img');
-        if ('IntersectionObserver' in window) {
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const img = entry.target;
-                        img.src = img.dataset.src;
-                        img.onload = () => img.classList.add('loaded');
-                        observer.unobserve(img);
-                    }
-                });
-            }, { rootMargin: '50px' });
-            observer.observe(img);
-        } else {
-            img.src = img.dataset.src;
-            img.onload = () => img.classList.add('loaded');
-        }
-    });
-
-    if (end < photosToRender.length) {
-        loadMore.style.display = 'block';
+            const grid = section.querySelector('.album-grid');
+            albumPhotos.forEach((photo, idx) => {
+                grid.appendChild(createPhotoCard(photo, idx));
+            });
+            gallery.appendChild(section);
+        });
     } else {
-        loadMore.style.display = 'none';
+        const grid = document.createElement('div');
+        grid.className = 'gallery-grid';
+        photosToRender.forEach((photo, idx) => {
+            grid.appendChild(createPhotoCard(photo, idx));
+        });
+        gallery.appendChild(grid);
     }
+
+    loadMore.style.display = 'none';
 }
 
 function setPhotoAsBackground(index) {
@@ -1641,13 +1680,124 @@ function setPhotoAsBackground(index) {
     saveSettings();
 
     const bgSlideshow = document.getElementById('bgSlideshow');
-    bgSlideshow.innerHTML = `<div class="bg-slide active" style="background-image: url('${bgSettings.customPhoto}')"></div>`;
+    if (bgSlideshow) {
+        bgSlideshow.innerHTML = `<div class="bg-slide active" style="background-image: url('${bgSettings.customPhoto}')"></div>`;
+    }
 
     showStatus('已设为背景图片', 'success');
 }
 
 function loadMorePhotos() {
     renderPhotos(true);
+}
+
+function sanitizeFolderName(name) {
+    return name
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, '-')
+        .replace(/\s+/g, ' ')
+        .replace(/^\.+/, '')
+        .replace(/\.$/, '');
+}
+
+function encodeGitHubPath(path) {
+    return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+}
+
+async function createAlbum() {
+    const input = prompt('请输入新相册名称：');
+    if (!input) return;
+
+    const folderName = sanitizeFolderName(input);
+    if (!folderName) {
+        alert('相册名称无效');
+        return;
+    }
+    if (folderName === 'all') {
+        alert('该名称不可用');
+        return;
+    }
+    if (folders.some(f => f.id === folderName)) {
+        alert('该相册已存在');
+        return;
+    }
+
+    showStatus('创建相册中...', 'loading');
+    try {
+        const path = encodeGitHubPath(`${folderName}/.gitkeep`);
+        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${path}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${githubToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.github.v3+json'
+            },
+            body: JSON.stringify({
+                message: `Create album ${folderName}`,
+                content: btoa('album'),
+                branch: CONFIG.branch
+            })
+        });
+        if (!res.ok) throw new Error(await res.text());
+
+        showStatus(`相册「${folderName}」已创建`, 'success');
+        await refreshPhotos();
+        const uploadFolderSelect = document.getElementById('uploadFolderSelect');
+        if (uploadFolderSelect) uploadFolderSelect.value = folderName;
+    } catch (e) {
+        console.error(e);
+        showStatus('创建相册失败', 'error');
+    }
+}
+
+async function deleteCurrentAlbum() {
+    const folderFilter = document.getElementById('folderFilter');
+    const folderName = folderFilter?.value;
+
+    if (!folderName || folderName === 'all') {
+        alert('请先在筛选中选择要删除的相册');
+        return;
+    }
+
+    if (!confirm(`确定删除相册「${folderName}」及其中所有照片吗？`)) return;
+
+    showStatus('删除相册中...', 'loading');
+    try {
+        const listRes = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeGitHubPath(folderName)}?ref=${CONFIG.branch}`, {
+            headers: {
+                'Authorization': `token ${githubToken}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        if (!listRes.ok) throw new Error(await listRes.text());
+
+        const files = await listRes.json();
+        const fileList = Array.isArray(files) ? files.filter(f => f.type === 'file') : [];
+
+        for (const file of fileList) {
+            const deleteRes = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeGitHubPath(file.path)}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `token ${githubToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: `Delete ${file.path}`,
+                    sha: file.sha,
+                    branch: CONFIG.branch
+                })
+            });
+            if (!deleteRes.ok) throw new Error(await deleteRes.text());
+        }
+
+        showStatus(`相册「${folderName}」已删除`, 'success');
+        document.getElementById('folderFilter').value = 'all';
+        await refreshPhotos();
+        filterPhotos();
+    } catch (e) {
+        console.error(e);
+        showStatus('删除相册失败', 'error');
+    }
 }
 
 async function deletePhoto(filename, sha) {
@@ -1663,7 +1813,7 @@ async function deletePhoto(filename, sha) {
             body: JSON.stringify({
                 message: `Delete ${filename}`,
                 sha: sha,
-                branch: 'master'
+                branch: CONFIG.branch
             })
         });
         if (!res.ok) throw new Error('Delete failed');
@@ -1911,6 +2061,8 @@ function base64Decode(str) {
     window.updateTransitionEffect = updateTransitionEffect;
     window.updateSlideshowMaxCount = updateSlideshowMaxCount;
     window.updateSlideshowAutoPlay = updateSlideshowAutoPlay;
+    window.createAlbum = createAlbum;
+    window.deleteCurrentAlbum = deleteCurrentAlbum;
     window.login = login;
     window.logout = logout;
 })();

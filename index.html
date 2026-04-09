@@ -3,37 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💕 我们的情侣空间</title>
+    <title>我们的情侣空间</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- 漂浮爱心 -->
+    <div id="bgSlideshow" class="bg-slideshow"></div>
+    <div class="bg-overlay"></div>
+
     <div class="floating-hearts" id="floatingHearts"></div>
 
-    <!-- 主容器 -->
-    <div class="main-container active">
-        <!-- 导航栏 -->
+    <div id="loginPage" class="login-page" style="display:none;">
+        <div class="login-card">
+            <h1>欢迎回家</h1>
+            <p>输入专属密码，进入你们的回忆宇宙</p>
+            <input id="username" type="text" placeholder="用户名">
+            <input id="password" type="password" placeholder="密码">
+            <button onclick="login()">进入空间</button>
+            <div id="loginError" class="login-error"></div>
+        </div>
+    </div>
+
+    <div id="mainPage" class="main-container active">
         <nav class="navbar">
-            <div class="nav-brand">💕 我们的小天地</div>
+            <div class="nav-brand">心动轨迹</div>
             <div class="nav-user">
+                <span id="welcomeUser" class="welcome-user">欢迎，宝贝</span>
                 <button onclick="toggleSettings()" class="nav-btn" title="设置">⚙️</button>
             </div>
         </nav>
 
-        <!-- 纪念日展示 -->
         <section class="anniversary-section">
             <div class="anniversary-card">
-                <h2>💕 我们已经在一起</h2>
+                <p class="hero-tip">LOVE TIMELINE</p>
+                <h2>我们已经认真相爱</h2>
                 <div class="days-counter">
                     <span id="daysTogether">0</span>
                     <span class="days-label">天</span>
                 </div>
                 <p id="anniversaryDate">2025年9月18日</p>
-                <p class="quote">"每一天和你在一起，都是最好的礼物"</p>
+                <p class="quote">每一天和你在一起，都是最好的礼物</p>
+                <div class="hero-sub-metric">
+                    <span>累计甜蜜日记</span>
+                    <strong id="daysTogether2">0</strong>
+                </div>
             </div>
         </section>
 
-        <!-- 重要日期倒计时 -->
+        <section class="story-section">
+            <div class="section-header">
+                <h2>📖 我们的故事胶片</h2>
+                <button onclick="renderStoryTimeline(true)" class="control-btn">重新生成</button>
+            </div>
+            <div class="story-cinema-bg" aria-hidden="true">
+                <div id="storyBgLayerA" class="story-bg-layer active"></div>
+                <div id="storyBgLayerB" class="story-bg-layer"></div>
+            </div>
+            <div class="story-intro">
+                <p class="story-kicker">CHAPTERED MEMORIES</p>
+                <h3>把日常写成一部温柔电影</h3>
+                <p>从相遇的第一个眼神，到每一次并肩走过的路，这里记录我们共同成长的坐标。</p>
+            </div>
+            <div class="story-layout">
+                <div id="storyTimeline" class="story-timeline"></div>
+                <aside class="story-stage">
+                    <div class="story-stage-media">
+                        <img id="storyStageImg" src="" alt="故事画面">
+                        <div class="story-stage-overlay"></div>
+                    </div>
+                    <div class="story-stage-content">
+                        <p class="story-stage-tip">NOW PLAYING</p>
+                        <h4 id="storyStageTitle">我们的现在</h4>
+                        <p id="storyStageText">横向滑动胶片，故事镜头会在这里同步切换。</p>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
+        <section class="slideshow-section">
+            <div class="section-header">
+                <h2>🎬 今日心动放映</h2>
+                <div class="gallery-controls">
+                    <button onclick="toggleSlideshow()" class="control-btn">自动播放</button>
+                    <button onclick="toggleFullscreenSlideshow()" class="control-btn">全屏放映</button>
+                    <button onclick="reloadSlideshowPhotos()" class="control-btn">刷新片单</button>
+                </div>
+            </div>
+            <div id="slideshowContainer" class="slideshow-container">
+                <img id="slideshowImg" src="" alt="幻灯片">
+                <div class="slideshow-mask"></div>
+                <div class="slideshow-caption">
+                    <div id="slideshowDate"></div>
+                    <h3 id="slideshowText">甜蜜回忆</h3>
+                </div>
+                <button class="slide-nav prev" onclick="prevSlide()">‹</button>
+                <button class="slide-nav next" onclick="nextSlide()">›</button>
+                <div id="slideshowDots" class="slideshow-dots"></div>
+            </div>
+        </section>
+
         <section class="countdown-section">
             <div class="section-header">
                 <h2>⏰ 重要日期倒计时</h2>
@@ -45,25 +115,6 @@
             </div>
         </section>
 
-        <!-- 成就系统 -->
-        <section class="achievement-section">
-            <div class="section-header">
-                <h2>🏆 成就系统</h2>
-            </div>
-            <div class="stats-bar">
-                <div class="stat-item">
-                    <span id="unlockedCount">0</span>
-                    <span>已解锁成就</span>
-                </div>
-                <div class="stat-item">
-                    <span id="achievementProgress">0%</span>
-                    <span>总进度</span>
-                </div>
-            </div>
-            <div id="achievementsGrid" class="grid-container"></div>
-        </section>
-
-        <!-- 愿望清单 -->
         <section class="wishlist-section">
             <div class="section-header">
                 <h2>🌟 愿望清单</h2>
@@ -90,37 +141,37 @@
             </div>
             <div id="wishlistGrid" class="grid-container"></div>
             <div id="emptyWishlist" class="empty-state">
-                <p>暂无愿望，添加第一个愿望吧！</p>
+                <p>暂无愿望，添加第一个愿望吧</p>
             </div>
         </section>
 
-        <!-- 照片墙 -->
         <section class="gallery-section">
             <div class="section-header">
                 <h2>📸 我们的美好回忆</h2>
                 <div class="gallery-controls">
-                    <button onclick="scrollToUpload()" class="control-btn">📸 上传照片</button>
-                    <button onclick="toggleSlideshow()" class="control-btn">🎬 幻灯片放映</button>
-                    <button onclick="randomPhoto()" class="control-btn">🎲 随机回忆</button>
+                    <button onclick="createAlbum()" class="control-btn">新建相册</button>
+                    <button onclick="deleteCurrentAlbum()" class="control-btn">删除相册</button>
+                    <button onclick="scrollToUpload()" class="control-btn">上传照片</button>
+                    <button onclick="toggleSlideshow()" class="control-btn">幻灯片放映</button>
+                    <button onclick="randomPhoto()" class="control-btn">随机回忆</button>
                 </div>
             </div>
-            <div class="gallery-stats">
+
+            <div class="gallery-stats stats-bar">
                 <div class="stat-item">
-                    <span class="stat-icon">📸</span>
                     <span id="photoCount">0</span>
                     <span>甜蜜瞬间</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-icon">📁</span>
                     <span id="folderCount">0</span>
                     <span>回忆相册</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-icon">💾</span>
                     <span id="storageUsed">0 MB</span>
                     <span>珍藏容量</span>
                 </div>
             </div>
+
             <div class="filter-bar">
                 <select id="folderFilter" onchange="filterPhotos()">
                     <option value="all">所有相册</option>
@@ -132,23 +183,29 @@
                     <option value="month">本月</option>
                     <option value="year">今年</option>
                 </select>
-                <input type="text" id="searchInput" placeholder="搜索回忆..." oninput="filterPhotos()">
+                <input type="text" id="searchInput" placeholder="搜索回忆" oninput="filterPhotos()">
             </div>
-            <div id="gallery" class="gallery-grid"></div>
+
+            <div id="gallery" class="gallery-container"></div>
             <div id="emptyState" class="empty-state">
-                <p>暂无照片，上传第一张甜蜜回忆吧！</p>
+                <p>暂无照片，上传第一张甜蜜回忆吧</p>
             </div>
             <button id="loadMore" class="load-more-btn" onclick="loadMorePhotos()">加载更多</button>
         </section>
 
-        <!-- 上传区域 -->
         <section id="uploadSection" class="upload-section">
             <div class="section-header">
-                <h2>📸 上传我们的甜蜜瞬间</h2>
+                <h2>☁️ 上传我们的甜蜜瞬间</h2>
+            </div>
+            <div class="upload-folder-controls">
+                <select id="uploadFolderSelect">
+                    <option value="99-临时">99-临时</option>
+                </select>
+                <input id="uploadFolderCustom" type="text" placeholder="或输入新相册名（可选）">
             </div>
             <div id="dropZone" class="drop-zone">
                 <div class="upload-icon">📸</div>
-                <p>拖拽照片到此处，或点击选择</p>
+                <p>拖拽照片到此处，或点击按钮选择</p>
                 <input type="file" id="fileInput" multiple accept="image/*" hidden>
                 <button onclick="document.getElementById('fileInput').click()" class="browse-btn">选择照片</button>
             </div>
@@ -159,11 +216,10 @@
         </section>
     </div>
 
-    <!-- 设置面板 -->
     <div id="settingsPanel" class="modal-panel">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>⚙️ 设置</h3>
+                <h3>⚙️ 空间设置</h3>
                 <button onclick="toggleSettings()" class="close-btn">×</button>
             </div>
             <div class="modal-body">
@@ -189,31 +245,59 @@
                     <input type="range" id="darknessSlider" min="0" max="100" value="30" oninput="updateDarkness(this.value)">
                     <span id="darknessValue">30%</span>
                 </div>
+
+                <hr class="divider">
+
+                <div class="setting-item">
+                    <label>幻灯片间隔 <span id="intervalValue">5秒</span></label>
+                    <input type="range" id="slideshowInterval" min="2" max="20" value="5" oninput="updateSlideshowInterval(this.value)">
+                </div>
+                <div class="setting-item">
+                    <label>过渡效果</label>
+                    <select id="transitionEffect" onchange="updateTransitionEffect(this.value)">
+                        <option value="fade">淡入淡出</option>
+                        <option value="slide">滑动</option>
+                        <option value="zoom">缩放</option>
+                    </select>
+                </div>
+                <div class="setting-item">
+                    <label>幻灯片目录</label>
+                    <input id="slideshowFolder" type="text" value="slideshow" onblur="updateSlideshowFolder(this.value)">
+                </div>
+                <div class="setting-item">
+                    <label>最大显示数量 <span id="maxCountValue">10张</span></label>
+                    <input type="range" id="slideshowMaxCount" min="3" max="50" value="10" oninput="updateSlideshowMaxCount(this.value)">
+                </div>
+                <div class="setting-item inline-check">
+                    <label for="slideshowAutoPlay">自动播放</label>
+                    <input type="checkbox" id="slideshowAutoPlay" checked onchange="updateSlideshowAutoPlay(this.checked)">
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 愿望面板 -->
+    <div id="bgSettingsPanel" style="display:none;"></div>
+
     <div id="wishPanel" class="modal-panel">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="wishPanelTitle">➕ 添加愿望</h3>
+                <h3 id="wishPanelTitle">添加愿望</h3>
                 <button onclick="toggleWishPanel()" class="close-btn">×</button>
             </div>
             <div class="modal-body">
                 <div class="form-item">
                     <label>愿望内容</label>
-                    <textarea id="wishContent" rows="3" placeholder="写下你的愿望..."></textarea>
+                    <textarea id="wishContent" rows="3" placeholder="写下你的愿望"></textarea>
                 </div>
                 <div class="form-item">
                     <label>类别</label>
                     <select id="wishCategory">
-                        <option value="travel">✈️ 旅行</option>
-                        <option value="food">🍳 美食</option>
-                        <option value="gift">🎁 礼物</option>
-                        <option value="experience">🎭 体验</option>
-                        <option value="skill">📚 技能</option>
-                        <option value="other">⭐ 其他</option>
+                        <option value="travel">旅行</option>
+                        <option value="food">美食</option>
+                        <option value="gift">礼物</option>
+                        <option value="experience">体验</option>
+                        <option value="skill">技能</option>
+                        <option value="other">其他</option>
                     </select>
                 </div>
                 <div class="form-item">
@@ -235,11 +319,10 @@
         </div>
     </div>
 
-    <!-- 倒计时面板 -->
-    <div id="addCountdownPanel" class="modal-panel">
+    <div id="addCountdownPanel" class="modal-panel add-countdown-panel">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3>➕ 添加重要日期</h3>
+            <div class="modal-header panel-header">
+                <h3>添加重要日期</h3>
                 <button onclick="toggleAddCountdownPanel()" class="close-btn">×</button>
             </div>
             <div class="modal-body">
@@ -254,15 +337,15 @@
                 <div class="form-item">
                     <label>类型</label>
                     <select id="countdownType">
-                        <option value="birthday">🎂 生日</option>
-                        <option value="anniversary">💕 纪念日</option>
-                        <option value="travel">✈️ 旅行</option>
-                        <option value="event">📅 事件</option>
-                        <option value="custom">⭐ 自定义</option>
+                        <option value="birthday">生日</option>
+                        <option value="anniversary">纪念日</option>
+                        <option value="travel">旅行</option>
+                        <option value="event">事件</option>
+                        <option value="custom">自定义</option>
                     </select>
                 </div>
-                <div class="form-item">
-                    <label>每年重复</label>
+                <div class="form-item inline-check">
+                    <label for="countdownRepeat">每年重复</label>
                     <input type="checkbox" id="countdownRepeat" checked>
                 </div>
                 <div class="form-actions">
@@ -272,11 +355,10 @@
         </div>
     </div>
 
-    <!-- 灯光箱 -->
     <div id="lightbox" class="lightbox">
         <div class="lightbox-content">
             <button onclick="closeLightbox()" class="lightbox-close">×</button>
-            <img id="lightboxImg" src="" alt="">
+            <img id="lightboxImg" src="" alt="预览图">
             <div class="lightbox-info">
                 <h3 id="lightboxTitle"></h3>
                 <p id="lightboxMeta"></p>
@@ -286,12 +368,23 @@
         </div>
     </div>
 
-    <!-- 音乐播放器 -->
-    <div class="music-player">
-        <button class="music-icon" onclick="toggleMusicPlayer()">🎵</button>
-        <iframe id="musicFrame" class="music-frame" src="https://music.163.com/outchain/player?type=2&id=1868541234&auto=0&height=66" frameborder="no" border="0" marginwidth="0" marginheight="0" width="300" height="66"></iframe>
+    <div id="fullscreenSlideshow" class="fullscreen-slideshow" style="display:none;">
+        <button class="fullscreen-close" onclick="toggleFullscreenSlideshow()">×</button>
+        <img id="fsImg" src="" alt="全屏幻灯片">
+        <div class="fullscreen-caption" id="fsCaption"></div>
+        <div class="fullscreen-progress"><div id="fsProgress"></div></div>
+        <button class="fullscreen-nav prev" onclick="prevSlide()">‹</button>
+        <button class="fullscreen-nav next" onclick="nextSlide()">›</button>
     </div>
 
+    <div class="music-player">
+        <button class="music-icon" onclick="toggleMusicPlayer()">🎵</button>
+        <iframe id="musicFrame" class="music-frame" src="https://music.163.com/outchain/player?type=2&id=1868541234&auto=0&height=66" frameborder="no" width="300" height="66"></iframe>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <script src="story.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
