@@ -35,7 +35,46 @@
             </div>
         </nav>
 
-        <section class="anniversary-section">
+        <div class="channel-nav">
+            <button class="channel-tab active" data-channel-tab="home" onclick="switchChannel('home')">首页</button>
+            <button class="channel-tab" data-channel-tab="story" onclick="switchChannel('story')">故事</button>
+            <button class="channel-tab" data-channel-tab="gallery" onclick="switchChannel('gallery')">相册</button>
+            <button class="channel-tab" data-channel-tab="footprint" onclick="switchChannel('footprint')">足迹</button>
+            <button class="channel-tab" data-channel-tab="dates" onclick="switchChannel('dates')">纪念日</button>
+        </div>
+
+        <section class="home-hub channel-section active" data-channel="home">
+            <div class="home-grid">
+                <article class="home-card">
+                    <p>故事幕数</p>
+                    <strong id="homeStoryCount">0</strong>
+                </article>
+                <article class="home-card">
+                    <p>甜蜜照片</p>
+                    <strong id="homePhotoCount">0</strong>
+                </article>
+                <article class="home-card">
+                    <p>回忆相册</p>
+                    <strong id="homeAlbumCount">0</strong>
+                </article>
+                <article class="home-card">
+                    <p>地图足迹</p>
+                    <strong id="homeFootprintCount">0</strong>
+                </article>
+                <article class="home-card">
+                    <p>重要日期</p>
+                    <strong id="homeCountdownCount">0</strong>
+                </article>
+            </div>
+            <div class="home-actions">
+                <button class="control-btn" onclick="switchChannel('story')">查看故事胶片</button>
+                <button class="control-btn" onclick="switchChannel('gallery')">浏览相册</button>
+                <button class="control-btn" onclick="switchChannel('footprint')">查看地图足迹</button>
+                <button class="control-btn" onclick="switchChannel('dates')">管理纪念日</button>
+            </div>
+        </section>
+
+        <section class="anniversary-section channel-section active" data-channel="home">
             <div class="anniversary-card">
                 <p class="hero-tip">LOVE TIMELINE</p>
                 <h2>我们已经认真相爱</h2>
@@ -52,7 +91,7 @@
             </div>
         </section>
 
-        <section class="story-section">
+        <section class="story-section channel-section" data-channel="story">
             <div class="section-header">
                 <h2>📖 我们的故事胶片</h2>
                 <button onclick="renderStoryTimeline(true)" class="control-btn">重新生成</button>
@@ -82,29 +121,7 @@
             </div>
         </section>
 
-        <section class="slideshow-section">
-            <div class="section-header">
-                <h2>🎬 今日心动放映</h2>
-                <div class="gallery-controls">
-                    <button onclick="toggleSlideshow()" class="control-btn">自动播放</button>
-                    <button onclick="toggleFullscreenSlideshow()" class="control-btn">全屏放映</button>
-                    <button onclick="reloadSlideshowPhotos()" class="control-btn">刷新片单</button>
-                </div>
-            </div>
-            <div id="slideshowContainer" class="slideshow-container">
-                <img id="slideshowImg" src="" alt="幻灯片">
-                <div class="slideshow-mask"></div>
-                <div class="slideshow-caption">
-                    <div id="slideshowDate"></div>
-                    <h3 id="slideshowText">甜蜜回忆</h3>
-                </div>
-                <button class="slide-nav prev" onclick="prevSlide()">‹</button>
-                <button class="slide-nav next" onclick="nextSlide()">›</button>
-                <div id="slideshowDots" class="slideshow-dots"></div>
-            </div>
-        </section>
-
-        <section class="countdown-section">
+        <section class="countdown-section channel-section" data-channel="dates">
             <div class="section-header">
                 <h2>⏰ 重要日期倒计时</h2>
                 <button onclick="toggleAddCountdownPanel()" class="add-btn">+ 添加</button>
@@ -115,7 +132,7 @@
             </div>
         </section>
 
-        <section class="footprint-section">
+        <section class="footprint-section channel-section" data-channel="footprint">
             <div class="section-header">
                 <h2>🗺️ 地图足迹</h2>
                 <button onclick="toggleAddFootprintPanel()" class="add-btn">+ 添加足迹</button>
@@ -134,14 +151,13 @@
             </div>
         </section>
 
-        <section class="gallery-section">
+        <section class="gallery-section channel-section" data-channel="gallery">
             <div class="section-header">
                 <h2>📸 我们的美好回忆</h2>
                 <div class="gallery-controls">
                     <button onclick="createAlbum()" class="control-btn">新建相册</button>
                     <button onclick="deleteCurrentAlbum()" class="control-btn">删除相册</button>
                     <button onclick="scrollToUpload()" class="control-btn">上传照片</button>
-                    <button onclick="toggleSlideshow()" class="control-btn">幻灯片放映</button>
                     <button onclick="randomPhoto()" class="control-btn">随机回忆</button>
                 </div>
             </div>
@@ -182,7 +198,7 @@
             <button id="loadMore" class="load-more-btn" onclick="loadMorePhotos()">加载更多</button>
         </section>
 
-        <section id="uploadSection" class="upload-section">
+        <section id="uploadSection" class="upload-section channel-section" data-channel="gallery">
             <div class="section-header">
                 <h2>☁️ 上传我们的甜蜜瞬间</h2>
             </div>
@@ -235,32 +251,6 @@
                     <span id="darknessValue">30%</span>
                 </div>
 
-                <hr class="divider">
-
-                <div class="setting-item">
-                    <label>幻灯片间隔 <span id="intervalValue">5秒</span></label>
-                    <input type="range" id="slideshowInterval" min="2" max="20" value="5" oninput="updateSlideshowInterval(this.value)">
-                </div>
-                <div class="setting-item">
-                    <label>过渡效果</label>
-                    <select id="transitionEffect" onchange="updateTransitionEffect(this.value)">
-                        <option value="fade">淡入淡出</option>
-                        <option value="slide">滑动</option>
-                        <option value="zoom">缩放</option>
-                    </select>
-                </div>
-                <div class="setting-item">
-                    <label>幻灯片目录</label>
-                    <input id="slideshowFolder" type="text" value="slideshow" onblur="updateSlideshowFolder(this.value)">
-                </div>
-                <div class="setting-item">
-                    <label>最大显示数量 <span id="maxCountValue">10张</span></label>
-                    <input type="range" id="slideshowMaxCount" min="3" max="50" value="10" oninput="updateSlideshowMaxCount(this.value)">
-                </div>
-                <div class="setting-item inline-check">
-                    <label for="slideshowAutoPlay">自动播放</label>
-                    <input type="checkbox" id="slideshowAutoPlay" checked onchange="updateSlideshowAutoPlay(this.checked)">
-                </div>
             </div>
         </div>
     </div>
@@ -356,13 +346,84 @@
         </div>
     </div>
 
-    <div id="fullscreenSlideshow" class="fullscreen-slideshow" style="display:none;">
-        <button class="fullscreen-close" onclick="toggleFullscreenSlideshow()">×</button>
-        <img id="fsImg" src="" alt="全屏幻灯片">
-        <div class="fullscreen-caption" id="fsCaption"></div>
-        <div class="fullscreen-progress"><div id="fsProgress"></div></div>
-        <button class="fullscreen-nav prev" onclick="prevSlide()">‹</button>
-        <button class="fullscreen-nav next" onclick="nextSlide()">›</button>
+    <div id="storyDetailPanel" class="modal-panel story-detail-panel">
+        <div class="modal-content story-detail-modal">
+            <div class="modal-header">
+                <h3>故事详情</h3>
+                <button onclick="closeStoryDetail()" class="close-btn">×</button>
+            </div>
+            <div class="modal-body story-detail-body">
+                <input type="hidden" id="storyDetailOrder">
+
+                <div class="story-detail-view">
+                    <div class="story-detail-hero">
+                        <img id="storyDetailHeroImg" src="" alt="故事封面">
+                        <div class="story-detail-hero-mask"></div>
+                        <div class="story-detail-hero-meta">
+                            <p id="storyDetailDate" class="story-detail-date"></p>
+                            <h4 id="storyDetailTitle"></h4>
+                            <p id="storyDetailLocation" class="story-detail-location"></p>
+                        </div>
+                    </div>
+                    <div class="story-detail-tags" id="storyDetailTags"></div>
+                    <p id="storyDetailText" class="story-detail-text"></p>
+                    <div class="story-detail-grid">
+                        <div class="story-detail-box">
+                            <h5>那天我们</h5>
+                            <ul id="storyDetailMoments"></ul>
+                        </div>
+                        <div class="story-detail-box">
+                            <h5>双向留言</h5>
+                            <p id="storyDetailNoteMe"></p>
+                            <p id="storyDetailNoteTa"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="story-detail-edit">
+                    <div class="form-item">
+                        <label>日期标签</label>
+                        <input type="text" id="storyEditDate" placeholder="例如：2026/04/09">
+                    </div>
+                    <div class="form-item">
+                        <label>标题</label>
+                        <input type="text" id="storyEditTitle" placeholder="例如：第1幕 · 心动开场">
+                    </div>
+                    <div class="form-item">
+                        <label>地点</label>
+                        <input type="text" id="storyEditLocation" placeholder="例如：杭州 · 西湖">
+                    </div>
+                    <div class="form-item">
+                        <label>情绪标签（用逗号分隔）</label>
+                        <input type="text" id="storyEditTags" placeholder="例如：心动, 旅行, 烟火气">
+                    </div>
+                    <div class="form-item">
+                        <label>内容</label>
+                        <textarea id="storyEditText" rows="3" placeholder="写下这一幕的故事"></textarea>
+                    </div>
+                    <div class="form-item">
+                        <label>那天我们（每行一条）</label>
+                        <textarea id="storyEditMoments" rows="3" placeholder="一起看日落\n吃了热腾腾的小吃\n拍了很多照片"></textarea>
+                    </div>
+                    <div class="form-item">
+                        <label>我的一句话</label>
+                        <input type="text" id="storyEditNoteMe" placeholder="今天也很喜欢你">
+                    </div>
+                    <div class="form-item">
+                        <label>TA 的一句话</label>
+                        <input type="text" id="storyEditNoteTa" placeholder="和你在一起很安心">
+                    </div>
+                </div>
+
+                <div class="form-actions story-detail-actions">
+                    <button onclick="storyDetailPrev()" class="control-btn">上一幕</button>
+                    <button onclick="storyDetailNext()" class="control-btn">下一幕</button>
+                    <button onclick="startStoryEdit()" class="control-btn story-detail-view-only">编辑</button>
+                    <button onclick="cancelStoryEdit()" class="control-btn story-detail-edit-only">取消</button>
+                    <button onclick="saveStoryEdit()" class="submit-btn story-detail-edit-only">保存修改</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div id="musicPlayer" class="music-player">

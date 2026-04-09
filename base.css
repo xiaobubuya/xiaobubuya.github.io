@@ -178,6 +178,86 @@ section {
     padding: 1rem 1.25rem;
 }
 
+.channel-nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding: 0.52rem;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.58);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 12px 26px rgba(136, 61, 49, 0.12);
+}
+
+.channel-tab {
+    border: 1px solid rgba(239, 71, 111, 0.2);
+    background: rgba(255, 255, 255, 0.92);
+    color: #8f3a40;
+    border-radius: 999px;
+    padding: 0.5rem 0.72rem;
+    font-size: 0.86rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.channel-tab.active {
+    color: #fff;
+    border-color: transparent;
+    background: linear-gradient(130deg, var(--accent), var(--accent-2));
+    box-shadow: 0 8px 18px rgba(239, 71, 111, 0.34);
+}
+
+.channel-section {
+    display: none;
+}
+
+.channel-section.active {
+    display: block;
+}
+
+.home-hub {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+.home-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.64rem;
+}
+
+.home-card {
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 14px;
+    padding: 0.72rem;
+    background: rgba(255, 255, 255, 0.68);
+    box-shadow: 0 10px 22px rgba(126, 63, 50, 0.12);
+}
+
+.home-card p {
+    color: #8a6560;
+    font-size: 0.8rem;
+}
+
+.home-card strong {
+    display: block;
+    margin-top: 0.32rem;
+    color: #ae354a;
+    font-size: 1.36rem;
+}
+
+.home-actions {
+    margin-top: 0.72rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.58rem;
+}
+
 .nav-brand {
     font-family: 'ZCOOL XiaoWei', serif;
     font-size: 1.8rem;
@@ -230,6 +310,26 @@ section {
     font-weight: 800;
     color: #842f2f;
     letter-spacing: 0.01em;
+}
+
+@media (max-width: 960px) {
+    .channel-nav {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .home-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    .channel-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .home-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .anniversary-card {
@@ -302,4 +402,3 @@ section {
 .hero-sub-metric strong {
     font-size: 1rem;
 }
-

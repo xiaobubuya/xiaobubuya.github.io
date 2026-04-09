@@ -15,6 +15,13 @@ let editingFootprintId = null;
 let selectedFootprintId = null;
 let amapKey = localStorage.getItem('amapStaticKey') || decodeEmbeddedKey(HARDCODED_AMAP_KEY);
 
+function syncFootprintsGlobal() {
+    window.footprints = footprints;
+    if (typeof window.updateHomeOverview === 'function') {
+        window.updateHomeOverview();
+    }
+}
+
 async function geocodeAddressByAmap(address) {
     if (!amapKey || !address) return null;
     try {
@@ -49,9 +56,11 @@ async function loadFootprints() {
         } else if (res.status === 404) {
             footprints = [];
         }
+        syncFootprintsGlobal();
     } catch (e) {
         console.error('加载足迹失败:', e);
         footprints = [];
+        syncFootprintsGlobal();
     }
 }
 
@@ -292,6 +301,7 @@ function renderFootprints() {
         list.innerHTML = '';
         empty.style.display = 'block';
         renderFootprintMap();
+        syncFootprintsGlobal();
         return;
     }
 
@@ -323,6 +333,7 @@ function renderFootprints() {
     `).join('');
 
     renderFootprintMap();
+    syncFootprintsGlobal();
 }
 
 function escapeHtml(text) {

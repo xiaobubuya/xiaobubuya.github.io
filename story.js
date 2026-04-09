@@ -1,6 +1,13 @@
 let storyBgActiveLayer = 'A';
 let storyScrollRaf = null;
 let storyListenersController = null;
+let storyStageState = { photoIndex: -2, chapterTitle: '' };
+let storyBackdropPhotoIndex = -2;
+let currentStoryNodes = [];
+let storyDetailOrder = -1;
+let storyDetailEditing = false;
+const STORY_EDITS_KEY = 'storyFilmEdits';
+let storyEdits = {};
 
 const storyLoopState = {
     baseStart: 0,
@@ -10,6 +17,65 @@ const storyLoopState = {
     touchStartX: 0,
     touchStartY: 0
 };
+
+function loadStoryEdits() {
+    try {
+        const saved = localStorage.getItem(STORY_EDITS_KEY);
+        storyEdits = saved ? JSON.parse(saved) : {};
+    } catch (e) {
+        storyEdits = {};
+    }
+}
+
+function saveStoryEdits() {
+    localStorage.setItem(STORY_EDITS_KEY, JSON.stringify(storyEdits));
+}
+
+function getStoryNodeEditKey(node) {
+    if (typeof node.photoIndex === 'number' && node.photoIndex >= 0 && photos[node.photoIndex]?.name) {
+        return `photo:${photos[node.photoIndex].name}`;
+    }
+    return 'photo:now';
+}
+
+function parseTags(raw) {
+    return String(raw || '')
+        .split(/[，,]/)
+        .map(t => t.trim())
+        .filter(Boolean)
+        .slice(0, 6);
+}
+
+function deriveStoryLocation(photo) {
+    if (!photo || !photo.name) return '我们的日常宇宙';
+    const folder = photo.name.includes('/') ? photo.name.split('/')[0] : '';
+    return folder ? `${folder} · 我们的足迹` : '我们的日常宇宙';
+}
+
+function buildDefaultMoments(node) {
+    const title = node.title || '这一幕';
+    return [
+        `在「${title.replace(/^第\d+幕\s*·\s*/, '')}」里认真相爱`,
+        '把平凡一天过成值得收藏的片段',
+        '约定把下一次心动继续写进故事'
+    ];
+}
+
+function getStoryNodeViewModel(node) {
+    const edit = storyEdits[getStoryNodeEditKey(node)] || {};
+    const photo = (node.photoIndex >= 0 && photos[node.photoIndex]) ? photos[node.photoIndex] : null;
+    return {
+        dateLabel: edit.dateLabel || node.dateLabel || '',
+        title: edit.title || node.title || '我们的故事',
+        text: edit.text || node.text || '',
+        location: edit.location || deriveStoryLocation(photo),
+        tags: Array.isArray(edit.tags) && edit.tags.length ? edit.tags : ['心动', '陪伴', '日常'],
+        moments: Array.isArray(edit.moments) && edit.moments.length ? edit.moments : buildDefaultMoments(node),
+        noteMe: edit.noteMe || '今天也很喜欢你。',
+        noteTa: edit.noteTa || '我们会一直一起走下去。',
+        imageUrl: photo ? getImageUrl(photo.name) : ''
+    };
+}
 
 function getStoryTitle(order) {
     const titles = ['心动开场', '日常发光', '双向奔赴', '城市漫游', '未来序章', '星光尾注'];
@@ -27,6 +93,12 @@ function updateStoryStageByIndex(photoIndex, chapterTitle = '') {
     const titleEl = document.getElementById('storyStageTitle');
     const textEl = document.getElementById('storyStageText');
     if (!imgEl || !titleEl || !textEl) return;
+
+    // 滚动中频繁触发时，避免同一幕重复刷新造成闪动
+    if (storyStageState.photoIndex === photoIndex && storyStageState.chapterTitle === chapterTitle) {
+        return;
+    }
+    storyStageState = { photoIndex, chapterTitle };
 
     const photo = photos[photoIndex];
     if (!photo) {
@@ -48,6 +120,10 @@ function syncStoryBackdrop(photoIndex) {
     const layerA = document.getElementById('storyBgLayerA');
     const layerB = document.getElementById('storyBgLayerB');
     if (!layerA || !layerB) return;
+
+    // 防止同一张背景图被重复切层引发闪烁
+    if (storyBackdropPhotoIndex === photoIndex) return;
+    storyBackdropPhotoIndex = photoIndex;
 
     const photo = photos[photoIndex];
     if (!photo) {
@@ -90,6 +166,10 @@ function updateTimelineProgressByOrder(order, total) {
 function activateStoryOrder(order) {
     if (storyLoopState.total <= 0) return;
     const safeOrder = ((order % storyLoopState.total) + storyLoopState.total) % storyLoopState.total;
+    const hasActive = !!document.querySelector('.timeline-item.active');
+    if (hasActive && safeOrder === storyLoopState.activeOrder) {
+        return;
+    }
 
     document.querySelectorAll('.timeline-item').forEach(el => {
         const isActive = parseInt(el.dataset.order, 10) === safeOrder;
@@ -232,6 +312,12 @@ function bindStoryInteractions() {
     }, { passive: true, signal });
 
     document.addEventListener('keydown', (e) => {
+        if (isStoryDetailOpen()) {
+            if (e.key === 'Escape') closeStoryDetail();
+            if (e.key === 'ArrowLeft') storyDetailPrev();
+            if (e.key === 'ArrowRight') storyDetailNext();
+            return;
+        }
         if (e.key === 'ArrowLeft') storyPrev();
         if (e.key === 'ArrowRight') storyNext();
     }, { signal });
@@ -246,9 +332,10 @@ function buildFilmItem(node, order, segment) {
     return `
         <article class="timeline-item" data-order="${order}" data-segment="${segment}">
             <span class="timeline-date">${node.dateLabel}</span>
-            <div class="${cardClass}" ${dataAttr}>
+            <div class="${cardClass}" ${dataAttr} onclick="openStoryDetail(${order})">
                 <h4>${node.title}</h4>
                 <p>${node.text}</p>
+                <span class="story-card-cta">点击展开详情</span>
             </div>
         </article>
     `;
@@ -295,6 +382,14 @@ function buildStoryFilmNodes(force = false) {
         isNow: true
     });
 
+    filmNodes.forEach(node => {
+        const edit = storyEdits[getStoryNodeEditKey(node)];
+        if (!edit) return;
+        if (typeof edit.dateLabel === 'string' && edit.dateLabel.trim()) node.dateLabel = edit.dateLabel.trim();
+        if (typeof edit.title === 'string' && edit.title.trim()) node.title = edit.title.trim();
+        if (typeof edit.text === 'string' && edit.text.trim()) node.text = edit.text.trim();
+    });
+
     return filmNodes;
 }
 
@@ -316,8 +411,11 @@ function renderStoryTimeline(force = false) {
     if (!container) return;
 
     const filmNodes = buildStoryFilmNodes(force);
+    currentStoryNodes = filmNodes.map((node, index) => ({ ...node, order: index }));
     storyLoopState.total = filmNodes.length;
-    storyLoopState.activeOrder = 0;
+    storyLoopState.activeOrder = -1;
+    storyStageState = { photoIndex: -2, chapterTitle: '' };
+    storyBackdropPhotoIndex = -2;
 
     if (!filmNodes.length) {
         container.innerHTML = `
@@ -331,9 +429,9 @@ function renderStoryTimeline(force = false) {
     }
 
     const cardsHtml = [
-        ...filmNodes.map((node, idx) => buildFilmItem(node, idx, 'prev')),
-        ...filmNodes.map((node, idx) => buildFilmItem(node, idx, 'real')),
-        ...filmNodes.map((node, idx) => buildFilmItem(node, idx, 'next'))
+        ...currentStoryNodes.map((node, idx) => buildFilmItem(node, idx, 'prev')),
+        ...currentStoryNodes.map((node, idx) => buildFilmItem(node, idx, 'real')),
+        ...currentStoryNodes.map((node, idx) => buildFilmItem(node, idx, 'next'))
     ].join('');
 
     container.innerHTML = `
@@ -356,8 +454,169 @@ function renderStoryTimeline(force = false) {
     setupStoryLoopMetrics();
     bindStoryInteractions();
     activateStoryOrder(0);
+    if (typeof window.updateHomeOverview === 'function') {
+        window.updateHomeOverview();
+    }
 }
+
+function isStoryDetailOpen() {
+    const panel = document.getElementById('storyDetailPanel');
+    return !!panel && panel.style.display === 'block';
+}
+
+function setStoryDetailMode(editing) {
+    storyDetailEditing = editing;
+    const panel = document.getElementById('storyDetailPanel');
+    if (!panel) return;
+    panel.classList.toggle('editing', editing);
+}
+
+function fillStoryDetailView(order) {
+    const node = currentStoryNodes[order];
+    if (!node) return;
+    const vm = getStoryNodeViewModel(node);
+    const heroImg = document.getElementById('storyDetailHeroImg');
+    const dateEl = document.getElementById('storyDetailDate');
+    const titleEl = document.getElementById('storyDetailTitle');
+    const locationEl = document.getElementById('storyDetailLocation');
+    const tagsEl = document.getElementById('storyDetailTags');
+    const textEl = document.getElementById('storyDetailText');
+    const momentsEl = document.getElementById('storyDetailMoments');
+    const noteMeEl = document.getElementById('storyDetailNoteMe');
+    const noteTaEl = document.getElementById('storyDetailNoteTa');
+
+    if (heroImg) {
+        if (vm.imageUrl) {
+            heroImg.src = vm.imageUrl;
+            heroImg.style.display = 'block';
+        } else {
+            heroImg.removeAttribute('src');
+            heroImg.style.display = 'none';
+        }
+    }
+    if (dateEl) dateEl.textContent = vm.dateLabel;
+    if (titleEl) titleEl.textContent = vm.title;
+    if (locationEl) locationEl.textContent = vm.location;
+    if (textEl) textEl.textContent = vm.text;
+    if (tagsEl) {
+        tagsEl.innerHTML = vm.tags.map(tag => `<span class="story-tag">${tag}</span>`).join('');
+    }
+    if (momentsEl) {
+        momentsEl.innerHTML = vm.moments.map(item => `<li>${item}</li>`).join('');
+    }
+    if (noteMeEl) noteMeEl.textContent = `我：${vm.noteMe}`;
+    if (noteTaEl) noteTaEl.textContent = `TA：${vm.noteTa}`;
+}
+
+function fillStoryEditForm(order) {
+    const node = currentStoryNodes[order];
+    if (!node) return;
+    const vm = getStoryNodeViewModel(node);
+    const orderInput = document.getElementById('storyDetailOrder');
+    if (orderInput) orderInput.value = String(order);
+    document.getElementById('storyEditDate').value = vm.dateLabel;
+    document.getElementById('storyEditTitle').value = vm.title;
+    document.getElementById('storyEditLocation').value = vm.location;
+    document.getElementById('storyEditTags').value = vm.tags.join(', ');
+    document.getElementById('storyEditText').value = vm.text;
+    document.getElementById('storyEditMoments').value = vm.moments.join('\n');
+    document.getElementById('storyEditNoteMe').value = vm.noteMe;
+    document.getElementById('storyEditNoteTa').value = vm.noteTa;
+}
+
+function openStoryDetail(order) {
+    const node = currentStoryNodes[order];
+    const panel = document.getElementById('storyDetailPanel');
+    if (!node || !panel) return;
+    storyDetailOrder = order;
+    fillStoryDetailView(order);
+    fillStoryEditForm(order);
+    setStoryDetailMode(false);
+    panel.style.display = 'block';
+}
+
+function closeStoryDetail() {
+    const panel = document.getElementById('storyDetailPanel');
+    if (!panel) return;
+    panel.style.display = 'none';
+    setStoryDetailMode(false);
+}
+
+function startStoryEdit() {
+    if (storyDetailOrder < 0) return;
+    fillStoryEditForm(storyDetailOrder);
+    setStoryDetailMode(true);
+}
+
+function cancelStoryEdit() {
+    if (storyDetailOrder < 0) return;
+    setStoryDetailMode(false);
+    fillStoryDetailView(storyDetailOrder);
+}
+
+function saveStoryEdit() {
+    const order = parseInt(document.getElementById('storyDetailOrder')?.value || '-1', 10);
+    const node = currentStoryNodes[order];
+    if (!node) return;
+
+    const dateLabel = document.getElementById('storyEditDate')?.value.trim() || '';
+    const title = document.getElementById('storyEditTitle')?.value.trim() || '';
+    const text = document.getElementById('storyEditText')?.value.trim() || '';
+    const location = document.getElementById('storyEditLocation')?.value.trim() || '';
+    const tags = parseTags(document.getElementById('storyEditTags')?.value || '');
+    const moments = String(document.getElementById('storyEditMoments')?.value || '')
+        .split('\n')
+        .map(item => item.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+    const noteMe = document.getElementById('storyEditNoteMe')?.value.trim() || '';
+    const noteTa = document.getElementById('storyEditNoteTa')?.value.trim() || '';
+    if (!title || !text || !location) {
+        alert('标题、地点和内容不能为空');
+        return;
+    }
+
+    storyEdits[getStoryNodeEditKey(node)] = {
+        dateLabel,
+        title,
+        text,
+        location,
+        tags,
+        moments,
+        noteMe,
+        noteTa
+    };
+    saveStoryEdits();
+    renderStoryTimeline(false);
+    requestAnimationFrame(() => {
+        scrollToStoryOrder(order, 'auto');
+        openStoryDetail(order);
+    });
+}
+
+function storyDetailPrev() {
+    if (currentStoryNodes.length <= 0 || storyDetailOrder < 0) return;
+    const prev = (storyDetailOrder - 1 + currentStoryNodes.length) % currentStoryNodes.length;
+    scrollToStoryOrder(prev);
+    openStoryDetail(prev);
+}
+
+function storyDetailNext() {
+    if (currentStoryNodes.length <= 0 || storyDetailOrder < 0) return;
+    const next = (storyDetailOrder + 1) % currentStoryNodes.length;
+    scrollToStoryOrder(next);
+    openStoryDetail(next);
+}
+
+loadStoryEdits();
 
 window.renderStoryTimeline = renderStoryTimeline;
 window.storyPrev = storyPrev;
 window.storyNext = storyNext;
+window.openStoryDetail = openStoryDetail;
+window.closeStoryDetail = closeStoryDetail;
+window.startStoryEdit = startStoryEdit;
+window.cancelStoryEdit = cancelStoryEdit;
+window.saveStoryEdit = saveStoryEdit;
+window.storyDetailPrev = storyDetailPrev;
+window.storyDetailNext = storyDetailNext;

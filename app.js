@@ -31,6 +31,7 @@ let currentFilter = {
     search: '',
     tag: 'all'
 };
+let currentMainChannel = localStorage.getItem('mainChannel') || 'home';
 
 const DEFAULT_MUSIC_ID = '17888105448';
 const PREVIOUS_DEFAULT_MUSIC_ID = '2124135604';
@@ -123,22 +124,10 @@ async function init() {
     // 拖拽上传
     setupDragDrop();
 
-    // 时间轴点击：打开对应照片
-    const storyTimeline = document.getElementById('storyTimeline');
-    if (storyTimeline) {
-        storyTimeline.addEventListener('click', (e) => {
-            const card = e.target.closest('.timeline-card[data-photo-index]');
-            if (!card) return;
-            const index = parseInt(card.dataset.photoIndex, 10);
-            if (!isNaN(index) && photos[index]) {
-                openLightbox(index);
-            }
-        });
-    }
-
     // 创建漂浮爱心
     createFloatingHearts();
     initMusicPlayer();
+    initMainChannels();
 
     // 初始化幻灯片触摸滑动
     initSlideshowTouch();
@@ -148,6 +137,48 @@ async function init() {
     renderFootprints();
 
     renderStoryTimeline();
+    updateHomeOverview();
+}
+
+function setMainChannel(channel, persist = true) {
+    currentMainChannel = channel;
+    document.querySelectorAll('.channel-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.channelTab === channel);
+    });
+    document.querySelectorAll('.channel-section').forEach(section => {
+        section.classList.toggle('active', section.dataset.channel === channel);
+    });
+    if (persist) localStorage.setItem('mainChannel', channel);
+}
+
+function initMainChannels() {
+    const exists = document.querySelector(`.channel-tab[data-channel-tab="${currentMainChannel}"]`);
+    setMainChannel(exists ? currentMainChannel : 'home', false);
+}
+
+function switchChannel(channel) {
+    setMainChannel(channel, true);
+    if (channel === 'gallery') {
+        requestAnimationFrame(() => {
+            const gallerySection = document.querySelector('.gallery-section');
+            if (gallerySection) gallerySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }
+}
+
+function updateHomeOverview() {
+    const storyCountEl = document.getElementById('homeStoryCount');
+    const photoCountEl = document.getElementById('homePhotoCount');
+    const albumCountEl = document.getElementById('homeAlbumCount');
+    const footprintCountEl = document.getElementById('homeFootprintCount');
+    const countdownCountEl = document.getElementById('homeCountdownCount');
+    if (storyCountEl) {
+        storyCountEl.textContent = document.querySelectorAll('.timeline-item[data-segment="real"]').length || 0;
+    }
+    if (photoCountEl) photoCountEl.textContent = photos.length;
+    if (albumCountEl) albumCountEl.textContent = folders.length > 0 ? Math.max(0, folders.length - 1) : 0;
+    if (footprintCountEl && Array.isArray(window.footprints)) footprintCountEl.textContent = window.footprints.length;
+    if (countdownCountEl) countdownCountEl.textContent = countdownEvents.length;
 }
 
 // 初始化 IndexedDB
@@ -652,6 +683,7 @@ function renderCountdownCards() {
     if (countdownEvents.length === 0) {
         grid.style.display = 'none';
         empty.style.display = 'block';
+        updateHomeOverview();
         return;
     }
 
@@ -723,6 +755,7 @@ function renderCountdownCards() {
             </div>
         </div>
     `).join('');
+    updateHomeOverview();
 }
 
 // 显示/隐藏添加面板
@@ -927,6 +960,9 @@ function randomPhoto() {
 }
 
 function scrollToUpload() {
+    if (typeof switchChannel === 'function') {
+        switchChannel('gallery');
+    }
     const uploadSection = document.getElementById('uploadSection');
     if (uploadSection) {
         uploadSection.scrollIntoView({ behavior: 'smooth' });
@@ -1327,6 +1363,7 @@ function updateStats() {
     ].join('');
 
     syncUploadFolderOptions();
+    updateHomeOverview();
 }
 
 function calculateStorageUsage(photos) {
@@ -1858,6 +1895,8 @@ function decodeGitHubContent(base64Content) {
     window.updateBlur = updateBlur;
     window.updateDarkness = updateDarkness;
     window.updateAnniversary = updateAnniversary;
+    window.switchChannel = switchChannel;
+    window.updateHomeOverview = updateHomeOverview;
     window.scrollToUpload = scrollToUpload;
     window.randomPhoto = randomPhoto;
     window.filterPhotos = filterPhotos;
