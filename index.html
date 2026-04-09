@@ -43,50 +43,24 @@
             <button class="channel-tab" data-channel-tab="dates" onclick="switchChannel('dates')">纪念日</button>
         </div>
 
-        <section class="home-hub channel-section active" data-channel="home">
-            <div class="home-grid">
-                <article class="home-card">
-                    <p>故事幕数</p>
-                    <strong id="homeStoryCount">0</strong>
-                </article>
-                <article class="home-card">
-                    <p>甜蜜照片</p>
-                    <strong id="homePhotoCount">0</strong>
-                </article>
-                <article class="home-card">
-                    <p>回忆相册</p>
-                    <strong id="homeAlbumCount">0</strong>
-                </article>
-                <article class="home-card">
-                    <p>地图足迹</p>
-                    <strong id="homeFootprintCount">0</strong>
-                </article>
-                <article class="home-card">
-                    <p>重要日期</p>
-                    <strong id="homeCountdownCount">0</strong>
-                </article>
-            </div>
-            <div class="home-actions">
-                <button class="control-btn" onclick="switchChannel('story')">查看故事胶片</button>
-                <button class="control-btn" onclick="switchChannel('gallery')">浏览相册</button>
-                <button class="control-btn" onclick="switchChannel('footprint')">查看地图足迹</button>
-                <button class="control-btn" onclick="switchChannel('dates')">管理纪念日</button>
-            </div>
-        </section>
-
         <section class="anniversary-section channel-section active" data-channel="home">
             <div class="anniversary-card">
                 <p class="hero-tip">LOVE TIMELINE</p>
-                <h2>我们已经认真相爱</h2>
+                <h2 id="heroMainTitle" data-typed-text="我们已经认真相爱">我们已经认真相爱</h2>
                 <div class="days-counter">
                     <span id="daysTogether">0</span>
                     <span class="days-label">天</span>
                 </div>
                 <p id="anniversaryDate">2025年9月18日</p>
-                <p class="quote">每一天和你在一起，都是最好的礼物</p>
+                <p id="heroQuote" class="quote" data-typed-text="每一天和你在一起，都是最好的礼物">每一天和你在一起，都是最好的礼物</p>
                 <div class="hero-sub-metric">
                     <span>累计甜蜜日记</span>
                     <strong id="daysTogether2">0</strong>
+                </div>
+                <div id="nextCountdownCard" class="next-countdown-card">
+                    <p class="next-countdown-label">下一个重要日期</p>
+                    <h4 id="nextCountdownName">暂无安排</h4>
+                    <p id="nextCountdownMeta">去「纪念日」频道添加一个重要日期吧</p>
                 </div>
             </div>
         </section>
@@ -367,6 +341,13 @@
                     </div>
                     <div class="story-detail-tags" id="storyDetailTags"></div>
                     <p id="storyDetailText" class="story-detail-text"></p>
+                    <div class="story-scene-gallery">
+                        <div class="story-scene-gallery-head">
+                            <h5>本幕相册</h5>
+                            <span id="storySceneFolderPath"></span>
+                        </div>
+                        <div id="storyScenePhotos" class="story-scene-photos"></div>
+                    </div>
                     <div class="story-detail-grid">
                         <div class="story-detail-box">
                             <h5>那天我们</h5>
@@ -412,6 +393,14 @@
                     <div class="form-item">
                         <label>TA 的一句话</label>
                         <input type="text" id="storyEditNoteTa" placeholder="和你在一起很安心">
+                    </div>
+                    <div class="form-item">
+                        <label>本幕图片组（可多选）</label>
+                        <div class="story-upload-row">
+                            <button type="button" class="control-btn" onclick="document.getElementById('storySceneUploadInput').click()">上传本幕图片</button>
+                            <span id="storySceneUploadHint"></span>
+                        </div>
+                        <input id="storySceneUploadInput" type="file" accept="image/*" multiple hidden onchange="handleStorySceneFiles(this.files)">
                     </div>
                 </div>
 

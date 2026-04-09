@@ -126,8 +126,12 @@ async function init() {
 
     // 创建漂浮爱心
     createFloatingHearts();
+    initRomanticCursorEffect();
+    runHeroTypewriter();
+    initSoftInteractionEnhancers();
     initMusicPlayer();
     initMainChannels();
+    updateWelcomeMessage();
 
     // 初始化幻灯片触摸滑动
     initSlideshowTouch();
@@ -683,6 +687,7 @@ function renderCountdownCards() {
     if (countdownEvents.length === 0) {
         grid.style.display = 'none';
         empty.style.display = 'block';
+        renderNextCountdownCard(null);
         updateHomeOverview();
         return;
     }
@@ -732,6 +737,9 @@ function renderCountdownCards() {
         };
     }).sort((a, b) => a.sortWeight - b.sortWeight);
 
+    const nearestUpcoming = enriched.find(item => !item.isPast) || null;
+    renderNextCountdownCard(nearestUpcoming);
+
     grid.innerHTML = enriched.map((item) => `
         <div class="countdown-card ${item.isUrgent ? 'urgent' : ''} ${item.isToday ? 'today' : ''} ${item.isPast ? 'past' : ''}">
             <div class="countdown-head">
@@ -756,6 +764,25 @@ function renderCountdownCards() {
         </div>
     `).join('');
     updateHomeOverview();
+}
+
+function renderNextCountdownCard(nextItem) {
+    const nameEl = document.getElementById('nextCountdownName');
+    const metaEl = document.getElementById('nextCountdownMeta');
+    if (!nameEl || !metaEl) return;
+
+    if (!nextItem) {
+        nameEl.textContent = '暂无安排';
+        metaEl.textContent = '去「纪念日」频道添加一个重要日期吧';
+        return;
+    }
+
+    const icon = typeIcons[nextItem.event.type] || '⭐';
+    const repeatText = nextItem.event.repeat ? '每年重复' : '单次事件';
+    const dateText = nextItem.displayDate || nextItem.event.date || '-';
+    const dayText = nextItem.isToday ? '就是今天' : `还有 ${nextItem.daysDiff} 天`;
+    nameEl.textContent = `${icon} ${nextItem.event.name}`;
+    metaEl.textContent = `${dateText} · ${dayText} · ${repeatText}`;
 }
 
 // 显示/隐藏添加面板
@@ -945,12 +972,113 @@ function createFloatingHearts() {
         heart.className = 'heart';
         heart.textContent = ['💕', '💖', '💗', '💓', '💝'][Math.floor(Math.random() * 5)];
         heart.style.left = Math.random() * 100 + '%';
+        heart.style.setProperty('--drift', `${Math.round((Math.random() - 0.5) * 60)}px`);
         heart.style.animationDuration = (Math.random() * 3 + 4) + 's';
         heart.style.opacity = Math.random() * 0.5 + 0.3;
         container.appendChild(heart);
 
         setTimeout(() => heart.remove(), 7000);
     }, 2000);
+}
+
+function initRomanticCursorEffect() {
+    const container = document.getElementById('floatingHearts');
+    if (!container || window.matchMedia('(pointer: coarse)').matches) return;
+
+    let lastTime = 0;
+    document.addEventListener('mousemove', (e) => {
+        const now = performance.now();
+        if (now - lastTime < 55) return;
+        lastTime = now;
+
+        const particle = document.createElement('span');
+        particle.className = 'cursor-heart';
+        particle.textContent = ['❤', '✦', '❥'][Math.floor(Math.random() * 3)];
+        particle.style.left = `${e.clientX}px`;
+        particle.style.top = `${e.clientY}px`;
+        particle.style.setProperty('--mx', `${Math.round((Math.random() - 0.5) * 26)}px`);
+        container.appendChild(particle);
+
+        setTimeout(() => particle.remove(), 950);
+    }, { passive: true });
+}
+
+async function typeText(el, text, speed = 74) {
+    if (!el) return;
+    el.classList.add('typed-caret');
+    el.textContent = '';
+    for (let i = 0; i < text.length; i++) {
+        el.textContent += text[i];
+        await new Promise(resolve => setTimeout(resolve, speed));
+    }
+    setTimeout(() => el.classList.remove('typed-caret'), 280);
+}
+
+async function runHeroTypewriter() {
+    if (sessionStorage.getItem('heroTypewriterDone') === '1') return;
+    const titleEl = document.getElementById('heroMainTitle');
+    const quoteEl = document.getElementById('heroQuote');
+    if (!titleEl || !quoteEl) return;
+    const title = titleEl.dataset.typedText || titleEl.textContent || '';
+    const quote = quoteEl.dataset.typedText || quoteEl.textContent || '';
+    await typeText(titleEl, title, 68);
+    await typeText(quoteEl, quote, 40);
+    sessionStorage.setItem('heroTypewriterDone', '1');
+}
+
+function initSoftInteractionEnhancers() {
+    initButtonRippleEffect();
+    initClickLoveBurst();
+}
+
+function initButtonRippleEffect() {
+    document.addEventListener('click', (e) => {
+        const button = e.target.closest('.control-btn, .add-btn, .submit-btn, .browse-btn, .load-more-btn');
+        if (!button) return;
+        const rect = button.getBoundingClientRect();
+        const ripple = document.createElement('span');
+        ripple.className = 'btn-ripple';
+        const size = Math.max(rect.width, rect.height) * 1.35;
+        ripple.style.width = `${size}px`;
+        ripple.style.height = `${size}px`;
+        ripple.style.left = `${e.clientX - rect.left}px`;
+        ripple.style.top = `${e.clientY - rect.top}px`;
+        button.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 640);
+    }, { passive: true });
+}
+
+function initClickLoveBurst() {
+    const container = document.getElementById('floatingHearts');
+    if (!container || window.matchMedia('(pointer: coarse)').matches) return;
+    document.addEventListener('click', (e) => {
+        for (let i = 0; i < 3; i++) {
+            const particle = document.createElement('span');
+            particle.className = 'cursor-heart burst';
+            particle.textContent = ['❤', '❣', '✦'][Math.floor(Math.random() * 3)];
+            particle.style.left = `${e.clientX + (Math.random() - 0.5) * 22}px`;
+            particle.style.top = `${e.clientY + (Math.random() - 0.5) * 22}px`;
+            particle.style.setProperty('--mx', `${Math.round((Math.random() - 0.5) * 36)}px`);
+            container.appendChild(particle);
+            setTimeout(() => particle.remove(), 760);
+        }
+    }, { passive: true });
+}
+
+function getWelcomePrefixByHour(date = new Date()) {
+    const hour = date.getHours();
+    if (hour < 6) return '夜深了';
+    if (hour < 11) return '早安';
+    if (hour < 14) return '中午好';
+    if (hour < 18) return '下午好';
+    return '晚上好';
+}
+
+function updateWelcomeMessage() {
+    const welcomeUser = document.getElementById('welcomeUser');
+    if (!welcomeUser) return;
+    const prefix = getWelcomePrefixByHour();
+    welcomeUser.textContent = currentUser ? `${prefix}，${currentUser}` : `${prefix}，宝贝`;
 }
 
 function randomPhoto() {
@@ -1083,7 +1211,7 @@ async function showMainPage() {
     const welcomeUser = document.getElementById('welcomeUser');
     if (loginPage) loginPage.style.display = 'none';
     if (mainPage) mainPage.classList.add('active');
-    if (welcomeUser) welcomeUser.textContent = `欢迎，${currentUser}`;
+    if (welcomeUser) updateWelcomeMessage();
     await loadPhotos();
 }
 

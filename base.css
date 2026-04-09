@@ -78,18 +78,63 @@ body {
     font-size: 1.35rem;
     color: rgba(239, 71, 111, 0.45);
     animation: floatUp 8s linear forwards;
+    text-shadow: 0 0 10px rgba(239, 71, 111, 0.25);
 }
 
 @keyframes floatUp {
     from {
-        transform: translateY(15vh) scale(0.8) rotate(0deg);
+        transform: translate3d(0, 15vh, 0) scale(0.8) rotate(0deg);
         opacity: 0;
     }
     15% {
         opacity: 0.85;
     }
     to {
-        transform: translateY(-110vh) scale(1.2) rotate(240deg);
+        transform: translate3d(var(--drift, 0px), -110vh, 0) scale(1.2) rotate(240deg);
+        opacity: 0;
+    }
+}
+
+.cursor-heart {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 58;
+    pointer-events: none;
+    font-size: 0.95rem;
+    color: rgba(255, 96, 143, 0.85);
+    text-shadow: 0 0 8px rgba(255, 94, 136, 0.35);
+    transform: translate(-50%, -50%);
+    animation: cursorFloat 900ms ease-out forwards;
+}
+
+@keyframes cursorFloat {
+    from {
+        opacity: 0.95;
+        transform: translate(-50%, -50%) scale(0.7);
+    }
+    to {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--mx, 0px)), calc(-50% - 24px)) scale(1.28) rotate(18deg);
+    }
+}
+
+.typed-caret::after {
+    content: '';
+    display: inline-block;
+    width: 1px;
+    height: 1em;
+    margin-left: 0.12em;
+    vertical-align: -0.12em;
+    background: rgba(255, 255, 255, 0.95);
+    animation: caretBlink 0.78s step-end infinite;
+}
+
+@keyframes caretBlink {
+    0%, 45% {
+        opacity: 1;
+    }
+    50%, 100% {
         opacity: 0;
     }
 }
@@ -217,46 +262,6 @@ section {
     display: block;
 }
 
-.home-hub {
-    padding: 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-}
-
-.home-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.64rem;
-}
-
-.home-card {
-    border: 1px solid rgba(255, 255, 255, 0.8);
-    border-radius: 14px;
-    padding: 0.72rem;
-    background: rgba(255, 255, 255, 0.68);
-    box-shadow: 0 10px 22px rgba(126, 63, 50, 0.12);
-}
-
-.home-card p {
-    color: #8a6560;
-    font-size: 0.8rem;
-}
-
-.home-card strong {
-    display: block;
-    margin-top: 0.32rem;
-    color: #ae354a;
-    font-size: 1.36rem;
-}
-
-.home-actions {
-    margin-top: 0.72rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.58rem;
-}
 
 .nav-brand {
     font-family: 'ZCOOL XiaoWei', serif;
@@ -316,19 +321,11 @@ section {
     .channel-nav {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
-
-    .home-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
 }
 
 @media (max-width: 560px) {
     .channel-nav {
         grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .home-grid {
-        grid-template-columns: 1fr;
     }
 }
 
@@ -401,4 +398,100 @@ section {
 
 .hero-sub-metric strong {
     font-size: 1rem;
+}
+
+.next-countdown-card {
+    margin-top: 0.9rem;
+    padding: 0.8rem 0.9rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.38);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+    text-align: left;
+}
+
+.next-countdown-label {
+    font-size: 0.74rem;
+    letter-spacing: 0.08em;
+    opacity: 0.9;
+}
+
+#nextCountdownName {
+    margin-top: 0.2rem;
+    font-size: 1.08rem;
+    color: #fffaf6;
+}
+
+#nextCountdownMeta {
+    margin-top: 0.2rem;
+    font-size: 0.84rem;
+    opacity: 0.95;
+}
+
+/* Romantic comfort polish */
+.channel-section.active {
+    animation: channelFadeIn 360ms ease both;
+}
+
+.nav-brand {
+    animation: brandGlow 4.6s ease-in-out infinite;
+}
+
+.anniversary-card::after {
+    content: '';
+    position: absolute;
+    right: -60px;
+    top: -70px;
+    width: 210px;
+    height: 210px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0));
+    animation: haloDrift 6.2s ease-in-out infinite;
+}
+
+.cursor-heart.burst {
+    font-size: 1.15rem;
+    color: rgba(255, 117, 161, 0.95);
+    animation-duration: 760ms;
+}
+
+@keyframes brandGlow {
+    0%, 100% {
+        text-shadow: 0 0 0 rgba(239, 71, 111, 0);
+    }
+    50% {
+        text-shadow: 0 0 14px rgba(239, 71, 111, 0.28);
+    }
+}
+
+@keyframes channelFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.994);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes haloDrift {
+    0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+        opacity: 0.84;
+    }
+    50% {
+        transform: translate3d(-14px, 8px, 0) scale(1.06);
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-brand,
+    .anniversary-card::after,
+    .channel-section.active,
+    .heart,
+    .cursor-heart,
+    .btn-ripple {
+        animation: none !important;
+    }
 }

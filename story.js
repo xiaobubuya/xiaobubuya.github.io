@@ -7,7 +7,9 @@ let currentStoryNodes = [];
 let storyDetailOrder = -1;
 let storyDetailEditing = false;
 const STORY_EDITS_KEY = 'storyFilmEdits';
+const STORY_SCENE_ROOT = '故事胶片';
 let storyEdits = {};
+const storyScenePhotosCache = new Map();
 
 const storyLoopState = {
     baseStart: 0,
@@ -36,6 +38,41 @@ function getStoryNodeEditKey(node) {
         return `photo:${photos[node.photoIndex].name}`;
     }
     return 'photo:now';
+}
+
+function encodeStoryPath(path) {
+    if (typeof encodeGitHubPath === 'function') return encodeGitHubPath(path);
+    return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+}
+
+function sanitizeStorySceneSegment(text) {
+    return String(text || '')
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, '-')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^\.+/, '')
+        .replace(/\.$/, '')
+        .slice(0, 32);
+}
+
+function getStorySceneFolder(order) {
+    const node = currentStoryNodes[order];
+    if (!node) return `${STORY_SCENE_ROOT}/第00幕-未命名`;
+    const titlePart = sanitizeStorySceneSegment((node.title || '').replace(/^第\d+幕\s*·?\s*/, '')) || '未命名';
+    const orderPart = `第${String(order + 1).padStart(2, '0')}幕`;
+    return `${STORY_SCENE_ROOT}/${orderPart}-${titlePart}`;
+}
+
+function getStorySceneUploadHint(order) {
+    return `上传路径：${getStorySceneFolder(order)}`;
+}
+
+function sanitizeUploadFileName(name) {
+    return String(name || 'image.jpg')
+        .replace(/[\\/:*?"<>|]/g, '-')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_');
 }
 
 function parseTags(raw) {
@@ -506,6 +543,7 @@ function fillStoryDetailView(order) {
     }
     if (noteMeEl) noteMeEl.textContent = `我：${vm.noteMe}`;
     if (noteTaEl) noteTaEl.textContent = `TA：${vm.noteTa}`;
+    renderStoryScenePhotos(order);
 }
 
 function fillStoryEditForm(order) {
@@ -522,6 +560,125 @@ function fillStoryEditForm(order) {
     document.getElementById('storyEditMoments').value = vm.moments.join('\n');
     document.getElementById('storyEditNoteMe').value = vm.noteMe;
     document.getElementById('storyEditNoteTa').value = vm.noteTa;
+    const uploadHint = document.getElementById('storySceneUploadHint');
+    if (uploadHint) uploadHint.textContent = getStorySceneUploadHint(order);
+}
+
+async function loadStoryScenePhotos(order, force = false) {
+    const sceneFolder = getStorySceneFolder(order);
+    if (!force && storyScenePhotosCache.has(sceneFolder)) {
+        return storyScenePhotosCache.get(sceneFolder);
+    }
+    const headers = { 'Accept': 'application/vnd.github.v3+json' };
+    if (typeof githubToken === 'string' && githubToken) {
+        headers['Authorization'] = `token ${githubToken}`;
+    }
+
+    try {
+        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeStoryPath(sceneFolder)}?ref=${CONFIG.branch}`, { headers });
+        if (res.status === 404) {
+            storyScenePhotosCache.set(sceneFolder, []);
+            return [];
+        }
+        if (!res.ok) throw new Error(await res.text());
+
+        const files = await res.json();
+        const images = (Array.isArray(files) ? files : [])
+            .filter(file => file.type === 'file' && /\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(file.name))
+            .map(file => ({
+                name: file.name,
+                path: file.path,
+                url: getImageUrl(file.path),
+                size: file.size || 0
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+        storyScenePhotosCache.set(sceneFolder, images);
+        return images;
+    } catch (e) {
+        console.error('加载故事幕相册失败:', e);
+        return [];
+    }
+}
+
+async function renderStoryScenePhotos(order, force = false) {
+    const container = document.getElementById('storyScenePhotos');
+    const folderPathEl = document.getElementById('storySceneFolderPath');
+    if (!container) return;
+    const sceneFolder = getStorySceneFolder(order);
+    if (folderPathEl) folderPathEl.textContent = sceneFolder;
+    container.innerHTML = '<div class="story-scene-empty">正在加载本幕图片...</div>';
+
+    const photosList = await loadStoryScenePhotos(order, force);
+    if (!photosList.length) {
+        container.innerHTML = '<div class="story-scene-empty">本幕还没有图片，进入编辑态后可以一次上传一组照片。</div>';
+        return;
+    }
+
+    container.innerHTML = photosList.map(photo => `
+        <button class="story-scene-photo" type="button" data-url="${photo.url}" onclick="window.open(this.dataset.url, '_blank', 'noopener')">
+            <img src="${photo.url}" alt="${photo.name}">
+        </button>
+    `).join('');
+}
+
+async function uploadStorySceneFile(file, order) {
+    const sceneFolder = getStorySceneFolder(order);
+    const filename = `${sceneFolder}/${Date.now()}_${sanitizeUploadFileName(file.name)}`;
+    const contentBase64 = await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = (event) => resolve(event.target.result.split(',')[1]);
+        reader.readAsDataURL(file);
+    });
+
+    const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json'
+    };
+    if (typeof githubToken === 'string' && githubToken) {
+        headers['Authorization'] = `token ${githubToken}`;
+    }
+
+    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeStoryPath(filename)}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+            message: `Upload story scene image ${file.name}`,
+            content: contentBase64,
+            branch: CONFIG.branch
+        })
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
+async function handleStorySceneFiles(fileList) {
+    const order = storyDetailOrder;
+    if (order < 0 || !fileList) return;
+    const files = Array.from(fileList).filter(file => file.type.startsWith('image/'));
+    if (!files.length) {
+        alert('请选择图片文件');
+        return;
+    }
+
+    showStatus(`开始上传本幕图片（共 ${files.length} 张）...`, 'loading');
+    let success = 0;
+    for (const file of files) {
+        try {
+            await uploadStorySceneFile(file, order);
+            success += 1;
+        } catch (e) {
+            console.error('上传故事幕图片失败:', e);
+        }
+    }
+
+    const sceneFolder = getStorySceneFolder(order);
+    storyScenePhotosCache.delete(sceneFolder);
+    await renderStoryScenePhotos(order, true);
+    if (typeof refreshPhotos === 'function' && success > 0) {
+        await refreshPhotos();
+    }
+    showStatus(success > 0 ? `本幕图片上传成功 ${success} 张` : '本幕图片上传失败', success > 0 ? 'success' : 'error');
+    const input = document.getElementById('storySceneUploadInput');
+    if (input) input.value = '';
 }
 
 function openStoryDetail(order) {
@@ -540,6 +697,8 @@ function closeStoryDetail() {
     if (!panel) return;
     panel.style.display = 'none';
     setStoryDetailMode(false);
+    const input = document.getElementById('storySceneUploadInput');
+    if (input) input.value = '';
 }
 
 function startStoryEdit() {
@@ -620,3 +779,4 @@ window.cancelStoryEdit = cancelStoryEdit;
 window.saveStoryEdit = saveStoryEdit;
 window.storyDetailPrev = storyDetailPrev;
 window.storyDetailNext = storyDetailNext;
+window.handleStorySceneFiles = handleStorySceneFiles;
