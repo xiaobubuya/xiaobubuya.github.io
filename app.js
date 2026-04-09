@@ -32,13 +32,12 @@ let currentFilter = {
     tag: 'all'
 };
 
-const DEFAULT_MUSIC_ID = '1868541234';
+const DEFAULT_MUSIC_ID = '2124135604';
 const NETEASE_PRESET_SONGS = [
-    { id: '1868541234', name: '默认收藏曲目' },
-    { id: '2001320', name: '爱很简单 - 陶喆' },
-    { id: '526464293', name: '关键词 - 林俊杰' },
-    { id: '483671599', name: '小幸运 - 田馥甄' },
-    { id: '1330348068', name: '慢慢喜欢你 - 莫文蔚' }
+    { id: '2124135604', name: '我们的专属歌单' },
+    { id: '120001', name: '网易云热歌榜' },
+    { id: '3778678', name: '云音乐新歌榜' },
+    { id: '2884035', name: '云音乐飙升榜' }
 ];
 let musicSettings = {
     songId: DEFAULT_MUSIC_ID
@@ -947,7 +946,7 @@ function toggleMusicPlayer() {
 }
 
 function getNeteasePlayerUrl(songId) {
-    return `https://music.163.com/outchain/player?type=2&id=${encodeURIComponent(songId)}&auto=0&height=66`;
+    return `https://music.163.com/outchain/player?type=0&id=${encodeURIComponent(songId)}&auto=0&height=430`;
 }
 
 function loadMusicSettings() {
@@ -970,14 +969,14 @@ function saveMusicSettings() {
 function buildMusicPresetOptions() {
     const options = [...NETEASE_PRESET_SONGS];
     if (!options.some(item => item.id === musicSettings.songId)) {
-        options.unshift({ id: musicSettings.songId, name: `当前自定义 (${musicSettings.songId})` });
+        options.unshift({ id: musicSettings.songId, name: `当前自定义歌单 (${musicSettings.songId})` });
     }
     return options;
 }
 
 function applyMusicSong(songId, fromPreset = false) {
     if (!/^\d+$/.test(songId)) {
-        showStatus('歌曲 ID 无效，请输入纯数字', 'error');
+        showStatus('歌单 ID 无效，请输入纯数字', 'error');
         return;
     }
     musicSettings.songId = songId;
@@ -1002,7 +1001,7 @@ function applyMusicSong(songId, fromPreset = false) {
         input.value = songId;
     }
 
-    showStatus(`已切换网易云歌曲 ID: ${songId}`, 'success');
+    showStatus(`已切换网易云歌单 ID: ${songId}`, 'success');
 }
 
 function changeMusicPreset(songId) {
