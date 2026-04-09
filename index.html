@@ -115,36 +115,6 @@
             </div>
         </section>
 
-        <section class="wishlist-section">
-            <div class="section-header">
-                <h2>🌟 愿望清单</h2>
-                <button onclick="toggleWishPanel()" class="add-btn">+ 添加愿望</button>
-            </div>
-            <div class="stats-bar">
-                <div class="stat-item">
-                    <span id="totalWishes">0</span>
-                    <span>总愿望</span>
-                </div>
-                <div class="stat-item">
-                    <span id="completedWishes">0</span>
-                    <span>已完成</span>
-                </div>
-                <div class="stat-item">
-                    <span id="pendingWishes">0</span>
-                    <span>进行中</span>
-                </div>
-            </div>
-            <div class="filter-bar">
-                <button class="filter-btn active" onclick="filterWishes('all')">全部</button>
-                <button class="filter-btn" onclick="filterWishes('pending')">进行中</button>
-                <button class="filter-btn" onclick="filterWishes('completed')">已完成</button>
-            </div>
-            <div id="wishlistGrid" class="grid-container"></div>
-            <div id="emptyWishlist" class="empty-state">
-                <p>暂无愿望，添加第一个愿望吧</p>
-            </div>
-        </section>
-
         <section class="gallery-section">
             <div class="section-header">
                 <h2>📸 我们的美好回忆</h2>
@@ -174,7 +144,7 @@
 
             <div class="filter-bar">
                 <select id="folderFilter" onchange="filterPhotos()">
-                    <option value="all">所有相册</option>
+                    <option value="" selected>请选择相册</option>
                 </select>
                 <select id="timeFilter" onchange="filterPhotos()">
                     <option value="all">所有时间</option>
@@ -277,47 +247,6 @@
     </div>
 
     <div id="bgSettingsPanel" style="display:none;"></div>
-
-    <div id="wishPanel" class="modal-panel">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="wishPanelTitle">添加愿望</h3>
-                <button onclick="toggleWishPanel()" class="close-btn">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-item">
-                    <label>愿望内容</label>
-                    <textarea id="wishContent" rows="3" placeholder="写下你的愿望"></textarea>
-                </div>
-                <div class="form-item">
-                    <label>类别</label>
-                    <select id="wishCategory">
-                        <option value="travel">旅行</option>
-                        <option value="food">美食</option>
-                        <option value="gift">礼物</option>
-                        <option value="experience">体验</option>
-                        <option value="skill">技能</option>
-                        <option value="other">其他</option>
-                    </select>
-                </div>
-                <div class="form-item">
-                    <label>优先级</label>
-                    <select id="wishPriority">
-                        <option value="normal">普通</option>
-                        <option value="important">重要</option>
-                        <option value="urgent">紧急</option>
-                    </select>
-                </div>
-                <div class="form-item">
-                    <label>截止日期</label>
-                    <input type="date" id="wishDeadline">
-                </div>
-                <div class="form-actions">
-                    <button onclick="saveWish()" class="submit-btn">保存愿望</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <div id="addCountdownPanel" class="modal-panel add-countdown-panel">
         <div class="modal-content">

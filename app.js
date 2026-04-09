@@ -26,7 +26,7 @@ const PHOTOS_PER_PAGE = 20;
 let currentLightboxIndex = 0;
 let folders = [];
 let currentFilter = {
-    folder: 'all',
+    folder: '',
     time: 'all',
     search: '',
     tag: 'all'
@@ -62,7 +62,6 @@ async function init() {
     loadAnniversary();
     loadSlideshowSettings();  // 加载幻灯片设置
     await loadCountdownEvents();  // 加载倒计时数据
-    await loadWishes();  // 加载愿望数据
 
     // 本地测试自动加载照片，不需要登录
     const savedUser = localStorage.getItem('galleryUser');
@@ -132,8 +131,6 @@ async function init() {
     // 渲染倒计时卡片
     renderCountdownCards();
     
-    // 渲染愿望卡片
-    renderWishes();
     renderStoryTimeline();
 }
 
@@ -546,298 +543,6 @@ function handleSwipe() {
 
 let countdownEvents = [];
 
-// ========== 愿望清单功能 ==========
-
-let wishes = [];
-let currentWishFilter = 'all';
-
-// 从 GitHub 加载愿望数据
-async function loadWishes() {
-    try {
-        const headers = { 'Accept': 'application/vnd.github.v3+json' };
-        if (githubToken) headers['Authorization'] = `token ${githubToken}`;
-
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/wishes.json?ref=${CONFIG.branch}`, {
-            headers: headers
-        });
-
-        if (res.ok) {
-            const data = await res.json();
-            const content = atob(data.content);
-            wishes = JSON.parse(content);
-            console.log(`加载愿望：${wishes.length}个`);
-        } else if (res.status === 404) {
-            wishes = [];
-        }
-    } catch (e) {
-        console.error('加载愿望失败:', e);
-        wishes = [];
-    }
-}
-
-// 保存愿望数据到 GitHub
-async function saveWishes() {
-    try {
-        const headers = {
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-        };
-        if (githubToken) headers['Authorization'] = `token ${githubToken}`;
-
-        let sha = null;
-        const getRes = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/wishes.json?ref=${CONFIG.branch}`, {
-            headers: headers
-        });
-
-        if (getRes.ok) {
-            const getData = await getRes.json();
-            sha = getData.sha;
-        }
-
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(wishes, null, 2))));
-        const body = {
-            message: '更新愿望清单',
-            content: content,
-            branch: CONFIG.branch
-        };
-        if (sha) body.sha = sha;
-
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/wishes.json`, {
-            method: 'PUT',
-            headers: headers,
-            body: JSON.stringify(body)
-        });
-
-        return res.ok;
-    } catch (e) {
-        console.error('保存愿望失败:', e);
-        return false;
-    }
-}
-
-// 图标映射
-const wishIcons = {
-    travel: '✈️',
-    food: '🍳',
-    gift: '🎁',
-    experience: '🎭',
-    skill: '📚',
-    other: '⭐'
-};
-
-const categoryNames = {
-    travel: '旅行',
-    food: '美食',
-    gift: '礼物',
-    experience: '体验',
-    skill: '技能',
-    other: '其他'
-};
-
-// 渲染愿望卡片
-function renderWishes() {
-    const grid = document.getElementById('wishlistGrid');
-    const empty = document.getElementById('emptyWishlist');
-    const totalEl = document.getElementById('totalWishes');
-    const completedEl = document.getElementById('completedWishes');
-    const pendingEl = document.getElementById('pendingWishes');
-    
-    if (!grid || !empty) return;
-    
-    // 筛选
-    let filteredWishes = wishes;
-    if (currentWishFilter === 'pending') {
-        filteredWishes = wishes.filter(w => !w.completed);
-    } else if (currentWishFilter === 'completed') {
-        filteredWishes = wishes.filter(w => w.completed);
-    }
-    
-    // 统计
-    const total = wishes.length;
-    const completed = wishes.filter(w => w.completed).length;
-    const pending = total - completed;
-    
-    if (totalEl) totalEl.textContent = total;
-    if (completedEl) completedEl.textContent = completed;
-    if (pendingEl) pendingEl.textContent = pending;
-    
-    if (total === 0) {
-        grid.style.display = 'none';
-        empty.style.display = 'block';
-        return;
-    }
-    
-    grid.style.display = 'grid';
-    empty.style.display = 'none';
-    
-    const now = new Date();
-    
-    grid.innerHTML = filteredWishes.map((wish, index) => {
-        const actualIndex = wishes.findIndex(w => w.id === wish.id);
-        const isUrgent = wish.deadline && !wish.completed && new Date(wish.deadline) < new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        const daysLeft = wish.deadline ? Math.ceil((new Date(wish.deadline) - now) / (1000 * 60 * 60 * 24)) : null;
-        
-        return `
-            <div class="wish-card ${wish.completed ? 'completed' : ''} ${isUrgent ? 'urgent' : ''}">
-                <div class="wish-header">
-                    <span class="wish-category">${wishIcons[wish.category]} ${categoryNames[wish.category]}</span>
-                    <span class="wish-priority ${wish.priority}">${wish.priority === 'normal' ? '普通' : wish.priority === 'important' ? '重要' : '紧急'}</span>
-                </div>
-                <div class="wish-content">${wish.completed ? '<s>' : ''}${wish.content}${wish.completed ? '</s>' : ''}</div>
-                ${wish.deadline ? `<div class="wish-meta"><span class="wish-deadline">📅 ${wish.deadline} ${daysLeft !== null && daysLeft >= 0 ? '(还剩' + daysLeft + '天)' : ''}</span></div>` : ''}
-                <div class="wish-actions">
-                    <button class="wish-action-btn complete ${wish.completed ? 'completed' : ''}" onclick="toggleWishComplete(${actualIndex})" ${wish.completed ? 'disabled' : ''}>
-                        ${wish.completed ? '✓ 已完成' : '○ 完成'}
-                    </button>
-                    <button class="wish-action-btn edit" onclick="editWish(${actualIndex})">编辑</button>
-                    <button class="wish-action-btn delete" onclick="deleteWish(${actualIndex})">删除</button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-// 显示/隐藏愿望面板
-function toggleWishPanel() {
-    const panel = document.getElementById('wishPanel');
-    const overlay = document.getElementById('modalOverlay');
-    
-    if (panel.style.display === 'none' || !panel.style.display) {
-        if (!overlay) {
-            const newOverlay = document.createElement('div');
-            newOverlay.id = 'modalOverlay';
-            newOverlay.className = 'modal-overlay';
-            newOverlay.onclick = toggleWishPanel;
-            document.body.appendChild(newOverlay);
-        }
-        panel.style.display = 'block';
-        // 清空表单
-        document.getElementById('wishContent').value = '';
-        document.getElementById('wishCategory').value = 'travel';
-        document.getElementById('wishPriority').value = 'normal';
-        document.getElementById('wishDeadline').value = '';
-        document.getElementById('wishPanelTitle').textContent = '➕ 添加愿望';
-    } else {
-        panel.style.display = 'none';
-        if (overlay) overlay.remove();
-    }
-}
-
-// 保存愿望（添加或编辑）
-async function saveWish() {
-    const content = document.getElementById('wishContent').value.trim();
-    const category = document.getElementById('wishCategory').value;
-    const priority = document.getElementById('wishPriority').value;
-    const deadline = document.getElementById('wishDeadline').value;
-    
-    if (!content) {
-        alert('请填写愿望内容');
-        return;
-    }
-    
-    // 检查是否是编辑模式（通过面板标题判断）
-    const isEdit = document.getElementById('wishPanelTitle').textContent.includes('编辑');
-    
-    if (isEdit) {
-        // 编辑模式：更新当前编辑的愿望
-        editingWishIndex = parseInt(editingWishIndex);
-        if (!isNaN(editingWishIndex) && wishes[editingWishIndex]) {
-            wishes[editingWishIndex].content = content;
-            wishes[editingWishIndex].category = category;
-            wishes[editingWishIndex].priority = priority;
-            wishes[editingWishIndex].deadline = deadline;
-            
-            const success = await saveWishes();
-            if (success) {
-                renderWishes();
-                toggleWishPanel();
-                showStatus('更新成功！', 'success');
-            } else {
-                alert('保存失败，请检查网络');
-            }
-        }
-    } else {
-        // 添加模式
-        const newWish = {
-            id: Date.now(),
-            content: content,
-            category: category,
-            priority: priority,
-            deadline: deadline,
-            completed: false,
-            createdAt: new Date().toISOString()
-        };
-        
-        wishes.push(newWish);
-        
-        const success = await saveWishes();
-        if (success) {
-            renderWishes();
-            toggleWishPanel();
-            showStatus('添加成功！', 'success');
-        } else {
-            alert('保存失败，请检查网络');
-        }
-    }
-}
-
-// 编辑愿望
-let editingWishIndex = null;
-
-function editWish(index) {
-    const wish = wishes[index];
-    editingWishIndex = index;
-    
-    document.getElementById('wishContent').value = wish.content;
-    document.getElementById('wishCategory').value = wish.category;
-    document.getElementById('wishPriority').value = wish.priority;
-    document.getElementById('wishDeadline').value = wish.deadline || '';
-    document.getElementById('wishPanelTitle').textContent = '✏️ 编辑愿望';
-    
-    toggleWishPanel();
-}
-
-// 切换完成状态
-async function toggleWishComplete(index) {
-    wishes[index].completed = !wishes[index].completed;
-    if (wishes[index].completed) {
-        wishes[index].completedAt = new Date().toISOString();
-    } else {
-        delete wishes[index].completedAt;
-    }
-    
-    const success = await saveWishes();
-    if (success) {
-        renderWishes();
-        showStatus(wishes[index].completed ? '恭喜完成愿望！🎉' : '已取消完成', 'success');
-    }
-}
-
-// 删除愿望
-async function deleteWish(index) {
-    if (!confirm('确定删除这个愿望吗？')) return;
-    
-    wishes.splice(index, 1);
-    
-    const success = await saveWishes();
-    if (success) {
-        renderWishes();
-        showStatus('删除成功', 'success');
-    }
-}
-
-// 筛选愿望
-function filterWishes(filter) {
-    currentWishFilter = filter;
-    
-    // 更新按钮状态
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent === (filter === 'all' ? '全部' : filter === 'pending' ? '进行中' : '已完成'));
-    });
-    
-    renderWishes();
-}
-
 // 图标映射
 const typeIcons = {
     birthday: '🎂',
@@ -859,7 +564,7 @@ async function loadCountdownEvents() {
 
         if (res.ok) {
             const data = await res.json();
-            const content = atob(data.content);
+            const content = decodeGitHubContent(data.content);
             countdownEvents = JSON.parse(content);
             console.log(`加载倒计时事件：${countdownEvents.length}个`);
         } else if (res.status === 404) {
@@ -940,39 +645,68 @@ function renderCountdownCards() {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
-    grid.innerHTML = countdownEvents.map((event, index) => {
-        const eventDate = new Date(event.date);
-        eventDate.setHours(0, 0, 0, 0);
+    const enriched = countdownEvents.map((event, index) => {
+        const rawDate = new Date(event.date);
+        rawDate.setHours(0, 0, 0, 0);
 
-        let daysDiff = Math.ceil((eventDate - now) / (1000 * 60 * 60 * 24));
+        let targetDate = new Date(rawDate);
+        let daysDiff = Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24));
 
-        // 如果是重复事件且已过期，计算明年的日期
-        let isUrgent = false;
         if (daysDiff < 0 && event.repeat) {
-            const nextYear = now.getFullYear() + 1;
-            const nextDate = new Date(nextYear, eventDate.getMonth(), eventDate.getDate());
-            daysDiff = Math.ceil((nextDate - now) / (1000 * 60 * 60 * 24));
+            targetDate = new Date(now.getFullYear(), rawDate.getMonth(), rawDate.getDate());
+            if (targetDate < now) {
+                targetDate = new Date(now.getFullYear() + 1, rawDate.getMonth(), rawDate.getDate());
+            }
+            daysDiff = Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24));
         }
 
-        isUrgent = daysDiff <= 7 && daysDiff >= 0;
+        const isToday = daysDiff === 0;
+        const isPast = daysDiff < 0;
+        const isUrgent = daysDiff >= 0 && daysDiff <= 7;
+        const sortWeight = isPast ? 99999 + Math.abs(daysDiff) : daysDiff;
+        const progress = isPast ? 100 : Math.max(0, Math.min(100, ((30 - daysDiff) / 30) * 100));
+        const badgeText = isToday ? '今天' : (isPast ? '已过期' : (isUrgent ? '即将到来' : '未来计划'));
+        const displayDate = targetDate.toLocaleDateString('zh-CN');
+        const dayLabel = isToday ? '就是今天' : (isPast ? `已过 ${Math.abs(daysDiff)} 天` : `还剩 ${daysDiff} 天`);
 
-        const daysText = daysDiff < 0 ? '已过' : `还剩 ${daysDiff} 天`;
-        const label = daysDiff === 0 ? '🎉 就是今天！' : (daysDiff < 0 ? '已经过去' : '天');
+        return {
+            event,
+            index,
+            daysDiff,
+            isToday,
+            isPast,
+            isUrgent,
+            sortWeight,
+            progress,
+            badgeText,
+            displayDate,
+            dayLabel
+        };
+    }).sort((a, b) => a.sortWeight - b.sortWeight);
 
-        return `
-            <div class="countdown-card ${isUrgent ? 'urgent' : ''}">
-                <div class="countdown-icon">${typeIcons[event.type] || '⭐'}</div>
-                <div class="countdown-name">${event.name}</div>
-                <div class="countdown-days">${daysDiff < 0 ? Math.abs(daysDiff) : daysDiff}</div>
-                <div class="countdown-label">${label}</div>
-                <div class="countdown-date">${event.date}</div>
-                <div class="countdown-actions">
-                    <button class="countdown-action-btn edit" onclick="editCountdown(${index})">编辑</button>
-                    <button class="countdown-action-btn delete" onclick="deleteCountdown(${index})">删除</button>
-                </div>
+    grid.innerHTML = enriched.map((item) => `
+        <div class="countdown-card ${item.isUrgent ? 'urgent' : ''} ${item.isToday ? 'today' : ''} ${item.isPast ? 'past' : ''}">
+            <div class="countdown-head">
+                <span class="countdown-icon">${typeIcons[item.event.type] || '⭐'}</span>
+                <span class="countdown-badge">${item.badgeText}</span>
             </div>
-        `;
-    }).join('');
+            <div class="countdown-name">${item.event.name}</div>
+            <div class="countdown-days-row">
+                <span class="countdown-days-num">${item.isPast ? Math.abs(item.daysDiff) : item.daysDiff}</span>
+                <span class="countdown-days-unit">天</span>
+            </div>
+            <div class="countdown-label">${item.dayLabel}</div>
+            <div class="countdown-meta-row">
+                <span>${item.displayDate}</span>
+                <span>${item.event.repeat ? '每年重复' : '单次事件'}</span>
+            </div>
+            <div class="countdown-progress"><span style="width:${item.progress}%"></span></div>
+            <div class="countdown-actions">
+                <button class="countdown-action-btn edit" onclick="editCountdown(${item.index})">编辑</button>
+                <button class="countdown-action-btn delete" onclick="deleteCountdown(${item.index})">删除</button>
+            </div>
+        </div>
+    `).join('');
 }
 
 // 显示/隐藏添加面板
@@ -1037,19 +771,20 @@ async function addCountdown() {
 // 编辑倒计时
 function editCountdown(index) {
     const event = countdownEvents[index];
+    toggleAddCountdownPanel();
     document.getElementById('countdownName').value = event.name;
     document.getElementById('countdownDate').value = event.date;
     document.getElementById('countdownType').value = event.type;
-    document.getElementById('countdownRepeat').checked = event.repeat;
+    document.getElementById('countdownRepeat').checked = !!event.repeat;
 
     // 删除旧的，保存时添加新的
     countdownEvents.splice(index, 1);
 
-    toggleAddCountdownPanel();
     document.querySelector('.add-countdown-panel .panel-header h3').textContent = '✏️ 编辑重要日期';
 
     // 修改保存按钮行为
-    const submitBtn = document.querySelector('.submit-btn');
+    const submitBtn = document.querySelector('#addCountdownPanel .submit-btn');
+    if (!submitBtn) return;
     submitBtn.onclick = async () => {
         const name = document.getElementById('countdownName').value.trim();
         const date = document.getElementById('countdownDate').value;
@@ -1487,9 +1222,14 @@ function updateStats() {
     const folderFilter = document.getElementById('folderFilter');
     if (!folderFilter) return;
     const currentValue = folderFilter.value;
-    folderFilter.innerHTML = folders.map(f =>
-        `<option value="${f.id}" ${f.id === currentValue ? 'selected' : ''}>${f.name} (${f.count})</option>`
-    ).join('');
+    const albumOptions = folders.filter(f => f.id !== 'all');
+    const hasCurrent = albumOptions.some(f => f.id === currentValue);
+    const selectedValue = hasCurrent ? currentValue : '';
+    currentFilter.folder = selectedValue;
+    folderFilter.innerHTML = [
+        `<option value="" ${selectedValue === '' ? 'selected' : ''}>请选择相册</option>`,
+        ...albumOptions.map(f => `<option value="${f.id}" ${f.id === selectedValue ? 'selected' : ''}>${f.name} (${f.count})</option>`)
+    ].join('');
 
     syncUploadFolderOptions();
 }
@@ -1519,9 +1259,17 @@ function filterPhotos() {
     currentFilter.time = document.getElementById('timeFilter').value;
     currentFilter.search = document.getElementById('searchInput').value.toLowerCase();
 
+    if (!currentFilter.folder) {
+        filteredPhotos = [];
+        currentPage = 0;
+        displayedPhotos = [];
+        renderPhotos();
+        return;
+    }
+
     filteredPhotos = photos.filter(photo => {
         // 文件夹筛选
-        if (currentFilter.folder !== 'all' && photo.folder !== currentFilter.folder) {
+        if (photo.folder !== currentFilter.folder) {
             return false;
         }
 
@@ -1620,6 +1368,10 @@ function renderPhotos(append = false) {
     const photosToRender = filteredPhotos;
 
     if (!photosToRender.length) {
+        const emptyText = empty?.querySelector('p');
+        if (emptyText) {
+            emptyText.textContent = currentFilter.folder ? '该相册暂无符合条件的照片' : '请先在上方选择一个相册';
+        }
         empty.classList.add('active');
         loadMore.style.display = 'none';
         gallery.innerHTML = '';
@@ -1630,45 +1382,12 @@ function renderPhotos(append = false) {
     gallery.innerHTML = '';
     displayedPhotos = photosToRender;
 
-    if (currentFilter.folder === 'all') {
-        const grouped = new Map();
-        photosToRender.forEach(photo => {
-            const folderName = photo.folder || '未分类';
-            if (!grouped.has(folderName)) grouped.set(folderName, []);
-            grouped.get(folderName).push(photo);
-        });
-
-        const orderedFolders = folders.filter(f => f.id !== 'all' && grouped.has(f.id)).map(f => f.id);
-        grouped.forEach((_, key) => {
-            if (!orderedFolders.includes(key)) orderedFolders.push(key);
-        });
-
-        orderedFolders.forEach(folderName => {
-            const section = document.createElement('div');
-            section.className = 'album-section';
-            const albumPhotos = grouped.get(folderName) || [];
-            section.innerHTML = `
-                <div class="album-header">
-                    <h3>${folderName}</h3>
-                    <span>${albumPhotos.length} 张</span>
-                </div>
-                <div class="album-grid gallery-grid"></div>
-            `;
-
-            const grid = section.querySelector('.album-grid');
-            albumPhotos.forEach((photo, idx) => {
-                grid.appendChild(createPhotoCard(photo, idx));
-            });
-            gallery.appendChild(section);
-        });
-    } else {
-        const grid = document.createElement('div');
-        grid.className = 'gallery-grid';
-        photosToRender.forEach((photo, idx) => {
-            grid.appendChild(createPhotoCard(photo, idx));
-        });
-        gallery.appendChild(grid);
-    }
+    const grid = document.createElement('div');
+    grid.className = 'gallery-grid';
+    photosToRender.forEach((photo, idx) => {
+        grid.appendChild(createPhotoCard(photo, idx));
+    });
+    gallery.appendChild(grid);
 
     loadMore.style.display = 'none';
 }
@@ -1754,7 +1473,7 @@ async function deleteCurrentAlbum() {
     const folderFilter = document.getElementById('folderFilter');
     const folderName = folderFilter?.value;
 
-    if (!folderName || folderName === 'all') {
+    if (!folderName) {
         alert('请先在筛选中选择要删除的相册');
         return;
     }
@@ -1791,7 +1510,7 @@ async function deleteCurrentAlbum() {
         }
 
         showStatus(`相册「${folderName}」已删除`, 'success');
-        document.getElementById('folderFilter').value = 'all';
+        document.getElementById('folderFilter').value = '';
         await refreshPhotos();
         filterPhotos();
     } catch (e) {
@@ -2020,19 +1739,22 @@ function base64Decode(str) {
     }
 }
 
+function decodeGitHubContent(base64Content) {
+    if (!base64Content) return '';
+    try {
+        return decodeURIComponent(escape(atob(base64Content)));
+    } catch (e) {
+        return atob(base64Content);
+    }
+}
+
 // ========== 全局函数挂载 ==========
 // 将所有需要通过 onclick 调用的函数挂载到 window 对象，确保全局可访问
 (function() {
     window.toggleSettings = toggleSettings;
-    window.toggleWishPanel = toggleWishPanel;
     window.toggleAddCountdownPanel = toggleAddCountdownPanel;
     window.toggleMusicPlayer = toggleMusicPlayer;
     window.toggleSlideshow = toggleSlideshow;
-    window.filterWishes = filterWishes;
-    window.saveWish = saveWish;
-    window.editWish = editWish;
-    window.toggleWishComplete = toggleWishComplete;
-    window.deleteWish = deleteWish;
     window.addCountdown = addCountdown;
     window.editCountdown = editCountdown;
     window.deleteCountdown = deleteCountdown;
