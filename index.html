@@ -120,14 +120,10 @@
                 <h2>🗺️ 地图足迹</h2>
                 <button onclick="toggleAddFootprintPanel()" class="add-btn">+ 添加足迹</button>
             </div>
-            <div class="footprint-key-row">
-                <input id="amapKeyInput" type="text" placeholder="请输入高德 Key（用于静态地图）" onblur="updateAmapKey(this.value)">
-                <span>标记你们一起去过的城市与景点</span>
-            </div>
             <div class="footprint-layout">
                 <div class="footprint-map-wrap">
                     <img id="footprintMapImg" src="" alt="地图足迹">
-                    <div id="footprintMapEmpty" class="footprint-map-empty">请先填写高德 Key 并添加足迹</div>
+                    <div id="footprintMapEmpty" class="footprint-map-empty">先添加足迹，地图会自动生成标记</div>
                 </div>
                 <div>
                     <div id="footprintList" class="footprint-list"></div>

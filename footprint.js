@@ -1,20 +1,19 @@
 // ========== 地图足迹功能 ==========
 
+const HARDCODED_AMAP_KEY = 'WXpaa1l6WmtaamN6WWpKa01qazRZbVZtTlRBME9UazVZakE1TURjME5EST0=';
+
+function decodeEmbeddedKey(encoded) {
+    try {
+        return atob(atob(encoded));
+    } catch (e) {
+        return '';
+    }
+}
+
 let footprints = [];
 let editingFootprintId = null;
-let amapKey = localStorage.getItem('amapStaticKey') || '';
-
-function initAmapKeyInput() {
-    const keyInput = document.getElementById('amapKeyInput');
-    if (keyInput) keyInput.value = amapKey;
-}
-
-function updateAmapKey(value) {
-    amapKey = (value || '').trim();
-    localStorage.setItem('amapStaticKey', amapKey);
-    renderFootprintMap();
-    showStatus(amapKey ? '高德 Key 已更新' : '已清空高德 Key', 'success');
-}
+let selectedFootprintId = null;
+let amapKey = localStorage.getItem('amapStaticKey') || decodeEmbeddedKey(HARDCODED_AMAP_KEY);
 
 async function geocodeAddressByAmap(address) {
     if (!amapKey || !address) return null;
@@ -199,6 +198,7 @@ function editFootprint(id) {
 async function deleteFootprint(id) {
     if (!confirm('确定删除这个足迹吗？')) return;
     footprints = footprints.filter(item => item.id !== id);
+    if (selectedFootprintId === id) selectedFootprintId = null;
 
     const saved = await saveFootprints();
     if (!saved) {
@@ -209,6 +209,11 @@ async function deleteFootprint(id) {
     showStatus('足迹已删除', 'success');
 }
 
+function focusFootprint(id) {
+    selectedFootprintId = id;
+    renderFootprints();
+}
+
 function renderFootprintMap() {
     const mapImg = document.getElementById('footprintMapImg');
     const empty = document.getElementById('footprintMapEmpty');
@@ -217,7 +222,7 @@ function renderFootprintMap() {
     if (!amapKey) {
         mapImg.classList.remove('active');
         mapImg.removeAttribute('src');
-        empty.textContent = '请先填写高德 Key 并添加足迹';
+        empty.textContent = '地图 Key 未配置，暂时无法渲染足迹地图';
         empty.style.display = 'grid';
         return;
     }
@@ -234,14 +239,23 @@ function renderFootprintMap() {
         return;
     }
 
-    const markers = points.slice(0, 16).map((item, idx) => `mid,0xFF4D6D,${idx + 1}:${item.lng},${item.lat}`).join('|');
+    const selectedPoint = points.find(item => item.id === selectedFootprintId) || null;
+    const shownPoints = points.slice(0, 16);
+    if (selectedPoint && !shownPoints.some(item => item.id === selectedPoint.id)) {
+        shownPoints[shownPoints.length - 1] = selectedPoint;
+    }
+    const markers = shownPoints.map((item, idx) => {
+        const isSelected = selectedPoint && item.id === selectedPoint.id;
+        const markerStyle = isSelected ? 'large,0xFF4D6D' : 'mid,0xE07D88';
+        return `${markerStyle},${idx + 1}:${item.lng},${item.lat}`;
+    }).join('|');
     const pathCoords = points.slice(0, 24).map(item => `${item.lng},${item.lat}`).join(';');
-    const center = points[points.length - 1];
+    const center = selectedPoint || points[points.length - 1];
 
     const params = new URLSearchParams({
         key: amapKey,
         location: `${center.lng},${center.lat}`,
-        zoom: points.length > 5 ? '4' : '5',
+        zoom: selectedPoint ? '8' : (points.length > 5 ? '4' : '5'),
         size: '1024*520',
         scale: '2',
         markers
@@ -270,15 +284,24 @@ function renderFootprints() {
 
     const ordered = [...footprints].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     if (ordered.length === 0) {
+        selectedFootprintId = null;
         list.innerHTML = '';
         empty.style.display = 'block';
         renderFootprintMap();
         return;
     }
 
+    if (!selectedFootprintId) {
+        const firstWithCoord = ordered.find(item => isFinite(item.lng) && isFinite(item.lat));
+        selectedFootprintId = firstWithCoord ? firstWithCoord.id : ordered[0].id;
+    }
+    if (!ordered.some(item => item.id === selectedFootprintId)) {
+        selectedFootprintId = ordered[0].id;
+    }
+
     empty.style.display = 'none';
     list.innerHTML = ordered.map(item => `
-        <article class="footprint-item">
+        <article class="footprint-item ${item.id === selectedFootprintId ? 'active' : ''}" onclick="focusFootprint('${item.id}')">
             <div class="footprint-title">${escapeHtml(item.city || '')} · ${escapeHtml(item.spot || '')}</div>
             <div class="footprint-meta">
                 <span>${escapeHtml(item.date || '-')}</span>
@@ -286,8 +309,8 @@ function renderFootprints() {
             </div>
             ${item.note ? `<p class="footprint-note">${escapeHtml(item.note)}</p>` : ''}
             <div class="footprint-actions">
-                <button class="footprint-action-btn edit" onclick="editFootprint('${item.id}')">编辑</button>
-                <button class="footprint-action-btn delete" onclick="deleteFootprint('${item.id}')">删除</button>
+                <button class="footprint-action-btn edit" onclick="event.stopPropagation();editFootprint('${item.id}')">编辑</button>
+                <button class="footprint-action-btn delete" onclick="event.stopPropagation();deleteFootprint('${item.id}')">删除</button>
             </div>
         </article>
     `).join('');
@@ -309,5 +332,5 @@ function escapeHtml(text) {
     window.saveFootprint = saveFootprint;
     window.editFootprint = editFootprint;
     window.deleteFootprint = deleteFootprint;
-    window.updateAmapKey = updateAmapKey;
+    window.focusFootprint = focusFootprint;
 })();

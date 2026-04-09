@@ -131,7 +131,6 @@ async function init() {
 
     // 渲染倒计时卡片
     renderCountdownCards();
-    initAmapKeyInput();
     renderFootprints();
 
     renderStoryTimeline();
