@@ -32,9 +32,10 @@ let currentFilter = {
     tag: 'all'
 };
 
-const DEFAULT_MUSIC_ID = '2124135604';
+const DEFAULT_MUSIC_ID = '17888105448';
+const PREVIOUS_DEFAULT_MUSIC_ID = '2124135604';
 const NETEASE_PRESET_SONGS = [
-    { id: '2124135604', name: '我们的专属歌单' },
+    { id: '17888105448', name: '我们的专属歌单' },
     { id: '120001', name: '网易云热歌榜' },
     { id: '3778678', name: '云音乐新歌榜' },
     { id: '2884035', name: '云音乐飙升榜' }
@@ -955,7 +956,9 @@ function loadMusicSettings() {
     try {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed.songId === 'string' && /^\d+$/.test(parsed.songId)) {
-            musicSettings.songId = parsed.songId;
+            musicSettings.songId = parsed.songId === PREVIOUS_DEFAULT_MUSIC_ID
+                ? DEFAULT_MUSIC_ID
+                : parsed.songId;
         }
     } catch (e) {
         console.warn('musicSettings 解析失败，使用默认值');
@@ -974,7 +977,7 @@ function buildMusicPresetOptions() {
     return options;
 }
 
-function applyMusicSong(songId, fromPreset = false) {
+function applyMusicSong(songId) {
     if (!/^\d+$/.test(songId)) {
         showStatus('歌单 ID 无效，请输入纯数字', 'error');
         return;
@@ -996,30 +999,18 @@ function applyMusicSong(songId, fromPreset = false) {
         presetSelect.value = songId;
     }
 
-    const input = document.getElementById('musicSongIdInput');
-    if (input && !fromPreset) {
-        input.value = songId;
-    }
-
     showStatus(`已切换网易云歌单 ID: ${songId}`, 'success');
 }
 
 function changeMusicPreset(songId) {
     if (!songId) return;
-    applyMusicSong(songId, true);
-}
-
-function applyMusicSongId() {
-    const input = document.getElementById('musicSongIdInput');
-    if (!input) return;
-    applyMusicSong(input.value.trim(), false);
+    applyMusicSong(songId);
 }
 
 function initMusicPlayer() {
     const frame = document.getElementById('musicFrame');
     const presetSelect = document.getElementById('musicPresetSelect');
-    const input = document.getElementById('musicSongIdInput');
-    if (!frame || !presetSelect || !input) return;
+    if (!frame || !presetSelect) return;
 
     frame.src = getNeteasePlayerUrl(musicSettings.songId);
     const options = buildMusicPresetOptions();
@@ -1027,14 +1018,6 @@ function initMusicPlayer() {
         `<option value="${item.id}">${item.name}</option>`
     ).join('');
     presetSelect.value = musicSettings.songId;
-    input.value = musicSettings.songId;
-
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            applyMusicSongId();
-        }
-    });
 }
 
 function login() {
@@ -1867,7 +1850,6 @@ function decodeGitHubContent(base64Content) {
     window.toggleAddCountdownPanel = toggleAddCountdownPanel;
     window.toggleMusicPlayer = toggleMusicPlayer;
     window.changeMusicPreset = changeMusicPreset;
-    window.applyMusicSongId = applyMusicSongId;
     window.toggleSlideshow = toggleSlideshow;
     window.addCountdown = addCountdown;
     window.editCountdown = editCountdown;

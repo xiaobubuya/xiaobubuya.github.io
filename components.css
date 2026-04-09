@@ -897,6 +897,20 @@
     padding: 0;
 }
 
+.music-vinyl::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border-radius: 50%;
+    background:
+        conic-gradient(from 30deg,
+            rgba(255, 255, 255, 0.24) 0deg,
+            rgba(255, 255, 255, 0.08) 18deg,
+            rgba(255, 255, 255, 0) 60deg,
+            rgba(255, 255, 255, 0) 360deg);
+    pointer-events: none;
+}
+
 .music-vinyl .vinyl-ring {
     position: absolute;
     border-radius: 50%;
@@ -999,32 +1013,15 @@
     font-size: 0.78rem;
 }
 
-.music-control-panel select:focus,
-.music-control-panel input:focus {
+.music-control-panel select:focus {
     outline: none;
     border-color: rgba(255, 153, 126, 0.95);
     box-shadow: 0 0 0 2px rgba(255, 160, 130, 0.22);
 }
 
-.music-custom-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.4rem;
-}
-
-.music-apply-btn {
-    border: 0;
-    border-radius: 10px;
-    padding: 0 0.72rem;
-    font-size: 0.76rem;
-    font-weight: 700;
-    color: #fff;
-    cursor: pointer;
-    background: linear-gradient(130deg, #ef476f, #ff7f51);
-}
-
 .music-player.playing .music-vinyl {
     animation: spinVinyl 4s linear infinite;
+    will-change: transform;
 }
 
 .music-player.playing .music-arm {
