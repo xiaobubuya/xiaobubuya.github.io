@@ -90,7 +90,7 @@
 
 .story-film-shell {
     display: grid;
-    grid-template-columns: 46px minmax(0, 1fr) 46px;
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
     gap: 0.72rem;
 }

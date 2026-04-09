@@ -1,7 +1,5 @@
 let storyBgActiveLayer = 'A';
-let storyAutoTimer = null;
 let storyScrollRaf = null;
-let storyAutoPlaying = true;
 let storyListenersController = null;
 
 const storyLoopState = {
@@ -193,38 +191,6 @@ function storyNext() {
     stepStory(1);
 }
 
-function startStoryAutoPlay() {
-    stopStoryAutoPlay();
-    storyAutoPlaying = true;
-
-    const btn = document.getElementById('storyAutoBtn');
-    if (btn) btn.textContent = '暂停循环';
-
-    storyAutoTimer = setInterval(() => {
-        if (!storyAutoPlaying) return;
-        storyNext();
-    }, 4200);
-}
-
-function stopStoryAutoPlay() {
-    if (storyAutoTimer) {
-        clearInterval(storyAutoTimer);
-        storyAutoTimer = null;
-    }
-    storyAutoPlaying = false;
-
-    const btn = document.getElementById('storyAutoBtn');
-    if (btn) btn.textContent = '开启循环';
-}
-
-function toggleStoryAutoplay() {
-    if (storyAutoPlaying) {
-        stopStoryAutoPlay();
-    } else {
-        startStoryAutoPlay();
-    }
-}
-
 function bindStoryInteractions() {
     const viewport = getStoryViewport();
     if (!viewport) return;
@@ -349,8 +315,6 @@ function renderStoryTimeline(force = false) {
     const container = document.getElementById('storyTimeline');
     if (!container) return;
 
-    stopStoryAutoPlay();
-
     const filmNodes = buildStoryFilmNodes(force);
     storyLoopState.total = filmNodes.length;
     storyLoopState.activeOrder = 0;
@@ -374,11 +338,9 @@ function renderStoryTimeline(force = false) {
 
     container.innerHTML = `
         <div class="story-film-shell">
-            <button class="film-nav prev" onclick="storyPrev()" aria-label="上一幕">‹</button>
             <div id="storyFilmViewport" class="story-film-viewport">
                 <div id="storyFilmTrack" class="story-film-track">${cardsHtml}</div>
             </div>
-            <button class="film-nav next" onclick="storyNext()" aria-label="下一幕">›</button>
         </div>
         <div class="film-footer">
             <div class="film-progress-track">
@@ -386,7 +348,7 @@ function renderStoryTimeline(force = false) {
             </div>
             <div class="film-meta">
                 <span id="storyProgressText">第 1 幕 / 共 ${filmNodes.length} 幕</span>
-                <button id="storyAutoBtn" class="film-loop-btn" onclick="toggleStoryAutoplay()">暂停循环</button>
+                <span>手动滑动浏览</span>
             </div>
         </div>
     `;
@@ -394,10 +356,8 @@ function renderStoryTimeline(force = false) {
     setupStoryLoopMetrics();
     bindStoryInteractions();
     activateStoryOrder(0);
-    startStoryAutoPlay();
 }
 
 window.renderStoryTimeline = renderStoryTimeline;
 window.storyPrev = storyPrev;
 window.storyNext = storyNext;
-window.toggleStoryAutoplay = toggleStoryAutoplay;

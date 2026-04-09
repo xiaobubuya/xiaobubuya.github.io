@@ -1,0 +1,153 @@
+.footprint-key-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.6rem;
+    align-items: center;
+    margin-bottom: 0.9rem;
+}
+
+.footprint-key-row input {
+    width: 100%;
+    border: 1px solid #e9cfc3;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 12px;
+    padding: 0.62rem 0.78rem;
+    font: inherit;
+    color: var(--ink);
+}
+
+.footprint-key-row span {
+    font-size: 0.8rem;
+    color: #8a6a64;
+}
+
+.footprint-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 0.85rem;
+}
+
+.footprint-map-wrap {
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    min-height: 320px;
+    background: linear-gradient(145deg, #ffe9e0, #ffd7cb);
+}
+
+#footprintMapImg {
+    width: 100%;
+    height: 100%;
+    min-height: 320px;
+    object-fit: cover;
+    display: none;
+}
+
+#footprintMapImg.active {
+    display: block;
+}
+
+.footprint-map-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    color: #8d6560;
+    padding: 1rem;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 243, 239, 0.72));
+}
+
+.footprint-list {
+    display: grid;
+    gap: 0.62rem;
+    max-height: 320px;
+    overflow: auto;
+    padding-right: 0.2rem;
+}
+
+.footprint-item {
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    border-radius: 14px;
+    padding: 0.72rem;
+    box-shadow: 0 8px 18px rgba(120, 60, 46, 0.12);
+}
+
+.footprint-title {
+    font-size: 0.96rem;
+    color: #7f3232;
+    font-weight: 800;
+}
+
+.footprint-meta {
+    margin-top: 0.25rem;
+    font-size: 0.78rem;
+    color: #8f6b64;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.4rem;
+}
+
+.footprint-note {
+    margin-top: 0.38rem;
+    font-size: 0.83rem;
+    color: #765c57;
+    line-height: 1.6;
+}
+
+.footprint-actions {
+    margin-top: 0.52rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.45rem;
+}
+
+.footprint-action-btn {
+    border: 0;
+    border-radius: 999px;
+    padding: 0.34rem 0.7rem;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+}
+
+.footprint-action-btn.edit {
+    background: linear-gradient(130deg, #ef476f, #ff7f51);
+}
+
+.footprint-action-btn.delete {
+    background: linear-gradient(130deg, #6e5b57, #8f746e);
+}
+
+.form-item.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+}
+
+.form-actions {
+    margin-top: 0.9rem;
+}
+
+@media (max-width: 960px) {
+    .footprint-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .footprint-list {
+        max-height: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .footprint-key-row {
+        grid-template-columns: 1fr;
+    }
+
+    .form-item.two-col {
+        grid-template-columns: 1fr;
+    }
+}

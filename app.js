@@ -62,6 +62,7 @@ async function init() {
     loadAnniversary();
     loadSlideshowSettings();  // 加载幻灯片设置
     await loadCountdownEvents();  // 加载倒计时数据
+    await loadFootprints();  // 加载地图足迹
 
     // 本地测试自动加载照片，不需要登录
     const savedUser = localStorage.getItem('galleryUser');
@@ -130,7 +131,9 @@ async function init() {
 
     // 渲染倒计时卡片
     renderCountdownCards();
-    
+    initAmapKeyInput();
+    renderFootprints();
+
     renderStoryTimeline();
 }
 

@@ -115,6 +115,29 @@
             </div>
         </section>
 
+        <section class="footprint-section">
+            <div class="section-header">
+                <h2>🗺️ 地图足迹</h2>
+                <button onclick="toggleAddFootprintPanel()" class="add-btn">+ 添加足迹</button>
+            </div>
+            <div class="footprint-key-row">
+                <input id="amapKeyInput" type="text" placeholder="请输入高德 Key（用于静态地图）" onblur="updateAmapKey(this.value)">
+                <span>标记你们一起去过的城市与景点</span>
+            </div>
+            <div class="footprint-layout">
+                <div class="footprint-map-wrap">
+                    <img id="footprintMapImg" src="" alt="地图足迹">
+                    <div id="footprintMapEmpty" class="footprint-map-empty">请先填写高德 Key 并添加足迹</div>
+                </div>
+                <div>
+                    <div id="footprintList" class="footprint-list"></div>
+                    <div id="emptyFootprint" class="empty-state">
+                        <p>暂无足迹，点击“添加足迹”记录第一站</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="gallery-section">
             <div class="section-header">
                 <h2>📸 我们的美好回忆</h2>
@@ -284,6 +307,46 @@
         </div>
     </div>
 
+    <div id="addFootprintPanel" class="modal-panel">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="footprintPanelTitle">添加地图足迹</h3>
+                <button onclick="toggleAddFootprintPanel()" class="close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-item">
+                    <label>城市</label>
+                    <input type="text" id="footprintCity" placeholder="例如：杭州">
+                </div>
+                <div class="form-item">
+                    <label>景点</label>
+                    <input type="text" id="footprintSpot" placeholder="例如：西湖">
+                </div>
+                <div class="form-item">
+                    <label>日期</label>
+                    <input type="date" id="footprintDate">
+                </div>
+                <div class="form-item two-col">
+                    <div>
+                        <label>经度（可选）</label>
+                        <input type="number" id="footprintLng" placeholder="120.155070" step="any">
+                    </div>
+                    <div>
+                        <label>纬度（可选）</label>
+                        <input type="number" id="footprintLat" placeholder="30.274084" step="any">
+                    </div>
+                </div>
+                <div class="form-item">
+                    <label>回忆（可选）</label>
+                    <textarea id="footprintNote" rows="3" placeholder="写下一句关于这次旅程的小记忆"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button onclick="saveFootprint()" class="submit-btn">保存足迹</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="lightbox" class="lightbox">
         <div class="lightbox-content">
             <button onclick="closeLightbox()" class="lightbox-close">×</button>
@@ -314,6 +377,7 @@
     <div id="status" class="status"></div>
 
     <script src="story.js"></script>
+    <script src="footprint.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
