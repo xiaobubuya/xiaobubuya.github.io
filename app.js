@@ -32,6 +32,18 @@ let currentFilter = {
     tag: 'all'
 };
 
+const DEFAULT_MUSIC_ID = '1868541234';
+const NETEASE_PRESET_SONGS = [
+    { id: '1868541234', name: '默认收藏曲目' },
+    { id: '2001320', name: '爱很简单 - 陶喆' },
+    { id: '526464293', name: '关键词 - 林俊杰' },
+    { id: '483671599', name: '小幸运 - 田馥甄' },
+    { id: '1330348068', name: '慢慢喜欢你 - 莫文蔚' }
+];
+let musicSettings = {
+    songId: DEFAULT_MUSIC_ID
+};
+
 // 幻灯片状态
 let slideshowInterval = null;
 let isSlideshowPlaying = false;
@@ -59,6 +71,7 @@ init();
 async function init() {
     await initDB();
     loadSettings();
+    loadMusicSettings();
     loadAnniversary();
     loadSlideshowSettings();  // 加载幻灯片设置
     await loadCountdownEvents();  // 加载倒计时数据
@@ -125,6 +138,7 @@ async function init() {
 
     // 创建漂浮爱心
     createFloatingHearts();
+    initMusicPlayer();
 
     // 初始化幻灯片触摸滑动
     initSlideshowTouch();
@@ -922,9 +936,106 @@ function scrollToUpload() {
 // ========== 原有功能 ==========
 
 function toggleMusicPlayer() {
+    const player = document.getElementById('musicPlayer');
     const frame = document.getElementById('musicFrame');
     if (!frame) return;
-    frame.classList.toggle('active');
+    const isActive = frame.classList.toggle('active');
+    if (player) {
+        player.classList.toggle('playing', isActive);
+        player.classList.toggle('expanded', isActive);
+    }
+}
+
+function getNeteasePlayerUrl(songId) {
+    return `https://music.163.com/outchain/player?type=2&id=${encodeURIComponent(songId)}&auto=0&height=66`;
+}
+
+function loadMusicSettings() {
+    const saved = localStorage.getItem('musicSettings');
+    if (!saved) return;
+    try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.songId === 'string' && /^\d+$/.test(parsed.songId)) {
+            musicSettings.songId = parsed.songId;
+        }
+    } catch (e) {
+        console.warn('musicSettings 解析失败，使用默认值');
+    }
+}
+
+function saveMusicSettings() {
+    localStorage.setItem('musicSettings', JSON.stringify(musicSettings));
+}
+
+function buildMusicPresetOptions() {
+    const options = [...NETEASE_PRESET_SONGS];
+    if (!options.some(item => item.id === musicSettings.songId)) {
+        options.unshift({ id: musicSettings.songId, name: `当前自定义 (${musicSettings.songId})` });
+    }
+    return options;
+}
+
+function applyMusicSong(songId, fromPreset = false) {
+    if (!/^\d+$/.test(songId)) {
+        showStatus('歌曲 ID 无效，请输入纯数字', 'error');
+        return;
+    }
+    musicSettings.songId = songId;
+    saveMusicSettings();
+
+    const frame = document.getElementById('musicFrame');
+    if (frame) {
+        frame.src = getNeteasePlayerUrl(songId);
+    }
+
+    const presetSelect = document.getElementById('musicPresetSelect');
+    if (presetSelect) {
+        const options = buildMusicPresetOptions();
+        presetSelect.innerHTML = options.map(item =>
+            `<option value="${item.id}">${item.name}</option>`
+        ).join('');
+        presetSelect.value = songId;
+    }
+
+    const input = document.getElementById('musicSongIdInput');
+    if (input && !fromPreset) {
+        input.value = songId;
+    }
+
+    showStatus(`已切换网易云歌曲 ID: ${songId}`, 'success');
+}
+
+function changeMusicPreset(songId) {
+    if (!songId) return;
+    applyMusicSong(songId, true);
+}
+
+function applyMusicSongId() {
+    const input = document.getElementById('musicSongIdInput');
+    if (!input) return;
+    applyMusicSong(input.value.trim(), false);
+}
+
+function initMusicPlayer() {
+    const frame = document.getElementById('musicFrame');
+    const presetSelect = document.getElementById('musicPresetSelect');
+    const input = document.getElementById('musicSongIdInput');
+    if (!frame || !presetSelect || !input) return;
+
+    frame.src = getNeteasePlayerUrl(musicSettings.songId);
+    const options = buildMusicPresetOptions();
+    presetSelect.innerHTML = options.map(item =>
+        `<option value="${item.id}">${item.name}</option>`
+    ).join('');
+    presetSelect.value = musicSettings.songId;
+    input.value = musicSettings.songId;
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyMusicSongId();
+        }
+    });
 }
 
 function login() {
@@ -1756,6 +1867,8 @@ function decodeGitHubContent(base64Content) {
     window.toggleSettings = toggleSettings;
     window.toggleAddCountdownPanel = toggleAddCountdownPanel;
     window.toggleMusicPlayer = toggleMusicPlayer;
+    window.changeMusicPreset = changeMusicPreset;
+    window.applyMusicSongId = applyMusicSongId;
     window.toggleSlideshow = toggleSlideshow;
     window.addCountdown = addCountdown;
     window.editCountdown = editCountdown;

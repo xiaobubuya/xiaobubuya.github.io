@@ -365,9 +365,22 @@
         <button class="fullscreen-nav next" onclick="nextSlide()">›</button>
     </div>
 
-    <div class="music-player">
-        <button class="music-icon" onclick="toggleMusicPlayer()">🎵</button>
+    <div id="musicPlayer" class="music-player">
+        <button class="music-icon music-vinyl" onclick="toggleMusicPlayer()" aria-label="打开音乐播放器">
+            <span class="vinyl-ring ring-1"></span>
+            <span class="vinyl-ring ring-2"></span>
+            <span class="vinyl-label"></span>
+        </button>
+        <span class="music-arm" aria-hidden="true"></span>
         <iframe id="musicFrame" class="music-frame" src="https://music.163.com/outchain/player?type=2&id=1868541234&auto=0&height=66" frameborder="no" width="300" height="66"></iframe>
+        <div id="musicControlPanel" class="music-control-panel">
+            <label for="musicPresetSelect">网易云歌曲</label>
+            <select id="musicPresetSelect" onchange="changeMusicPreset(this.value)"></select>
+            <div class="music-custom-row">
+                <input id="musicSongIdInput" type="text" placeholder="输入歌曲 ID，例如 1868541234">
+                <button class="music-apply-btn" onclick="applyMusicSongId()">应用</button>
+            </div>
+        </div>
     </div>
 
     <div id="status" class="status"></div>

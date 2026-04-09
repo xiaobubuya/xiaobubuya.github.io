@@ -870,30 +870,174 @@
     right: 1rem;
     bottom: 1rem;
     z-index: 50;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.55rem;
+    padding: 0.72rem;
+    border-radius: 18px;
+    background: linear-gradient(150deg, rgba(31, 20, 20, 0.78), rgba(67, 42, 39, 0.72));
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 16px 30px rgba(14, 10, 10, 0.32);
 }
 
 .music-icon {
-    width: 46px;
-    height: 46px;
+    width: 62px;
+    height: 62px;
     border-radius: 50%;
-    border: 0;
-    background: linear-gradient(130deg, #ef476f, #ff7f51);
-    color: #fff;
-    font-size: 1.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.48);
+    background: radial-gradient(circle at 35% 30%, #3f3f43, #1b1b1e 62%, #111 100%);
     cursor: pointer;
-    box-shadow: 0 10px 20px rgba(239, 71, 111, 0.35);
+    box-shadow:
+        0 10px 18px rgba(8, 8, 8, 0.34),
+        inset 0 0 0 2px rgba(255, 255, 255, 0.07),
+        inset 0 0 20px rgba(0, 0, 0, 0.42);
+    position: relative;
+    padding: 0;
+}
+
+.music-vinyl .vinyl-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    inset: 10px;
+}
+
+.music-vinyl .vinyl-ring.ring-2 {
+    inset: 18px;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.music-vinyl .vinyl-label {
+    position: absolute;
+    inset: 23px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff9c73, #ef476f 72%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.music-vinyl .vinyl-label::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #fff3ef;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.music-arm {
+    width: 48px;
+    height: 7px;
+    border-radius: 999px;
+    transform-origin: 100% 50%;
+    transform: rotate(-24deg) translate(-4px, -40px);
+    background: linear-gradient(90deg, #d6d6d8, #a8a8ad);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.25);
+    position: absolute;
+    right: 6px;
+    bottom: 42px;
+    pointer-events: none;
+}
+
+.music-arm::after {
+    content: '';
+    position: absolute;
+    right: -3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: #8f8f95;
 }
 
 .music-frame {
     display: none;
-    margin-top: 0.6rem;
     border-radius: 12px;
     overflow: hidden;
-    background: #fff;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 10px 22px rgba(12, 12, 12, 0.2);
 }
 
 .music-frame.active {
     display: block;
+}
+
+.music-control-panel {
+    display: none;
+    width: 300px;
+    border-radius: 12px;
+    padding: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+}
+
+.music-player.expanded .music-control-panel {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.music-control-panel label {
+    color: #ffe9e2;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.music-control-panel select,
+.music-control-panel input {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.92);
+    color: #623a37;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.78rem;
+}
+
+.music-control-panel select:focus,
+.music-control-panel input:focus {
+    outline: none;
+    border-color: rgba(255, 153, 126, 0.95);
+    box-shadow: 0 0 0 2px rgba(255, 160, 130, 0.22);
+}
+
+.music-custom-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.4rem;
+}
+
+.music-apply-btn {
+    border: 0;
+    border-radius: 10px;
+    padding: 0 0.72rem;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    background: linear-gradient(130deg, #ef476f, #ff7f51);
+}
+
+.music-player.playing .music-vinyl {
+    animation: spinVinyl 4s linear infinite;
+}
+
+.music-player.playing .music-arm {
+    transform: rotate(-8deg) translate(-2px, -42px);
+}
+
+@keyframes spinVinyl {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .status {
@@ -1062,9 +1206,19 @@
     .music-player {
         right: 0.7rem;
         bottom: 0.7rem;
+        padding: 0.62rem;
+    }
+
+    .music-icon {
+        width: 56px;
+        height: 56px;
     }
 
     .music-frame {
+        width: min(84vw, 300px);
+    }
+
+    .music-control-panel {
         width: min(84vw, 300px);
     }
 
