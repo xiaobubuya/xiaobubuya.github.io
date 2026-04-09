@@ -147,20 +147,27 @@ async function saveFootprint() {
         }
     }
 
+    const resolvedId = editingFootprintId || Date.now().toString();
+    const existingIndex = footprints.findIndex(item => item.id === resolvedId);
+    const gender = existingIndex >= 0
+        ? (footprints[existingIndex].gender || (existingIndex % 2 === 0 ? 'male' : 'female'))
+        : (footprints.length % 2 === 0 ? 'male' : 'female');
+
     const payload = {
-        id: editingFootprintId || Date.now().toString(),
+        id: resolvedId,
         city,
         spot,
         date: date || new Date().toISOString().slice(0, 10),
         note: note || '',
         lng,
         lat,
+        gender,
         updatedAt: new Date().toISOString()
     };
-
-    const existingIndex = footprints.findIndex(item => item.id === payload.id);
-    if (existingIndex >= 0) {
-        footprints[existingIndex] = { ...footprints[existingIndex], ...payload };
+    
+    const targetIndex = footprints.findIndex(item => item.id === payload.id);
+    if (targetIndex >= 0) {
+        footprints[targetIndex] = { ...footprints[targetIndex], ...payload };
     } else {
         footprints.push({ ...payload, createdAt: new Date().toISOString() });
     }
@@ -244,25 +251,22 @@ function renderFootprintMap() {
     if (selectedPoint && !shownPoints.some(item => item.id === selectedPoint.id)) {
         shownPoints[shownPoints.length - 1] = selectedPoint;
     }
-    const markers = shownPoints.map((item, idx) => {
+    const markers = shownPoints.map((item) => {
         const isSelected = selectedPoint && item.id === selectedPoint.id;
         const markerStyle = isSelected ? 'large,0xFF4D6D' : 'mid,0xE07D88';
-        return `${markerStyle},${idx + 1}:${item.lng},${item.lat}`;
+        const label = item.gender === 'male' ? '男' : '女';
+        return `${markerStyle},${label}:${item.lng},${item.lat}`;
     }).join('|');
-    const pathCoords = points.slice(0, 24).map(item => `${item.lng},${item.lat}`).join(';');
     const center = selectedPoint || points[points.length - 1];
 
     const params = new URLSearchParams({
         key: amapKey,
         location: `${center.lng},${center.lat}`,
-        zoom: selectedPoint ? '8' : (points.length > 5 ? '4' : '5'),
+        zoom: points.length > 5 ? '4' : '5',
         size: '1024*520',
         scale: '2',
         markers
     });
-    if (points.length > 1) {
-        params.set('paths', `6,0xF15B6C,0.75,,:${pathCoords}`);
-    }
 
     const mapUrl = `https://restapi.amap.com/v3/staticmap?${params.toString()}`;
     mapImg.onload = () => {
@@ -302,7 +306,10 @@ function renderFootprints() {
     empty.style.display = 'none';
     list.innerHTML = ordered.map(item => `
         <article class="footprint-item ${item.id === selectedFootprintId ? 'active' : ''}" onclick="focusFootprint('${item.id}')">
-            <div class="footprint-title">${escapeHtml(item.city || '')} · ${escapeHtml(item.spot || '')}</div>
+            <div class="footprint-title">
+                ${getFootprintAvatarSvg(item.gender)}
+                <span>${escapeHtml(item.city || '')} · ${escapeHtml(item.spot || '')}</span>
+            </div>
             <div class="footprint-meta">
                 <span>${escapeHtml(item.date || '-')}</span>
                 <span>${(isFinite(item.lng) && isFinite(item.lat)) ? '已定位' : '未定位'}</span>
@@ -325,6 +332,29 @@ function escapeHtml(text) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function getFootprintAvatarSvg(gender) {
+    if (gender === 'male') {
+        return `
+            <svg class="footprint-avatar male" viewBox="0 0 48 48" aria-hidden="true">
+                <circle cx="24" cy="16" r="9" fill="#8EC9FF"/>
+                <path d="M10 43c0-8 6-14 14-14s14 6 14 14" fill="#4D8BFF"/>
+                <circle cx="20.5" cy="16.5" r="1.2" fill="#1F3557"/>
+                <circle cx="27.5" cy="16.5" r="1.2" fill="#1F3557"/>
+                <path d="M20 20.5c1.2 1 2.6 1.5 4 1.5s2.8-.5 4-1.5" stroke="#1F3557" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            </svg>
+        `;
+    }
+    return `
+        <svg class="footprint-avatar female" viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="16" r="9" fill="#FFC0D6"/>
+            <path d="M10 43c0-8 6-14 14-14s14 6 14 14" fill="#FF6FA6"/>
+            <circle cx="20.5" cy="16.5" r="1.2" fill="#5A1F3B"/>
+            <circle cx="27.5" cy="16.5" r="1.2" fill="#5A1F3B"/>
+            <path d="M20 20.5c1.2 1 2.6 1.5 4 1.5s2.8-.5 4-1.5" stroke="#5A1F3B" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        </svg>
+    `;
 }
 
 (function() {

@@ -65,9 +65,29 @@
 }
 
 .footprint-title {
+    display: flex;
+    align-items: center;
+    gap: 0.42rem;
     font-size: 0.96rem;
     color: #7f3232;
     font-weight: 800;
+}
+
+.footprint-avatar {
+    width: 1.15rem;
+    height: 1.15rem;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 4px rgba(110, 53, 59, 0.18));
+}
+
+.footprint-avatar.male {
+    border-radius: 999px;
+    background: radial-gradient(circle at 30% 30%, rgba(151, 205, 255, 0.32), rgba(77, 139, 255, 0.06));
+}
+
+.footprint-avatar.female {
+    border-radius: 999px;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 194, 220, 0.32), rgba(255, 111, 166, 0.06));
 }
 
 .footprint-meta {
@@ -134,5 +154,10 @@
 @media (max-width: 560px) {
     .form-item.two-col {
         grid-template-columns: 1fr;
+    }
+
+    .footprint-avatar {
+        width: 1.02rem;
+        height: 1.02rem;
     }
 }
