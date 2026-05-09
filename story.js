@@ -34,14 +34,15 @@ function saveStoryEdits() {
 }
 
 function getStoryNodeEditKey(node) {
-    if (typeof node.photoIndex === 'number' && node.photoIndex >= 0 && photos[node.photoIndex]?.name) {
-        return `photo:${photos[node.photoIndex].name}`;
+    const photoList = Array.isArray(window.photos) ? window.photos : [];
+    if (typeof node.photoIndex === 'number' && node.photoIndex >= 0 && photoList[node.photoIndex]?.name) {
+        return `photo:${photoList[node.photoIndex].name}`;
     }
     return 'photo:now';
 }
 
 function encodeStoryPath(path) {
-    if (typeof encodeGitHubPath === 'function') return encodeGitHubPath(path);
+    if (typeof window.encodeGitHubPath === 'function') return window.encodeGitHubPath(path);
     return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
 }
 
@@ -59,7 +60,12 @@ function sanitizeStorySceneSegment(text) {
 function getStorySceneFolder(order) {
     const node = currentStoryNodes[order];
     if (!node) return `${STORY_SCENE_ROOT}/第00幕-未命名`;
-    const titlePart = sanitizeStorySceneSegment((node.title || '').replace(/^第\d+幕\s*·?\s*/, '')) || '未命名';
+    const photoList = Array.isArray(window.photos) ? window.photos : [];
+    const photo = node.photoIndex >= 0 ? photoList[node.photoIndex] : null;
+    const stablePart = photo?.name
+        ? sanitizeStorySceneSegment(photo.name.split('/').pop().replace(/^\d+_/, '').replace(/\.[^/.]+$/, ''))
+        : sanitizeStorySceneSegment((node.title || '').replace(/^第\d+幕\s*·?\s*/, ''));
+    const titlePart = stablePart || '未命名';
     const orderPart = `第${String(order + 1).padStart(2, '0')}幕`;
     return `${STORY_SCENE_ROOT}/${orderPart}-${titlePart}`;
 }
@@ -70,9 +76,12 @@ function getStorySceneUploadHint(order) {
 
 function sanitizeUploadFileName(name) {
     return String(name || 'image.jpg')
+        .trim()
         .replace(/[\\/:*?"<>|]/g, '-')
         .replace(/\s+/g, '_')
-        .replace(/_+/g, '_');
+        .replace(/_+/g, '_')
+        .replace(/^\.+/, '')
+        || 'image.jpg';
 }
 
 function parseTags(raw) {
@@ -89,6 +98,15 @@ function deriveStoryLocation(photo) {
     return folder ? `${folder} · 我们的足迹` : '我们的日常宇宙';
 }
 
+function escapeStoryHtml(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function buildDefaultMoments(node) {
     const title = node.title || '这一幕';
     return [
@@ -100,7 +118,8 @@ function buildDefaultMoments(node) {
 
 function getStoryNodeViewModel(node) {
     const edit = storyEdits[getStoryNodeEditKey(node)] || {};
-    const photo = (node.photoIndex >= 0 && photos[node.photoIndex]) ? photos[node.photoIndex] : null;
+    const photoList = Array.isArray(window.photos) ? window.photos : [];
+    const photo = (node.photoIndex >= 0 && photoList[node.photoIndex]) ? photoList[node.photoIndex] : null;
     return {
         dateLabel: edit.dateLabel || node.dateLabel || '',
         title: edit.title || node.title || '我们的故事',
@@ -110,7 +129,7 @@ function getStoryNodeViewModel(node) {
         moments: Array.isArray(edit.moments) && edit.moments.length ? edit.moments : buildDefaultMoments(node),
         noteMe: edit.noteMe || '今天也很喜欢你。',
         noteTa: edit.noteTa || '我们会一直一起走下去。',
-        imageUrl: photo ? getImageUrl(photo.name) : ''
+        imageUrl: photo && typeof window.getImageUrl === 'function' ? window.getImageUrl(photo.name) : ''
     };
 }
 
@@ -137,7 +156,8 @@ function updateStoryStageByIndex(photoIndex, chapterTitle = '') {
     }
     storyStageState = { photoIndex, chapterTitle };
 
-    const photo = photos[photoIndex];
+    const photoList = Array.isArray(window.photos) ? window.photos : [];
+    const photo = photoList[photoIndex];
     if (!photo) {
         imgEl.classList.remove('active');
         imgEl.removeAttribute('src');
@@ -147,7 +167,7 @@ function updateStoryStageByIndex(photoIndex, chapterTitle = '') {
     }
 
     imgEl.classList.remove('active');
-    imgEl.src = getImageUrl(photo.name);
+    imgEl.src = window.getImageUrl(photo.name);
     imgEl.onload = () => imgEl.classList.add('active');
     titleEl.textContent = chapterTitle || '故事章节';
     textEl.textContent = getStoryText(photo);
@@ -162,7 +182,8 @@ function syncStoryBackdrop(photoIndex) {
     if (storyBackdropPhotoIndex === photoIndex) return;
     storyBackdropPhotoIndex = photoIndex;
 
-    const photo = photos[photoIndex];
+    const photoList = Array.isArray(window.photos) ? window.photos : [];
+    const photo = photoList[photoIndex];
     if (!photo) {
         layerA.classList.remove('active');
         layerB.classList.remove('active');
@@ -171,7 +192,7 @@ function syncStoryBackdrop(photoIndex) {
 
     const nextLayer = storyBgActiveLayer === 'A' ? layerB : layerA;
     const prevLayer = storyBgActiveLayer === 'A' ? layerA : layerB;
-    nextLayer.style.backgroundImage = `url('${getImageUrl(photo.name)}')`;
+    nextLayer.style.backgroundImage = `url('${window.getImageUrl(photo.name)}')`;
     prevLayer.classList.remove('active');
     nextLayer.classList.add('active');
     storyBgActiveLayer = storyBgActiveLayer === 'A' ? 'B' : 'A';
@@ -349,10 +370,15 @@ function bindStoryInteractions() {
     }, { passive: true, signal });
 
     document.addEventListener('keydown', (e) => {
+        const editableTarget = e.target?.closest?.('input, textarea, select, [contenteditable="true"]');
+        if (editableTarget) return;
         if (isStoryDetailOpen()) {
             if (e.key === 'Escape') closeStoryDetail();
             if (e.key === 'ArrowLeft') storyDetailPrev();
             if (e.key === 'ArrowRight') storyDetailNext();
+            return;
+        }
+        if (typeof window.currentMainChannel !== 'undefined' && window.currentMainChannel !== 'story') {
             return;
         }
         if (e.key === 'ArrowLeft') storyPrev();
@@ -368,10 +394,10 @@ function buildFilmItem(node, order, segment) {
 
     return `
         <article class="timeline-item" data-order="${order}" data-segment="${segment}">
-            <span class="timeline-date">${node.dateLabel}</span>
+            <span class="timeline-date">${escapeStoryHtml(node.dateLabel)}</span>
             <div class="${cardClass}" ${dataAttr} onclick="openStoryDetail(${order})">
-                <h4>${node.title}</h4>
-                <p>${node.text}</p>
+                <h4>${escapeStoryHtml(node.title)}</h4>
+                <p>${escapeStoryHtml(node.text)}</p>
                 <span class="story-card-cta">点击展开详情</span>
             </div>
         </article>
@@ -379,7 +405,8 @@ function buildFilmItem(node, order, segment) {
 }
 
 function buildStoryFilmNodes(force = false) {
-    const timelinePhotos = [...photos]
+    const photoList = Array.isArray(window.photos) ? window.photos : [];
+    const timelinePhotos = [...photoList]
         .filter(p => typeof p.timestamp === 'number' && !isNaN(p.timestamp))
         .sort((a, b) => a.timestamp - b.timestamp);
 
@@ -403,7 +430,7 @@ function buildStoryFilmNodes(force = false) {
     const uniqueNodes = sampled.filter((item, idx, arr) => arr.findIndex(t => t.name === item.name) === idx);
     const filmNodes = uniqueNodes.map((photo, idx) => ({
         order: idx,
-        photoIndex: photos.findIndex(p => p.name === photo.name),
+        photoIndex: photoList.findIndex(p => p.name === photo.name),
         dateLabel: new Date(photo.timestamp).toLocaleDateString('zh-CN'),
         title: `第${idx + 1}幕 · ${getStoryTitle(idx + 1)}`,
         text: getStoryText(photo),
@@ -536,10 +563,10 @@ function fillStoryDetailView(order) {
     if (locationEl) locationEl.textContent = vm.location;
     if (textEl) textEl.textContent = vm.text;
     if (tagsEl) {
-        tagsEl.innerHTML = vm.tags.map(tag => `<span class="story-tag">${tag}</span>`).join('');
+        tagsEl.innerHTML = vm.tags.map(tag => `<span class="story-tag">${escapeStoryHtml(tag)}</span>`).join('');
     }
     if (momentsEl) {
-        momentsEl.innerHTML = vm.moments.map(item => `<li>${item}</li>`).join('');
+        momentsEl.innerHTML = vm.moments.map(item => `<li>${escapeStoryHtml(item)}</li>`).join('');
     }
     if (noteMeEl) noteMeEl.textContent = `我：${vm.noteMe}`;
     if (noteTaEl) noteTaEl.textContent = `TA：${vm.noteTa}`;
@@ -570,12 +597,12 @@ async function loadStoryScenePhotos(order, force = false) {
         return storyScenePhotosCache.get(sceneFolder);
     }
     const headers = { 'Accept': 'application/vnd.github.v3+json' };
-    if (typeof githubToken === 'string' && githubToken) {
-        headers['Authorization'] = `token ${githubToken}`;
+    if (typeof window.githubToken === 'string' && window.githubToken) {
+        headers['Authorization'] = `token ${window.githubToken}`;
     }
 
     try {
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeStoryPath(sceneFolder)}?ref=${CONFIG.branch}`, { headers });
+        const res = await fetch(`https://api.github.com/repos/${window.CONFIG.owner}/image/contents/${encodeStoryPath(sceneFolder)}?ref=${window.CONFIG.branch}`, { headers });
         if (res.status === 404) {
             storyScenePhotosCache.set(sceneFolder, []);
             return [];
@@ -588,7 +615,7 @@ async function loadStoryScenePhotos(order, force = false) {
             .map(file => ({
                 name: file.name,
                 path: file.path,
-                url: getImageUrl(file.path),
+                url: window.getImageUrl(file.path),
                 size: file.size || 0
             }))
             .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
@@ -616,7 +643,7 @@ async function renderStoryScenePhotos(order, force = false) {
 
     container.innerHTML = photosList.map(photo => `
         <button class="story-scene-photo" type="button" data-url="${photo.url}" onclick="window.open(this.dataset.url, '_blank', 'noopener')">
-            <img src="${photo.url}" alt="${photo.name}">
+            <img src="${photo.url}" alt="${escapeStoryHtml(photo.name)}">
         </button>
     `).join('');
 }
@@ -634,17 +661,17 @@ async function uploadStorySceneFile(file, order) {
         'Content-Type': 'application/json',
         'Accept': 'application/vnd.github.v3+json'
     };
-    if (typeof githubToken === 'string' && githubToken) {
-        headers['Authorization'] = `token ${githubToken}`;
+    if (typeof window.githubToken === 'string' && window.githubToken) {
+        headers['Authorization'] = `token ${window.githubToken}`;
     }
 
-    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeStoryPath(filename)}`, {
+    const res = await fetch(`https://api.github.com/repos/${window.CONFIG.owner}/image/contents/${encodeStoryPath(filename)}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({
             message: `Upload story scene image ${file.name}`,
             content: contentBase64,
-            branch: CONFIG.branch
+            branch: window.CONFIG.branch
         })
     });
     if (!res.ok) throw new Error(await res.text());
@@ -658,8 +685,9 @@ async function handleStorySceneFiles(fileList) {
         alert('请选择图片文件');
         return;
     }
+    if (typeof window.showStatus !== 'function') return;
 
-    showStatus(`开始上传本幕图片（共 ${files.length} 张）...`, 'loading');
+    window.showStatus(`开始上传本幕图片（共 ${files.length} 张）...`, 'loading');
     let success = 0;
     for (const file of files) {
         try {
@@ -673,10 +701,10 @@ async function handleStorySceneFiles(fileList) {
     const sceneFolder = getStorySceneFolder(order);
     storyScenePhotosCache.delete(sceneFolder);
     await renderStoryScenePhotos(order, true);
-    if (typeof refreshPhotos === 'function' && success > 0) {
-        await refreshPhotos();
+    if (typeof window.refreshPhotos === 'function' && success > 0) {
+        await window.refreshPhotos();
     }
-    showStatus(success > 0 ? `本幕图片上传成功 ${success} 张` : '本幕图片上传失败', success > 0 ? 'success' : 'error');
+    window.showStatus(success > 0 ? `本幕图片上传成功 ${success} 张` : '本幕图片上传失败', success > 0 ? 'success' : 'error');
     const input = document.getElementById('storySceneUploadInput');
     if (input) input.value = '';
 }

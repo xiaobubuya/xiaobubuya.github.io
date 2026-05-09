@@ -8,8 +8,7 @@ const CONFIG = {
     branch: 'main',
     imageRepo: 'image',
     cdnBase: 'https://cdn.jsdelivr.net/gh/xiaobubuya/image@main',
-    rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image@main',
-    slideshowFolder: 'slideshow'  // 幻灯片专用目录
+    rawBase: 'https://raw.githubusercontent.com/xiaobubuya/image@main'
 };
 
 // GitHub Token
@@ -33,6 +32,12 @@ let currentFilter = {
 };
 let currentMainChannel = localStorage.getItem('mainChannel') || 'home';
 
+window.CONFIG = CONFIG;
+window.githubToken = githubToken;
+window.photos = photos;
+window.folders = folders;
+window.currentMainChannel = currentMainChannel;
+
 const DEFAULT_MUSIC_ID = '17888105448';
 const PREVIOUS_DEFAULT_MUSIC_ID = '2124135604';
 const NETEASE_PRESET_SONGS = [
@@ -44,18 +49,16 @@ const NETEASE_PRESET_SONGS = [
 let musicSettings = {
     songId: DEFAULT_MUSIC_ID
 };
+let statusTimer = null;
 
-// 幻灯片状态
-let slideshowInterval = null;
-let isSlideshowPlaying = false;
-let currentSlideIndex = 0;
 
 // 背景设置
 let bgSettings = {
     mode: 'default', // default, photo, gradient
     blur: 8,
     darkness: 30,
-    photoIndex: 0
+    photoIndex: 0,
+    customPhoto: ''
 };
 
 // IndexedDB 配置
@@ -66,15 +69,25 @@ let db = null;
 // 纪念日
 let anniversaryDate = '2025-09-18';
 
+function syncSharedState() {
+    window.githubToken = githubToken;
+    window.photos = photos;
+    window.folders = folders;
+}
+
 // 初始化
 init();
 
 async function init() {
-    await initDB();
+    try {
+        await initDB();
+    } catch (e) {
+        console.warn('IndexedDB 初始化失败，将跳过本地缓存', e);
+        db = null;
+    }
     loadSettings();
     loadMusicSettings();
     loadAnniversary();
-    loadSlideshowSettings();  // 加载幻灯片设置
     await loadCountdownEvents();  // 加载倒计时数据
     await loadFootprints();  // 加载地图足迹
 
@@ -109,16 +122,6 @@ async function init() {
             if (e.key === 'ArrowLeft') prevPhoto();
             if (e.key === 'ArrowRight') nextPhoto();
         }
-        const fullscreenSlideshow = document.getElementById('fullscreenSlideshow');
-        if (fullscreenSlideshow && fullscreenSlideshow.style.display === 'flex') {
-            if (e.key === 'Escape') toggleFullscreenSlideshow();
-            if (e.key === 'ArrowLeft') prevSlide();
-            if (e.key === 'ArrowRight') nextSlide();
-            if (e.key === ' ') {
-                e.preventDefault();
-                toggleSlideshow();
-            }
-        }
     });
 
     // 拖拽上传
@@ -133,8 +136,6 @@ async function init() {
     initMainChannels();
     updateWelcomeMessage();
 
-    // 初始化幻灯片触摸滑动
-    initSlideshowTouch();
 
     // 渲染倒计时卡片
     renderCountdownCards();
@@ -146,6 +147,7 @@ async function init() {
 
 function setMainChannel(channel, persist = true) {
     currentMainChannel = channel;
+    window.currentMainChannel = currentMainChannel;
     document.querySelectorAll('.channel-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.channelTab === channel);
     });
@@ -217,6 +219,7 @@ function loadSettings() {
         bgSettings = { ...bgSettings, ...JSON.parse(saved) };
     }
     applyBackgroundSettings();
+    syncSettingsControls();
 }
 
 function saveSettings() {
@@ -252,12 +255,23 @@ function updateBlur(value) {
     bgSettings.blur = parseInt(value);
     saveSettings();
     applyBackgroundSettings();
+    const blurValue = document.getElementById('blurValue');
+    if (blurValue) blurValue.textContent = `${bgSettings.blur}px`;
 }
 
 function updateDarkness(value) {
     bgSettings.darkness = parseInt(value);
     saveSettings();
     applyBackgroundSettings();
+    const darknessValue = document.getElementById('darknessValue');
+    if (darknessValue) darknessValue.textContent = `${bgSettings.darkness}%`;
+}
+
+function clearBackgroundSlideshowTimer() {
+    if (window.backgroundSlideshowTimer) {
+        clearInterval(window.backgroundSlideshowTimer);
+        window.backgroundSlideshowTimer = null;
+    }
 }
 
 function applyBackgroundSettings() {
@@ -271,11 +285,17 @@ function applyBackgroundSettings() {
 
     // 根据模式设置背景
     if (bgSettings.mode === 'default') {
+        clearBackgroundSlideshowTimer();
         bgSlideshow.style.background = 'linear-gradient(135deg, #fff0f5 0%, #ffe4ec 50%, #ffd6e0 100%)';
         bgSlideshow.innerHTML = '';
     } else if (bgSettings.mode === 'gradient') {
+        clearBackgroundSlideshowTimer();
         bgSlideshow.style.background = 'linear-gradient(135deg, #ff6b9d 0%, #ffc2d1 50%, #ffd6e0 100%)';
         bgSlideshow.innerHTML = '';
+    } else if (bgSettings.mode === 'custom' && bgSettings.customPhoto) {
+        clearBackgroundSlideshowTimer();
+        bgSlideshow.style.background = '';
+        bgSlideshow.innerHTML = `<div class="bg-slide active" style="background-image: url('${bgSettings.customPhoto}')"></div>`;
     } else if (bgSettings.mode === 'photo' && photos.length > 0) {
         startBackgroundSlideshow();
     }
@@ -285,17 +305,40 @@ function startBackgroundSlideshow() {
     const bgSlideshow = document.getElementById('bgSlideshow');
     if (!bgSlideshow || photos.length === 0) return;
 
+    clearBackgroundSlideshowTimer();
+
     bgSlideshow.innerHTML = photos.map((p, i) => `
         <div class="bg-slide ${i === 0 ? 'active' : ''}" style="background-image: url('${getImageUrl(p.name)}')"></div>
     `).join('');
 
     let currentBg = 0;
-    setInterval(() => {
+    window.backgroundSlideshowTimer = setInterval(() => {
         const slides = bgSlideshow.querySelectorAll('.bg-slide');
+        if (!slides.length) return;
         slides[currentBg].classList.remove('active');
         currentBg = (currentBg + 1) % slides.length;
         slides[currentBg].classList.add('active');
     }, 10000);
+}
+
+function syncSettingsControls() {
+    const anniversaryInput = document.getElementById('anniversaryDateInput');
+    const blurSlider = document.getElementById('blurSlider');
+    const blurValue = document.getElementById('blurValue');
+    const darknessSlider = document.getElementById('darknessSlider');
+    const darknessValue = document.getElementById('darknessValue');
+
+    if (anniversaryInput) anniversaryInput.value = anniversaryDate;
+    if (blurSlider) blurSlider.value = bgSettings.blur;
+    if (blurValue) blurValue.textContent = `${bgSettings.blur}px`;
+    if (darknessSlider) darknessSlider.value = bgSettings.darkness;
+    if (darknessValue) darknessValue.textContent = `${bgSettings.darkness}%`;
+
+    document.querySelectorAll('.bg-option').forEach(btn => {
+        const targetMode = bgSettings.mode === 'custom' ? 'photo' : bgSettings.mode;
+        const isActive = btn.getAttribute('onclick') === `setBackground('${targetMode}')`;
+        btn.classList.toggle('active', isActive);
+    });
 }
 
 // ========== 纪念日功能 ==========
@@ -306,6 +349,7 @@ function loadAnniversary() {
         anniversaryDate = saved;
     }
     updateAnniversaryDisplay();
+    syncSettingsControls();
 }
 
 function updateAnniversaryDisplay() {
@@ -334,265 +378,10 @@ function formatDate(date) {
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-// ========== 幻灯片功能（从独立 slideshow/ 目录加载） ==========
-
-let slideshowPhotos = [];  // 幻灯片专用照片列表
-
-// 从 slideshow/ 目录加载幻灯片照片
-async function loadSlideshowPhotos() {
-    try {
-        // 确保使用最新的配置
-        CONFIG.slideshowFolder = slideshowSettings.folder;
-        
-        const headers = { 'Accept': 'application/vnd.github.v3+json' };
-        if (githubToken) headers['Authorization'] = `token ${githubToken}`;
-
-        console.log(`加载幻灯片目录：${CONFIG.slideshowFolder}`);
-
-        // 获取 slideshow 目录
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${CONFIG.slideshowFolder}?ref=${CONFIG.branch}`, {
-            headers: headers
-        });
-
-        if (res.ok) {
-            const files = await res.json();
-            if (Array.isArray(files)) {
-                slideshowPhotos = files
-                    .filter(f => f.type === 'file' && /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name))
-                    .map(f => ({
-                        name: `${CONFIG.slideshowFolder}/${f.name}`,
-                        sha: f.sha,
-                        size: f.size,
-                        timestamp: parseInt(f.name.split('_')[0]) || Date.now(),
-                        folder: CONFIG.slideshowFolder
-                    }))
-                    .sort((a, b) => b.timestamp - a.timestamp);
-                console.log(`幻灯片加载成功：${slideshowPhotos.length}张`);
-            }
-        } else {
-            console.log(`幻灯片目录不存在或无权限：${CONFIG.slideshowFolder}`);
-        }
-    } catch (e) {
-        console.error('加载幻灯片目录失败:', e);
-    }
-}
-
-function initSlideshow() {
-    // 优先使用 slideshow/ 目录的照片，如果没有则使用全部照片
-    const sourcePhotos = slideshowPhotos.length > 0 ? slideshowPhotos : photos;
-    
-    if (sourcePhotos.length === 0) {
-        // 显示空状态
-        const container = document.getElementById('slideshowContainer');
-        container.innerHTML = `
-            <div class="slideshow-empty">
-                <div class="slideshow-empty-icon">📷</div>
-                <p>幻灯片目录暂无照片</p>
-                <p style="font-size: 0.9rem; margin-top: 10px; opacity: 0.7;">请将照片上传到 ${CONFIG.slideshowFolder}/ 目录</p>
-            </div>
-        `;
-        console.log('幻灯片初始化：无照片');
-        return;
-    }
-
-    const slideshowImg = document.getElementById('slideshowImg');
-    const slideshowDate = document.getElementById('slideshowDate');
-    const slideshowText = document.getElementById('slideshowText');
-    const slideshowDots = document.getElementById('slideshowDots');
-
-    // 使用设置中的最大数量
-    const displayCount = Math.min(sourcePhotos.length, slideshowSettings.maxCount);
-    
-    console.log(`幻灯片初始化：${sourcePhotos.length}张照片，显示${displayCount}张，自动播放=${slideshowSettings.autoPlay}`);
-    
-    // 创建导航点
-    slideshowDots.innerHTML = Array.from({ length: displayCount }, (_, i) => `
-        <div class="slideshow-dot ${i === 0 ? 'active' : ''}" onclick="goToSlide(${i})"></div>
-    `).join('');
-
-    // 显示第一张
-    updateSlideshowSlide(0, sourcePhotos);
-
-    // 自动播放（延迟一点启动，确保设置已加载）
-    setTimeout(() => {
-        if (slideshowSettings.autoPlay) {
-            startSlideshow(sourcePhotos);
-        }
-    }, 1000);
-}
-
-function updateSlideshowSlide(index, sourcePhotos = null) {
-    const photosToUse = sourcePhotos || (slideshowPhotos.length > 0 ? slideshowPhotos : photos);
-    if (photosToUse.length === 0) return;
-
-    currentSlideIndex = index;
-    const photo = photosToUse[index];
-    const slideshowImg = document.getElementById('slideshowImg');
-    const slideshowDate = document.getElementById('slideshowDate');
-    const slideshowText = document.getElementById('slideshowText');
-    const container = document.getElementById('slideshowContainer');
-
-    // 强制重绘，确保移动端立即响应
-    container.style.display = 'none';
-    container.offsetHeight; // 触发重绘
-    container.style.display = '';
-
-    // 立即更新图片
-    slideshowImg.src = getImageUrl(photo.name);
-    slideshowDate.textContent = photo.timestamp ?
-        new Date(photo.timestamp).toLocaleDateString('zh-CN') : '';
-    slideshowText.textContent = photo.name.split('/').pop().replace(/^\d+_/, '').replace(/\.[^/.]+$/, '');
-
-    // 更新导航点
-    document.querySelectorAll('.slideshow-dot').forEach((dot, i) => {
-        dot.classList.toggle('active', i === index);
-    });
-
-    console.log(`切换到第 ${index + 1} 张：${photo.name}`);
-}
-
-function startSlideshow(sourcePhotos = null) {
-    // 清除之前的定时器
-    if (slideshowInterval) {
-        clearInterval(slideshowInterval);
-        slideshowInterval = null;
-    }
-    
-    // 检查是否启用自动播放
-    if (!slideshowSettings.autoPlay) {
-        isSlideshowPlaying = false;
-        return;
-    }
-    
-    isSlideshowPlaying = true;
-
-    const photosToUse = sourcePhotos || (slideshowPhotos.length > 0 ? slideshowPhotos : photos);
-    if (photosToUse.length === 0) return;
-
-    // 使用设置中的间隔时间（转换为毫秒）
-    const intervalMs = slideshowSettings.interval * 1000;
-    
-    // 立即切换到下一张，然后开始定时
-    setTimeout(() => {
-        if (!slideshowSettings.autoPlay) return;
-        const next = (currentSlideIndex + 1) % photosToUse.length;
-        updateSlideshowSlide(next, photosToUse);
-        
-        // 启动定时器
-        slideshowInterval = setInterval(() => {
-            if (!slideshowSettings.autoPlay) {
-                clearInterval(slideshowInterval);
-                return;
-            }
-            const nextIndex = (currentSlideIndex + 1) % photosToUse.length;
-            updateSlideshowSlide(nextIndex, photosToUse);
-        }, intervalMs);
-    }, intervalMs);
-}
-
-function stopSlideshow() {
-    if (slideshowInterval) {
-        clearInterval(slideshowInterval);
-        slideshowInterval = null;
-    }
-    isSlideshowPlaying = false;
-}
-
-function toggleSlideshow() {
-    if (isSlideshowPlaying) {
-        stopSlideshow();
-    } else {
-        startSlideshow();
-    }
-}
-
-function prevSlide() {
-    const photosToUse = slideshowPhotos.length > 0 ? slideshowPhotos : photos;
-    if (photosToUse.length === 0) return;
-    
-    stopSlideshow();
-    const prev = (currentSlideIndex - 1 + photosToUse.length) % photosToUse.length;
-    updateSlideshowSlide(prev, photosToUse);
-    
-    // 如果启用了自动播放，重新启动
-    if (slideshowSettings.autoPlay) {
-        startSlideshow(photosToUse);
-    }
-}
-
-function nextSlide() {
-    const photosToUse = slideshowPhotos.length > 0 ? slideshowPhotos : photos;
-    if (photosToUse.length === 0) return;
-    
-    stopSlideshow();
-    const next = (currentSlideIndex + 1) % photosToUse.length;
-    updateSlideshowSlide(next, photosToUse);
-    
-    // 如果启用了自动播放，重新启动
-    if (slideshowSettings.autoPlay) {
-        startSlideshow(photosToUse);
-    }
-}
-
-function goToSlide(index) {
-    const photosToUse = slideshowPhotos.length > 0 ? slideshowPhotos : photos;
-    if (photosToUse.length === 0) return;
-    
-    stopSlideshow();
-    updateSlideshowSlide(index, photosToUse);
-    
-    // 如果启用了自动播放，重新启动
-    if (slideshowSettings.autoPlay) {
-        startSlideshow(photosToUse);
-    }
-}
-
-// ========== 幻灯片触摸滑动支持 ==========
-
-let touchStartX = 0;
-let touchEndX = 0;
-
-function initSlideshowTouch() {
-    const container = document.getElementById('slideshowContainer');
-    if (!container) return;
-
-    // 触摸开始
-    container.addEventListener('touchstart', (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-    }, { passive: true });
-
-    // 触摸结束
-    container.addEventListener('touchend', (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        handleSwipe();
-    }, { passive: true });
-
-    // 阻止默认滚动行为
-    container.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-    }, { passive: false });
-}
-
-function handleSwipe() {
-    const threshold = 50; // 最小滑动距离
-    const diff = touchStartX - touchEndX;
-
-    if (Math.abs(diff) < threshold) {
-        return; // 滑动距离太短，忽略
-    }
-
-    if (diff > 0) {
-        // 向左滑动，下一张
-        nextSlide();
-    } else {
-        // 向右滑动，上一张
-        prevSlide();
-    }
-}
-
 // ========== 重要日期倒计时功能 ==========
 
 let countdownEvents = [];
+let editingCountdownIndex = null;
 
 // 图标映射
 const typeIcons = {
@@ -746,14 +535,14 @@ function renderCountdownCards() {
                 <span class="countdown-icon">${typeIcons[item.event.type] || '⭐'}</span>
                 <span class="countdown-badge">${item.badgeText}</span>
             </div>
-            <div class="countdown-name">${item.event.name}</div>
+            <div class="countdown-name">${escapeHtml(item.event.name)}</div>
             <div class="countdown-days-row">
                 <span class="countdown-days-num">${item.isPast ? Math.abs(item.daysDiff) : item.daysDiff}</span>
                 <span class="countdown-days-unit">天</span>
             </div>
             <div class="countdown-label">${item.dayLabel}</div>
             <div class="countdown-meta-row">
-                <span>${item.displayDate}</span>
+                <span>${escapeHtml(item.displayDate)}</span>
                 <span>${item.event.repeat ? '每年重复' : '单次事件'}</span>
             </div>
             <div class="countdown-progress"><span style="width:${item.progress}%"></span></div>
@@ -786,28 +575,66 @@ function renderNextCountdownCard(nextItem) {
 }
 
 // 显示/隐藏添加面板
-function toggleAddCountdownPanel() {
+function resetCountdownForm() {
+    const nameEl = document.getElementById('countdownName');
+    const dateEl = document.getElementById('countdownDate');
+    const typeEl = document.getElementById('countdownType');
+    const repeatEl = document.getElementById('countdownRepeat');
+    const titleEl = document.querySelector('.add-countdown-panel .panel-header h3');
+    const submitBtn = document.querySelector('#addCountdownPanel .submit-btn');
+
+    if (nameEl) nameEl.value = '';
+    if (dateEl) dateEl.value = '';
+    if (typeEl) typeEl.value = 'birthday';
+    if (repeatEl) repeatEl.checked = true;
+    if (titleEl) titleEl.textContent = '添加重要日期';
+    if (submitBtn) submitBtn.textContent = '添加日期';
+}
+
+function setCountdownPanelMode(mode) {
+    const titleEl = document.querySelector('.add-countdown-panel .panel-header h3');
+    const submitBtn = document.querySelector('#addCountdownPanel .submit-btn');
+    const isEditing = mode === 'edit';
+
+    if (titleEl) titleEl.textContent = isEditing ? '编辑重要日期' : '添加重要日期';
+    if (submitBtn) submitBtn.textContent = isEditing ? '保存修改' : '添加日期';
+}
+
+function openCountdownPanel() {
+    const panel = document.getElementById('addCountdownPanel');
+    let overlay = document.getElementById('modalOverlay');
+    if (!panel) return;
+
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'modalOverlay';
+        overlay.className = 'modal-overlay';
+        overlay.onclick = toggleAddCountdownPanel;
+        document.body.appendChild(overlay);
+    }
+    panel.style.display = 'block';
+}
+
+function closeCountdownPanel() {
     const panel = document.getElementById('addCountdownPanel');
     const overlay = document.getElementById('modalOverlay');
+    if (panel) panel.style.display = 'none';
+    if (overlay) overlay.remove();
+    editingCountdownIndex = null;
+    resetCountdownForm();
+}
+
+function toggleAddCountdownPanel() {
+    const panel = document.getElementById('addCountdownPanel');
+    if (!panel) return;
 
     if (panel.style.display === 'none' || !panel.style.display) {
-        // 创建遮罩层
-        if (!overlay) {
-            const newOverlay = document.createElement('div');
-            newOverlay.id = 'modalOverlay';
-            newOverlay.className = 'modal-overlay';
-            newOverlay.onclick = toggleAddCountdownPanel;
-            document.body.appendChild(newOverlay);
-        }
-        panel.style.display = 'block';
-        // 清空表单
-        document.getElementById('countdownName').value = '';
-        document.getElementById('countdownDate').value = '';
-        document.getElementById('countdownType').value = 'birthday';
-        document.getElementById('countdownRepeat').checked = true;
+        editingCountdownIndex = null;
+        resetCountdownForm();
+        setCountdownPanelMode('add');
+        openCountdownPanel();
     } else {
-        panel.style.display = 'none';
-        if (overlay) overlay.remove();
+        closeCountdownPanel();
     }
 }
 
@@ -823,23 +650,44 @@ async function addCountdown() {
         return;
     }
 
-    const newEvent = {
-        id: Date.now(),
+    const nowIso = new Date().toISOString();
+    const isEditing = editingCountdownIndex !== null;
+    const originalEvent = isEditing ? countdownEvents[editingCountdownIndex] : null;
+
+    if (isEditing && !originalEvent) {
+        alert('要编辑的日期不存在，请刷新后重试');
+        closeCountdownPanel();
+        return;
+    }
+
+    const eventPayload = {
+        id: originalEvent?.id || Date.now(),
         name: name,
         date: date,
         type: type,
         repeat: repeat,
-        createdAt: new Date().toISOString()
+        createdAt: originalEvent?.createdAt || nowIso,
+        updatedAt: nowIso
     };
 
-    countdownEvents.push(newEvent);
+    const previousEvents = [...countdownEvents];
+    if (isEditing) {
+        countdownEvents = countdownEvents.map((item, idx) => (
+            idx === editingCountdownIndex ? { ...item, ...eventPayload } : item
+        ));
+    } else {
+        countdownEvents = [...countdownEvents, eventPayload];
+    }
+    const savedEditingIndex = editingCountdownIndex;
 
     const success = await saveCountdownEvents();
     if (success) {
         renderCountdownCards();
-        toggleAddCountdownPanel();
-        showStatus('添加成功！', 'success');
+        closeCountdownPanel();
+        showStatus(isEditing ? '更新成功！' : '添加成功！', 'success');
     } else {
+        countdownEvents = previousEvents;
+        editingCountdownIndex = savedEditingIndex;
         alert('保存失败，请检查网络');
     }
 }
@@ -847,59 +695,22 @@ async function addCountdown() {
 // 编辑倒计时
 function editCountdown(index) {
     const event = countdownEvents[index];
-    toggleAddCountdownPanel();
-    document.getElementById('countdownName').value = event.name;
-    document.getElementById('countdownDate').value = event.date;
-    document.getElementById('countdownType').value = event.type;
+    if (!event) return;
+
+    editingCountdownIndex = index;
+    openCountdownPanel();
+    setCountdownPanelMode('edit');
+    document.getElementById('countdownName').value = event.name || '';
+    document.getElementById('countdownDate').value = event.date || '';
+    document.getElementById('countdownType').value = event.type || 'birthday';
     document.getElementById('countdownRepeat').checked = !!event.repeat;
-
-    // 删除旧的，保存时添加新的
-    countdownEvents.splice(index, 1);
-
-    document.querySelector('.add-countdown-panel .panel-header h3').textContent = '✏️ 编辑重要日期';
-
-    // 修改保存按钮行为
-    const submitBtn = document.querySelector('#addCountdownPanel .submit-btn');
-    if (!submitBtn) return;
-    submitBtn.onclick = async () => {
-        const name = document.getElementById('countdownName').value.trim();
-        const date = document.getElementById('countdownDate').value;
-        const type = document.getElementById('countdownType').value;
-        const repeat = document.getElementById('countdownRepeat').checked;
-
-        if (!name || !date) {
-            alert('请填写完整信息');
-            return;
-        }
-
-        const updatedEvent = {
-            id: Date.now(),
-            name: name,
-            date: date,
-            type: type,
-            repeat: repeat,
-            createdAt: event.createdAt
-        };
-
-        countdownEvents.push(updatedEvent);
-
-        const success = await saveCountdownEvents();
-        if (success) {
-            renderCountdownCards();
-            toggleAddCountdownPanel();
-            document.querySelector('.add-countdown-panel .panel-header h3').textContent = '➕ 添加重要日期';
-            submitBtn.onclick = addCountdown;
-            showStatus('更新成功！', 'success');
-        } else {
-            alert('保存失败，请检查网络');
-        }
-    };
 }
 
 // 删除倒计时
 async function deleteCountdown(index) {
     if (!confirm('确定删除这个倒计时吗？')) return;
 
+    const previousEvents = [...countdownEvents];
     countdownEvents.splice(index, 1);
 
     const success = await saveCountdownEvents();
@@ -907,58 +718,10 @@ async function deleteCountdown(index) {
         renderCountdownCards();
         showStatus('删除成功', 'success');
     } else {
+        countdownEvents = previousEvents;
+        renderCountdownCards();
         alert('删除失败，请检查网络');
     }
-}
-
-function toggleFullscreenSlideshow() {
-    const fs = document.getElementById('fullscreenSlideshow');
-    if (!fs) return;
-    if (fs.style.display === 'flex') {
-        fs.style.display = 'none';
-        stopFullscreenSlideshow();
-    } else {
-        fs.style.display = 'flex';
-        startFullscreenSlideshow();
-    }
-}
-
-let fullscreenSlideshowInterval = null;
-let fullscreenIndex = 0;
-
-function startFullscreenSlideshow() {
-    if (photos.length === 0) return;
-
-    fullscreenIndex = 0;
-    updateFullscreenSlide();
-
-    fullscreenSlideshowInterval = setInterval(() => {
-        fullscreenIndex = (fullscreenIndex + 1) % photos.length;
-        updateFullscreenSlide();
-    }, 5000);
-}
-
-function stopFullscreenSlideshow() {
-    if (fullscreenSlideshowInterval) {
-        clearInterval(fullscreenSlideshowInterval);
-        fullscreenSlideshowInterval = null;
-    }
-}
-
-function updateFullscreenSlide() {
-    if (!photos[fullscreenIndex]) return;
-    const photo = photos[fullscreenIndex];
-    const fsImg = document.getElementById('fsImg');
-    const fsCaption = document.getElementById('fsCaption');
-    const fsProgress = document.getElementById('fsProgress');
-    if (!fsImg || !fsCaption || !fsProgress) return;
-    fsImg.src = getImageUrl(photo.name);
-    fsCaption.textContent =
-        `${photo.name.split('/').pop().replace(/^\d+_/, '')} · ${new Date(photo.timestamp).toLocaleDateString('zh-CN')}`;
-
-    // 进度条
-    const progress = ((fullscreenIndex + 1) / photos.length) * 100;
-    fsProgress.style.width = progress + '%';
 }
 
 // ========== 其他功能 ==========
@@ -1082,9 +845,13 @@ function updateWelcomeMessage() {
 }
 
 function randomPhoto() {
-    if (photos.length === 0) return;
-    const random = Math.floor(Math.random() * photos.length);
-    openLightbox(random);
+    const source = displayedPhotos.length ? displayedPhotos : [];
+    if (!source.length) {
+        showStatus(currentFilter.folder ? '当前相册暂无照片' : '请先选择一个相册', 'error');
+        return;
+    }
+    const random = Math.floor(Math.random() * source.length);
+    openLightboxByName(source[random].name);
 }
 
 function scrollToUpload() {
@@ -1143,7 +910,7 @@ function buildMusicPresetOptions() {
 
 function applyMusicSong(songId) {
     if (!/^\d+$/.test(songId)) {
-        showStatus('歌单 ID 无效，请输入纯数字', 'error');
+        showStatus('歌单无效，请重新选择', 'error');
         return;
     }
     musicSettings.songId = songId;
@@ -1163,7 +930,8 @@ function applyMusicSong(songId) {
         presetSelect.value = songId;
     }
 
-    showStatus(`已切换网易云歌单 ID: ${songId}`, 'success');
+    const currentOption = buildMusicPresetOptions().find(item => item.id === songId);
+    showStatus(`已切换到「${currentOption?.name || '网易云歌单'}」`, 'success');
 }
 
 function changeMusicPreset(songId) {
@@ -1239,9 +1007,9 @@ function getSelectedUploadFolder() {
     const customInput = document.getElementById('uploadFolderCustom');
     const selectedInput = document.getElementById('uploadFolderSelect');
 
-    const custom = customInput?.value?.trim();
+    const custom = sanitizeFolderName(customInput?.value || '');
     if (custom) {
-        return custom.replace(/\//g, '-');
+        return custom;
     }
 
     if (selectedInput?.value) {
@@ -1258,13 +1026,13 @@ function syncUploadFolderOptions() {
     const current = uploadFolderSelect.value || '99-临时';
     const existing = new Set(['99-临时']);
     folders.forEach(f => {
-        if (f.id && f.id !== 'all') existing.add(f.id);
+        if (f.id && f.id !== 'all' && f.id !== '故事胶片') existing.add(f.id);
     });
 
     const options = Array.from(existing);
     uploadFolderSelect.innerHTML = options
         .sort((a, b) => a.localeCompare(b, 'zh-CN'))
-        .map(name => `<option value="${name}">${name}</option>`)
+        .map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
         .join('');
 
     uploadFolderSelect.value = options.includes(current) ? current : '99-临时';
@@ -1273,9 +1041,27 @@ function syncUploadFolderOptions() {
 function showStatus(msg, type) {
     const s = document.getElementById('status');
     if (!s) return;
+    if (statusTimer) {
+        clearTimeout(statusTimer);
+        statusTimer = null;
+    }
     s.textContent = msg;
     s.className = 'status ' + type;
-    if (type !== 'loading') setTimeout(() => s.className = 'status', 3000);
+    if (type !== 'loading') {
+        statusTimer = setTimeout(() => {
+            s.className = 'status';
+            statusTimer = null;
+        }, 3000);
+    }
+}
+
+function escapeHtml(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function updateProgress(current, total, filename) {
@@ -1312,14 +1098,16 @@ async function handleFiles(fileList, folder = '99-临时') {
 }
 
 async function uploadFile(file, folder = '未分类') {
-    const filename = `${folder}/${Date.now()}_${file.name}`;
+    const safeFolder = sanitizeFolderName(folder) || '未分类';
+    const safeName = sanitizeUploadFileName(file.name);
+    const filename = `${safeFolder}/${Date.now()}_${safeName}`;
     const base64 = await new Promise(r => {
         const reader = new FileReader();
         reader.onload = e => r(e.target.result.split(',')[1]);
         reader.readAsDataURL(file);
     });
 
-    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${filename}`, {
+    const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeGitHubPath(filename)}`, {
         method: 'PUT',
         headers: {
             'Authorization': `token ${githubToken}`,
@@ -1361,7 +1149,7 @@ async function parseFilesAndFolders(files) {
     if (!Array.isArray(files)) return { photos: photoList, folders: folderList };
 
     // 识别文件夹
-    const folderItems = files.filter(f => f.type === 'dir');
+    const folderItems = files.filter(f => f.type === 'dir' && f.name !== '故事胶片');
     folderList.push({ id: 'all', name: '所有相册', count: 0 });
 
     // 处理每个文件夹
@@ -1389,7 +1177,7 @@ async function parseFilesAndFolders(files) {
                 photoList.push(...folderPhotos);
                 folderList.push({
                     id: folder.name,
-                    name: folder.name === '%E6%9C%AA%E5%88%86%E7%B1%BB' ? '未分类' : folder.name,
+                    name: folder.name,
                     count: folderPhotos.length
                 });
             }
@@ -1411,17 +1199,14 @@ async function loadPhotos() {
     const gallery = document.getElementById('gallery');
     const empty = document.getElementById('emptyState');
 
-    // 同时加载幻灯片照片
-    await loadSlideshowPhotos();
-
     const cached = await getCachedPhotos();
 
     if (cached && cached.length > 0) {
-        photos = cached;
+        photos = normalizeGalleryPhotos(cached);
         folders = rebuildFoldersFromPhotos(photos);
+        syncSharedState();
         updateStats();
         filterPhotos();
-        initSlideshow();
         renderStoryTimeline();
     } else {
         gallery.innerHTML = '<div class="skeleton" style="height:200px"></div>'.repeat(6);
@@ -1434,11 +1219,11 @@ async function loadPhotos() {
             if (res.status === 404) {
                 photos = [];
                 folders = [{ id: 'all', name: '所有相册', count: 0 }];
+                syncSharedState();
                 gallery.innerHTML = '';
                 empty.classList.add('active');
                 document.getElementById('loadMore').style.display = 'none';
                 updateStats();
-                initSlideshow();
                 renderStoryTimeline();
                 return;
             }
@@ -1453,10 +1238,10 @@ async function loadPhotos() {
         if (hasChanged || photos.length === 0) {
             photos = newPhotos;
             folders = newFolders;
+            syncSharedState();
             await cachePhotos(photos);
             updateStats();
             filterPhotos();
-            initSlideshow();
             renderStoryTimeline();
             showStatus(`已加载 ${photos.length} 张照片`, 'success');
         }
@@ -1481,13 +1266,13 @@ function updateStats() {
     const folderFilter = document.getElementById('folderFilter');
     if (!folderFilter) return;
     const currentValue = folderFilter.value;
-    const albumOptions = folders.filter(f => f.id !== 'all');
+    const albumOptions = folders.filter(f => f.id !== 'all' && f.id !== '故事胶片');
     const hasCurrent = albumOptions.some(f => f.id === currentValue);
     const selectedValue = hasCurrent ? currentValue : '';
     currentFilter.folder = selectedValue;
     folderFilter.innerHTML = [
         `<option value="" ${selectedValue === '' ? 'selected' : ''}>请选择相册</option>`,
-        ...albumOptions.map(f => `<option value="${f.id}" ${f.id === selectedValue ? 'selected' : ''}>${f.name} (${f.count})</option>`)
+        ...albumOptions.map(f => `<option value="${escapeHtml(f.id)}" ${f.id === selectedValue ? 'selected' : ''}>${escapeHtml(f.name)} (${f.count})</option>`)
     ].join('');
 
     syncUploadFolderOptions();
@@ -1504,6 +1289,7 @@ function rebuildFoldersFromPhotos(photosList) {
     const folderMap = new Map();
     photosList.forEach(photo => {
         const folderName = photo.folder || '未分类';
+        if (folderName === '故事胶片') return;
         folderMap.set(folderName, (folderMap.get(folderName) || 0) + 1);
     });
 
@@ -1514,10 +1300,17 @@ function rebuildFoldersFromPhotos(photosList) {
     return result;
 }
 
+function normalizeGalleryPhotos(photosList) {
+    return (Array.isArray(photosList) ? photosList : []).filter(photo => {
+        const folderName = photo?.folder || (photo?.name?.split('/')?.[0] || '');
+        return folderName !== '故事胶片';
+    });
+}
+
 function filterPhotos() {
-    currentFilter.folder = document.getElementById('folderFilter').value;
-    currentFilter.time = document.getElementById('timeFilter').value;
-    currentFilter.search = document.getElementById('searchInput').value.toLowerCase();
+    currentFilter.folder = document.getElementById('folderFilter')?.value || '';
+    currentFilter.time = document.getElementById('timeFilter')?.value || 'all';
+    currentFilter.search = document.getElementById('searchInput')?.value?.toLowerCase() || '';
 
     if (!currentFilter.folder) {
         filteredPhotos = [];
@@ -1572,6 +1365,7 @@ function filterPhotos() {
 function createPhotoCard(photo, idx = 0) {
     const actualIndex = photos.findIndex(p => p.name === photo.name);
     const name = photo.name.split('/').pop().replace(/^\d+_/, '');
+    const safeName = escapeHtml(name);
     const date = photo.timestamp ? new Date(photo.timestamp).toLocaleString('zh-CN') : '-';
     const size = (photo.size / 1024).toFixed(1) + ' KB';
 
@@ -1580,24 +1374,24 @@ function createPhotoCard(photo, idx = 0) {
     card.style.animationDelay = `${idx * 0.05}s`;
     card.innerHTML = `
         <div class="photo-wrapper">
-            <img data-src="${getImageUrl(photo.name)}" alt="${name}" loading="lazy">
+            <img data-src="${getImageUrl(photo.name)}" alt="${safeName}" loading="lazy">
             <div class="photo-overlay" onclick="event.stopPropagation()">
                 <div class="photo-actions">
-                    <button class="photo-action-btn" onclick="openLightbox(${actualIndex})" title="查看">👁</button>
+                    <button class="photo-action-btn" onclick="openLightboxByName('${escapeJsString(photo.name)}')" title="查看">👁</button>
                     <button class="photo-action-btn" onclick="setPhotoAsBackground(${actualIndex})" title="设为背景">🖼️</button>
-                    <button class="photo-action-btn delete" onclick="deletePhoto('${photo.name}', '${photo.sha}')" title="删除">🗑</button>
+                    <button class="photo-action-btn delete" onclick="deletePhoto('${escapeJsString(photo.name)}', '${photo.sha}')" title="删除">🗑</button>
                 </div>
             </div>
         </div>
         <div class="photo-info">
-            <div class="photo-name">${name}</div>
+            <div class="photo-name">${safeName}</div>
             <div class="photo-meta">
                 <div>${date}</div>
                 <div>${size}</div>
             </div>
         </div>
     `;
-    card.onclick = () => openLightbox(actualIndex);
+    card.onclick = () => openLightboxByName(photo.name);
 
     const img = card.querySelector('img');
     if ('IntersectionObserver' in window) {
@@ -1632,13 +1426,14 @@ function renderPhotos(append = false) {
         if (emptyText) {
             emptyText.textContent = currentFilter.folder ? '该相册暂无符合条件的照片' : '请先在上方选择一个相册';
         }
-        empty.classList.add('active');
-        loadMore.style.display = 'none';
-        gallery.innerHTML = '';
+        if (empty) empty.classList.add('active');
+        if (loadMore) loadMore.style.display = 'none';
+        if (gallery) gallery.innerHTML = '';
         return;
     }
 
-    empty.classList.remove('active');
+    if (empty) empty.classList.remove('active');
+    if (!gallery) return;
     gallery.innerHTML = '';
     displayedPhotos = photosToRender;
 
@@ -1649,11 +1444,12 @@ function renderPhotos(append = false) {
     });
     gallery.appendChild(grid);
 
-    loadMore.style.display = 'none';
+    if (loadMore) loadMore.style.display = 'none';
 }
 
 function setPhotoAsBackground(index) {
     const photo = photos[index];
+    if (!photo) return;
     bgSettings.mode = 'custom';
     bgSettings.customPhoto = getImageUrl(photo.name);
     saveSettings();
@@ -1679,6 +1475,26 @@ function sanitizeFolderName(name) {
         .replace(/\.$/, '');
 }
 
+function sanitizeUploadFileName(name) {
+    return String(name || 'image.jpg')
+        .trim()
+        .replace(/[\\/:*?"<>|]/g, '-')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^\.+/, '')
+        || 'image.jpg';
+}
+
+function escapeJsString(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 function encodeGitHubPath(path) {
     return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
 }
@@ -1692,7 +1508,7 @@ async function createAlbum() {
         alert('相册名称无效');
         return;
     }
-    if (folderName === 'all') {
+    if (folderName === 'all' || folderName === '故事胶片') {
         alert('该名称不可用');
         return;
     }
@@ -1783,7 +1599,7 @@ async function deletePhoto(filename, sha) {
     if (!confirm('确定删除这张照片吗？')) return;
     showStatus('删除中...', 'loading');
     try {
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${filename}`, {
+        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/image/contents/${encodeGitHubPath(filename)}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `token ${githubToken}`,
@@ -1806,8 +1622,20 @@ async function deletePhoto(filename, sha) {
 }
 
 function openLightbox(index) {
-    currentLightboxIndex = index;
     const photo = photos[index];
+    if (!photo) return;
+    currentLightboxIndex = Math.max(0, displayedPhotos.findIndex(item => item.name === photo.name));
+    openLightboxPhoto(photo);
+}
+
+function openLightboxByName(photoName) {
+    const photo = displayedPhotos.find(item => item.name === photoName) || photos.find(item => item.name === photoName);
+    if (!photo) return;
+    currentLightboxIndex = Math.max(0, displayedPhotos.findIndex(item => item.name === photo.name));
+    openLightboxPhoto(photo);
+}
+
+function openLightboxPhoto(photo) {
     const lb = document.getElementById('lightbox');
     const img = document.getElementById('lightboxImg');
     const title = document.getElementById('lightboxTitle');
@@ -1831,13 +1659,17 @@ function closeLightbox() {
 }
 
 function prevPhoto() {
-    currentLightboxIndex = (currentLightboxIndex - 1 + photos.length) % photos.length;
-    openLightbox(currentLightboxIndex);
+    const source = displayedPhotos.length ? displayedPhotos : photos;
+    if (!source.length) return;
+    currentLightboxIndex = (currentLightboxIndex - 1 + source.length) % source.length;
+    openLightboxPhoto(source[currentLightboxIndex]);
 }
 
 function nextPhoto() {
-    currentLightboxIndex = (currentLightboxIndex + 1) % photos.length;
-    openLightbox(currentLightboxIndex);
+    const source = displayedPhotos.length ? displayedPhotos : photos;
+    if (!source.length) return;
+    currentLightboxIndex = (currentLightboxIndex + 1) % source.length;
+    openLightboxPhoto(source[currentLightboxIndex]);
 }
 
 async function refreshPhotos() {
@@ -1845,7 +1677,6 @@ async function refreshPhotos() {
     currentPage = 0;
     displayedPhotos = [];
     await loadPhotos();
-    initSlideshow();
 }
 
 // 缓存操作
@@ -1862,130 +1693,26 @@ async function getCachedPhotos() {
 
 async function cachePhotos(photosData) {
     if (!db) return;
-    const tx = db.transaction('photos', 'readwrite');
-    const store = tx.objectStore('photos');
-    photosData.forEach(p => store.put(p));
+    return new Promise((resolve) => {
+        const tx = db.transaction('photos', 'readwrite');
+        const store = tx.objectStore('photos');
+        photosData.forEach(p => store.put(p));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+        tx.onabort = () => resolve();
+    });
 }
 
 async function clearCache() {
     if (!db) return;
-    const tx1 = db.transaction('photos', 'readwrite');
-    tx1.objectStore('photos').clear();
-    const tx2 = db.transaction('folders', 'readwrite');
-    tx2.objectStore('folders').clear();
+    await Promise.all(['photos', 'folders'].map(storeName => new Promise((resolve) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+        tx.onabort = () => resolve();
+    })));
     showStatus('缓存已清空', 'success');
-}
-
-// ========== 幻灯片设置功能 ==========
-
-// 幻灯片配置
-let slideshowSettings = {
-    interval: 5,           // 播放间隔（秒）
-    transition: 'fade',    // 过渡效果：fade, slide, zoom
-    folder: 'slideshow',   // 幻灯片目录
-    maxCount: 10,          // 最大显示数量
-    autoPlay: true         // 自动播放
-};
-
-// 加载幻灯片设置
-function loadSlideshowSettings() {
-    const saved = localStorage.getItem('slideshowSettings');
-    if (saved) {
-        slideshowSettings = { ...slideshowSettings, ...JSON.parse(saved) };
-    }
-    // 更新 UI 显示
-    const intervalInput = document.getElementById('slideshowInterval');
-    const intervalValue = document.getElementById('intervalValue');
-    if (intervalInput) {
-        intervalInput.value = slideshowSettings.interval;
-        intervalValue.textContent = slideshowSettings.interval + '秒';
-    }
-    const transitionSelect = document.getElementById('transitionEffect');
-    if (transitionSelect) {
-        transitionSelect.value = slideshowSettings.transition;
-    }
-    const folderInput = document.getElementById('slideshowFolder');
-    if (folderInput) {
-        folderInput.value = slideshowSettings.folder;
-    }
-    const maxCountInput = document.getElementById('slideshowMaxCount');
-    const maxCountValue = document.getElementById('maxCountValue');
-    if (maxCountInput) {
-        maxCountInput.value = slideshowSettings.maxCount;
-        maxCountValue.textContent = slideshowSettings.maxCount + '张';
-    }
-    const autoPlayCheckbox = document.getElementById('slideshowAutoPlay');
-    if (autoPlayCheckbox) {
-        autoPlayCheckbox.checked = slideshowSettings.autoPlay;
-    }
-    // 更新 CONFIG
-    CONFIG.slideshowFolder = slideshowSettings.folder;
-}
-
-// 保存幻灯片设置
-function saveSlideshowSettings() {
-    localStorage.setItem('slideshowSettings', JSON.stringify(slideshowSettings));
-}
-
-// 更新幻灯片间隔
-function updateSlideshowInterval(value) {
-    slideshowSettings.interval = parseInt(value);
-    document.getElementById('intervalValue').textContent = value + '秒';
-    saveSlideshowSettings();
-    // 重新开始幻灯片
-    stopSlideshow();
-    if (slideshowSettings.autoPlay) {
-        startSlideshow();
-    }
-    showStatus(`幻灯片间隔已更新为 ${value}秒`, 'success');
-}
-
-// 更新过渡效果
-function updateTransitionEffect(value) {
-    slideshowSettings.transition = value;
-    saveSlideshowSettings();
-    const container = document.getElementById('slideshowContainer');
-    container.style.transition = value === 'fade' ? 'opacity 1s ease-in-out' : 
-                                  value === 'slide' ? 'transform 0.8s ease-in-out, opacity 0.8s ease-in-out' :
-                                  'transform 1s ease-in-out, opacity 1s ease-in-out';
-    showStatus(`过渡效果已更新为 ${value === 'fade' ? '淡入淡出' : value === 'slide' ? '滑动' : '缩放'}`, 'success');
-}
-
-// 更新幻灯片目录
-function updateSlideshowFolder(value) {
-    slideshowSettings.folder = value.trim() || 'slideshow';
-    saveSlideshowSettings();
-    CONFIG.slideshowFolder = slideshowSettings.folder;
-    showStatus(`幻灯片目录已更新为 ${slideshowSettings.folder}`, 'success');
-}
-
-// 更新最大显示数量
-function updateSlideshowMaxCount(value) {
-    slideshowSettings.maxCount = parseInt(value);
-    document.getElementById('maxCountValue').textContent = value + '张';
-    saveSlideshowSettings();
-    initSlideshow();
-    showStatus(`最大显示数量已更新为 ${value}张`, 'success');
-}
-
-// 更新自动播放
-function updateSlideshowAutoPlay(value) {
-    slideshowSettings.autoPlay = value;
-    saveSlideshowSettings();
-    if (value) {
-        startSlideshow();
-    } else {
-        stopSlideshow();
-    }
-    showStatus(`自动播放已${value ? '开启' : '关闭'}`, 'success');
-}
-
-// 重新加载幻灯片
-async function reloadSlideshowPhotos() {
-    showStatus('正在重新加载幻灯片...', 'loading');
-    await loadSlideshowPhotos();
-    initSlideshow();
-    showStatus(`幻灯片已更新，共 ${slideshowPhotos.length} 张照片`, 'success');
 }
 
 // 工具函数
@@ -2015,7 +1742,6 @@ function decodeGitHubContent(base64Content) {
     window.toggleAddCountdownPanel = toggleAddCountdownPanel;
     window.toggleMusicPlayer = toggleMusicPlayer;
     window.changeMusicPreset = changeMusicPreset;
-    window.toggleSlideshow = toggleSlideshow;
     window.addCountdown = addCountdown;
     window.editCountdown = editCountdown;
     window.deleteCountdown = deleteCountdown;
@@ -2025,11 +1751,17 @@ function decodeGitHubContent(base64Content) {
     window.updateAnniversary = updateAnniversary;
     window.switchChannel = switchChannel;
     window.updateHomeOverview = updateHomeOverview;
+    window.showStatus = showStatus;
+    window.refreshPhotos = refreshPhotos;
+    window.clearCache = clearCache;
+    window.getImageUrl = getImageUrl;
+    window.encodeGitHubPath = encodeGitHubPath;
     window.scrollToUpload = scrollToUpload;
     window.randomPhoto = randomPhoto;
     window.filterPhotos = filterPhotos;
     window.loadMorePhotos = loadMorePhotos;
     window.openLightbox = openLightbox;
+    window.openLightboxByName = openLightboxByName;
     window.closeLightbox = closeLightbox;
     window.prevPhoto = prevPhoto;
     window.nextPhoto = nextPhoto;
@@ -2037,15 +1769,6 @@ function decodeGitHubContent(base64Content) {
     window.deletePhoto = deletePhoto;
     window.handleFiles = handleFiles;
     window.uploadFile = uploadFile;
-    window.prevSlide = prevSlide;
-    window.nextSlide = nextSlide;
-    window.goToSlide = goToSlide;
-    window.toggleFullscreenSlideshow = toggleFullscreenSlideshow;
-    window.reloadSlideshowPhotos = reloadSlideshowPhotos;
-    window.updateSlideshowInterval = updateSlideshowInterval;
-    window.updateTransitionEffect = updateTransitionEffect;
-    window.updateSlideshowMaxCount = updateSlideshowMaxCount;
-    window.updateSlideshowAutoPlay = updateSlideshowAutoPlay;
     window.createAlbum = createAlbum;
     window.deleteCurrentAlbum = deleteCurrentAlbum;
     window.login = login;

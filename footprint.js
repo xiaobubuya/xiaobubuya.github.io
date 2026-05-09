@@ -42,9 +42,9 @@ async function geocodeAddressByAmap(address) {
 async function loadFootprints() {
     try {
         const headers = { 'Accept': 'application/vnd.github.v3+json' };
-        if (githubToken) headers['Authorization'] = `token ${githubToken}`;
+        if (window.githubToken) headers['Authorization'] = `token ${window.githubToken}`;
 
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/footprints.json?ref=${CONFIG.branch}`, {
+        const res = await fetch(`https://api.github.com/repos/${window.CONFIG.owner}/${window.CONFIG.repo}/contents/footprints.json?ref=${window.CONFIG.branch}`, {
             headers
         });
 
@@ -70,10 +70,10 @@ async function saveFootprints() {
             'Accept': 'application/vnd.github.v3+json',
             'Content-Type': 'application/json'
         };
-        if (githubToken) headers['Authorization'] = `token ${githubToken}`;
+        if (window.githubToken) headers['Authorization'] = `token ${window.githubToken}`;
 
         let sha = null;
-        const getRes = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/footprints.json?ref=${CONFIG.branch}`, {
+        const getRes = await fetch(`https://api.github.com/repos/${window.CONFIG.owner}/${window.CONFIG.repo}/contents/footprints.json?ref=${window.CONFIG.branch}`, {
             headers
         });
         if (getRes.ok) {
@@ -85,11 +85,11 @@ async function saveFootprints() {
         const body = {
             message: '更新地图足迹',
             content,
-            branch: CONFIG.branch
+            branch: window.CONFIG.branch
         };
         if (sha) body.sha = sha;
 
-        const res = await fetch(`https://api.github.com/repos/${CONFIG.owner}/${CONFIG.repo}/contents/footprints.json`, {
+        const res = await fetch(`https://api.github.com/repos/${window.CONFIG.owner}/${window.CONFIG.repo}/contents/footprints.json`, {
             method: 'PUT',
             headers,
             body: JSON.stringify(body)
@@ -128,6 +128,12 @@ function toggleAddFootprintPanel() {
         panel.style.display = 'none';
         editingFootprintId = null;
         document.getElementById('footprintPanelTitle').textContent = '添加地图足迹';
+        document.getElementById('footprintCity').value = '';
+        document.getElementById('footprintSpot').value = '';
+        document.getElementById('footprintDate').value = '';
+        document.getElementById('footprintLng').value = '';
+        document.getElementById('footprintLat').value = '';
+        document.getElementById('footprintNote').value = '';
         if (overlay) overlay.remove();
     }
 }
@@ -137,8 +143,10 @@ async function saveFootprint() {
     const spot = document.getElementById('footprintSpot')?.value.trim();
     const date = document.getElementById('footprintDate')?.value;
     const note = document.getElementById('footprintNote')?.value.trim();
-    const lngInput = parseFloat(document.getElementById('footprintLng')?.value);
-    const latInput = parseFloat(document.getElementById('footprintLat')?.value);
+    const lngRaw = document.getElementById('footprintLng')?.value;
+    const latRaw = document.getElementById('footprintLat')?.value;
+    const lngInput = parseFloat(lngRaw);
+    const latInput = parseFloat(latRaw);
 
     if (!city || !spot) {
         alert('请至少填写城市和景点');
@@ -147,6 +155,10 @@ async function saveFootprint() {
 
     let lng = isFinite(lngInput) ? lngInput : null;
     let lat = isFinite(latInput) ? latInput : null;
+    if ((lngRaw && !isFinite(lngInput)) || (latRaw && !isFinite(latInput))) {
+        alert('经纬度格式不正确');
+        return;
+    }
 
     if ((lng === null || lat === null) && amapKey) {
         const geocoded = await geocodeAddressByAmap(`${city}${spot}`);
@@ -174,6 +186,7 @@ async function saveFootprint() {
         updatedAt: new Date().toISOString()
     };
     
+    const previousFootprints = footprints.map(item => ({ ...item }));
     const targetIndex = footprints.findIndex(item => item.id === payload.id);
     if (targetIndex >= 0) {
         footprints[targetIndex] = { ...footprints[targetIndex], ...payload };
@@ -183,13 +196,15 @@ async function saveFootprint() {
 
     const saved = await saveFootprints();
     if (!saved) {
-        showStatus('保存足迹失败，请检查网络', 'error');
+        footprints = previousFootprints;
+        syncFootprintsGlobal();
+        window.showStatus('保存足迹失败，请检查网络', 'error');
         return;
     }
 
     renderFootprints();
     toggleAddFootprintPanel();
-    showStatus('足迹已保存', 'success');
+    window.showStatus('足迹已保存', 'success');
 }
 
 function editFootprint(id) {
@@ -213,16 +228,21 @@ function editFootprint(id) {
 
 async function deleteFootprint(id) {
     if (!confirm('确定删除这个足迹吗？')) return;
+    const previousFootprints = footprints.map(item => ({ ...item }));
+    const previousSelectedId = selectedFootprintId;
     footprints = footprints.filter(item => item.id !== id);
     if (selectedFootprintId === id) selectedFootprintId = null;
 
     const saved = await saveFootprints();
     if (!saved) {
-        showStatus('删除失败，请检查网络', 'error');
+        footprints = previousFootprints;
+        selectedFootprintId = previousSelectedId;
+        renderFootprints();
+        window.showStatus('删除失败，请检查网络', 'error');
         return;
     }
     renderFootprints();
-    showStatus('足迹已删除', 'success');
+    window.showStatus('足迹已删除', 'success');
 }
 
 function focusFootprint(id) {
@@ -315,7 +335,7 @@ function renderFootprints() {
 
     empty.style.display = 'none';
     list.innerHTML = ordered.map(item => `
-        <article class="footprint-item ${item.id === selectedFootprintId ? 'active' : ''}" onclick="focusFootprint('${item.id}')">
+        <article class="footprint-item ${item.id === selectedFootprintId ? 'active' : ''}" onclick="focusFootprint('${escapeJsString(item.id)}')">
             <div class="footprint-title">
                 ${getFootprintAvatarSvg(item.gender)}
                 <span>${escapeHtml(item.city || '')} · ${escapeHtml(item.spot || '')}</span>
@@ -326,8 +346,8 @@ function renderFootprints() {
             </div>
             ${item.note ? `<p class="footprint-note">${escapeHtml(item.note)}</p>` : ''}
             <div class="footprint-actions">
-                <button class="footprint-action-btn edit" onclick="event.stopPropagation();editFootprint('${item.id}')">编辑</button>
-                <button class="footprint-action-btn delete" onclick="event.stopPropagation();deleteFootprint('${item.id}')">删除</button>
+                <button class="footprint-action-btn edit" onclick="event.stopPropagation();editFootprint('${escapeJsString(item.id)}')">编辑</button>
+                <button class="footprint-action-btn delete" onclick="event.stopPropagation();deleteFootprint('${escapeJsString(item.id)}')">删除</button>
             </div>
         </article>
     `).join('');
@@ -343,6 +363,10 @@ function escapeHtml(text) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function escapeJsString(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 function getFootprintAvatarSvg(gender) {
