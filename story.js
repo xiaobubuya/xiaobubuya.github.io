@@ -16,10 +16,11 @@ const storyScenePhotosCache = new Map();
 const storyLoopState = {
     baseStart: 0,
     segmentWidth: 0,
+    leftBoundary: 0,
+    rightBoundary: 0,
     total: 0,
     activeOrder: 0,
-    touchStartX: 0,
-    touchStartY: 0
+    rebasing: false
 };
 
 function loadStoryEdits() {
@@ -213,6 +214,10 @@ function getMiddleStoryItem(order) {
     return document.querySelector(`.timeline-item[data-segment="real"][data-order="${order}"]`);
 }
 
+function getCenteredStoryScroll(item, viewport) {
+    return item.offsetLeft + item.offsetWidth / 2 - viewport.clientWidth / 2;
+}
+
 function updateStoryFilmStatus(order, total) {
     const text = document.getElementById('storyProgressText');
     if (!text) return;
@@ -254,16 +259,28 @@ function activateStoryOrder(order) {
 
 function keepStoryInLoopRange() {
     const viewport = getStoryViewport();
-    if (!viewport || storyLoopState.segmentWidth <= 0) return;
+    if (!viewport || storyLoopState.segmentWidth <= 0 || storyLoopState.rebasing) return;
 
-    const leftBoundary = storyLoopState.baseStart - storyLoopState.segmentWidth / 2;
-    const rightBoundary = storyLoopState.baseStart + storyLoopState.segmentWidth / 2;
-
-    if (viewport.scrollLeft < leftBoundary) {
-        viewport.scrollLeft += storyLoopState.segmentWidth;
-    } else if (viewport.scrollLeft > rightBoundary) {
-        viewport.scrollLeft -= storyLoopState.segmentWidth;
+    let delta = 0;
+    if (viewport.scrollLeft < storyLoopState.leftBoundary) {
+        delta = storyLoopState.segmentWidth;
+    } else if (viewport.scrollLeft > storyLoopState.rightBoundary) {
+        delta = -storyLoopState.segmentWidth;
     }
+    if (!delta) return;
+
+    storyLoopState.rebasing = true;
+    const prevSnapType = viewport.style.scrollSnapType;
+    const prevBehavior = viewport.style.scrollBehavior;
+    viewport.style.scrollSnapType = 'none';
+    viewport.style.scrollBehavior = 'auto';
+    viewport.scrollLeft += delta;
+
+    requestAnimationFrame(() => {
+        viewport.style.scrollSnapType = prevSnapType;
+        viewport.style.scrollBehavior = prevBehavior;
+        storyLoopState.rebasing = false;
+    });
 }
 
 function detectActiveStoryByCenter() {
@@ -308,11 +325,8 @@ function scrollToStoryOrder(order, behavior = 'smooth') {
     const target = getMiddleStoryItem(order);
     if (!viewport || !target) return;
 
-    const targetCenter = target.offsetLeft + target.offsetWidth / 2;
-    const left = targetCenter - viewport.clientWidth / 2;
-
     viewport.scrollTo({
-        left,
+        left: getCenteredStoryScroll(target, viewport),
         behavior
     });
     activateStoryOrder(order);
@@ -350,27 +364,6 @@ function bindStoryInteractions() {
             e.preventDefault();
         }
     }, { passive: false, signal });
-
-    viewport.addEventListener('touchstart', (e) => {
-        const t = e.changedTouches?.[0];
-        if (!t) return;
-        storyLoopState.touchStartX = t.clientX;
-        storyLoopState.touchStartY = t.clientY;
-    }, { passive: true, signal });
-
-    viewport.addEventListener('touchend', (e) => {
-        const t = e.changedTouches?.[0];
-        if (!t) return;
-
-        const dx = t.clientX - storyLoopState.touchStartX;
-        const dy = t.clientY - storyLoopState.touchStartY;
-        if (Math.abs(dx) < 48 || Math.abs(dx) <= Math.abs(dy)) return;
-        if (dx < 0) {
-            storyNext();
-        } else {
-            storyPrev();
-        }
-    }, { passive: true, signal });
 
     document.addEventListener('keydown', (e) => {
         const editableTarget = e.target?.closest?.('input, textarea, select, [contenteditable="true"]');
@@ -462,13 +455,24 @@ function buildStoryFilmNodes(force = false) {
 
 function setupStoryLoopMetrics() {
     const viewport = getStoryViewport();
+    const firstPrev = document.querySelector('.timeline-item[data-segment="prev"][data-order="0"]');
+    const lastPrev = document.querySelector(`.timeline-item[data-segment="prev"][data-order="${storyLoopState.total - 1}"]`);
     const firstReal = document.querySelector('.timeline-item[data-segment="real"][data-order="0"]');
+    const lastReal = document.querySelector(`.timeline-item[data-segment="real"][data-order="${storyLoopState.total - 1}"]`);
     const firstNext = document.querySelector('.timeline-item[data-segment="next"][data-order="0"]');
 
-    if (!viewport || !firstReal || !firstNext) return;
+    if (!viewport || !firstPrev || !lastPrev || !firstReal || !lastReal || !firstNext) return;
 
-    storyLoopState.baseStart = firstReal.offsetLeft;
-    storyLoopState.segmentWidth = firstNext.offsetLeft - firstReal.offsetLeft;
+    const firstPrevScroll = getCenteredStoryScroll(firstPrev, viewport);
+    const lastPrevScroll = getCenteredStoryScroll(lastPrev, viewport);
+    const firstRealScroll = getCenteredStoryScroll(firstReal, viewport);
+    const lastRealScroll = getCenteredStoryScroll(lastReal, viewport);
+    const firstNextScroll = getCenteredStoryScroll(firstNext, viewport);
+
+    storyLoopState.baseStart = firstRealScroll;
+    storyLoopState.segmentWidth = firstNextScroll - firstRealScroll;
+    storyLoopState.leftBoundary = (lastPrevScroll + firstRealScroll) / 2;
+    storyLoopState.rightBoundary = (lastRealScroll + firstNextScroll) / 2;
 
     viewport.scrollLeft = storyLoopState.baseStart;
 }
