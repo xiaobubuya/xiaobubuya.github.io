@@ -343,10 +343,22 @@
                     <p id="storyDetailText" class="story-detail-text"></p>
                     <div class="story-scene-gallery">
                         <div class="story-scene-gallery-head">
-                            <h5>本幕相册</h5>
+                            <div>
+                                <span class="story-scene-kicker">SCENE ARCHIVE</span>
+                                <h5>本幕影像</h5>
+                                <p>照片是分镜，视频是现场，合在一起才是这一幕。</p>
+                            </div>
                             <span id="storySceneFolderPath"></span>
                         </div>
                         <div id="storyScenePhotos" class="story-scene-photos"></div>
+                        <div id="storySceneVideos" class="story-scene-videos"></div>
+                    </div>
+                    <div class="story-writing-board">
+                        <div class="story-writing-board-head">
+                            <span>写字板</span>
+                            <small>LETTER FROM THIS SCENE</small>
+                        </div>
+                        <p id="storyDetailBoard"></p>
                     </div>
                     <div class="story-detail-grid">
                         <div class="story-detail-box">
@@ -383,6 +395,10 @@
                         <textarea id="storyEditText" rows="3" placeholder="写下这一幕的故事"></textarea>
                     </div>
                     <div class="form-item">
+                        <label>写字板</label>
+                        <textarea id="storyEditBoard" rows="5" placeholder="像写便签一样，给这一幕留下一段更私密、更完整的话"></textarea>
+                    </div>
+                    <div class="form-item">
                         <label>那天我们（每行一条）</label>
                         <textarea id="storyEditMoments" rows="3" placeholder="一起看日落\n吃了热腾腾的小吃\n拍了很多照片"></textarea>
                     </div>
@@ -395,12 +411,12 @@
                         <input type="text" id="storyEditNoteTa" placeholder="和你在一起很安心">
                     </div>
                     <div class="form-item">
-                        <label>本幕图片组（可多选）</label>
+                        <label>本幕影像（图片 / 视频，可多选）</label>
                         <div class="story-upload-row">
-                            <button type="button" class="control-btn" onclick="document.getElementById('storySceneUploadInput').click()">上传本幕图片</button>
+                            <button type="button" class="control-btn" onclick="document.getElementById('storySceneUploadInput').click()">上传图片或视频</button>
                             <span id="storySceneUploadHint"></span>
                         </div>
-                        <input id="storySceneUploadInput" type="file" accept="image/*" multiple hidden onchange="handleStorySceneFiles(this.files)">
+                        <input id="storySceneUploadInput" type="file" accept="image/*,video/*" multiple hidden onchange="handleStorySceneFiles(this.files)">
                     </div>
                 </div>
 

@@ -8,6 +8,8 @@ let storyDetailOrder = -1;
 let storyDetailEditing = false;
 const STORY_EDITS_KEY = 'storyFilmEdits';
 const STORY_SCENE_ROOT = '故事胶片';
+const STORY_IMAGE_EXT_RE = /\.(jpe?g|png|gif|webp|bmp|svg)$/i;
+const STORY_VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|ogg)$/i;
 let storyEdits = {};
 const storyScenePhotosCache = new Map();
 
@@ -127,6 +129,7 @@ function getStoryNodeViewModel(node) {
         location: edit.location || deriveStoryLocation(photo),
         tags: Array.isArray(edit.tags) && edit.tags.length ? edit.tags : ['心动', '陪伴', '日常'],
         moments: Array.isArray(edit.moments) && edit.moments.length ? edit.moments : buildDefaultMoments(node),
+        board: edit.board || '如果这一幕是一张慢慢显影的照片，我想在背面写下：谢谢你，把普通日子变成了值得反复看的电影。',
         noteMe: edit.noteMe || '今天也很喜欢你。',
         noteTa: edit.noteTa || '我们会一直一起走下去。',
         imageUrl: photo && typeof window.getImageUrl === 'function' ? window.getImageUrl(photo.name) : ''
@@ -210,14 +213,11 @@ function getMiddleStoryItem(order) {
     return document.querySelector(`.timeline-item[data-segment="real"][data-order="${order}"]`);
 }
 
-function updateTimelineProgressByOrder(order, total) {
-    const progress = document.getElementById('timelineProgress');
+function updateStoryFilmStatus(order, total) {
     const text = document.getElementById('storyProgressText');
-    if (!progress || !text) return;
+    if (!text) return;
 
     const safeTotal = Math.max(total, 1);
-    const percent = safeTotal <= 1 ? 100 : (order / (safeTotal - 1)) * 100;
-    progress.style.width = `${Math.max(0, Math.min(100, percent))}%`;
     text.textContent = `第 ${order + 1} 幕 / 共 ${safeTotal} 幕`;
 }
 
@@ -235,7 +235,7 @@ function activateStoryOrder(order) {
     });
 
     storyLoopState.activeOrder = safeOrder;
-    updateTimelineProgressByOrder(safeOrder, storyLoopState.total);
+    updateStoryFilmStatus(safeOrder, storyLoopState.total);
 
     const card = getMiddleStoryItem(safeOrder)?.querySelector('.timeline-card[data-photo-index]');
     if (!card) {
@@ -308,8 +308,11 @@ function scrollToStoryOrder(order, behavior = 'smooth') {
     const target = getMiddleStoryItem(order);
     if (!viewport || !target) return;
 
+    const targetCenter = target.offsetLeft + target.offsetWidth / 2;
+    const left = targetCenter - viewport.clientWidth / 2;
+
     viewport.scrollTo({
-        left: target.offsetLeft,
+        left,
         behavior
     });
     activateStoryOrder(order);
@@ -505,10 +508,7 @@ function renderStoryTimeline(force = false) {
             </div>
         </div>
         <div class="film-footer">
-            <div class="film-progress-track">
-                <div id="timelineProgress" class="film-progress-fill"></div>
-            </div>
-            <div class="film-meta">
+            <div class="film-meta" aria-live="polite">
                 <span id="storyProgressText">第 1 幕 / 共 ${filmNodes.length} 幕</span>
                 <span>手动滑动浏览</span>
             </div>
@@ -548,6 +548,7 @@ function fillStoryDetailView(order) {
     const momentsEl = document.getElementById('storyDetailMoments');
     const noteMeEl = document.getElementById('storyDetailNoteMe');
     const noteTaEl = document.getElementById('storyDetailNoteTa');
+    const boardEl = document.getElementById('storyDetailBoard');
 
     if (heroImg) {
         if (vm.imageUrl) {
@@ -568,6 +569,7 @@ function fillStoryDetailView(order) {
     if (momentsEl) {
         momentsEl.innerHTML = vm.moments.map(item => `<li>${escapeStoryHtml(item)}</li>`).join('');
     }
+    if (boardEl) boardEl.textContent = vm.board;
     if (noteMeEl) noteMeEl.textContent = `我：${vm.noteMe}`;
     if (noteTaEl) noteTaEl.textContent = `TA：${vm.noteTa}`;
     renderStoryScenePhotos(order);
@@ -584,6 +586,7 @@ function fillStoryEditForm(order) {
     document.getElementById('storyEditLocation').value = vm.location;
     document.getElementById('storyEditTags').value = vm.tags.join(', ');
     document.getElementById('storyEditText').value = vm.text;
+    document.getElementById('storyEditBoard').value = vm.board;
     document.getElementById('storyEditMoments').value = vm.moments.join('\n');
     document.getElementById('storyEditNoteMe').value = vm.noteMe;
     document.getElementById('storyEditNoteTa').value = vm.noteTa;
@@ -591,7 +594,7 @@ function fillStoryEditForm(order) {
     if (uploadHint) uploadHint.textContent = getStorySceneUploadHint(order);
 }
 
-async function loadStoryScenePhotos(order, force = false) {
+async function loadStorySceneMedia(order, force = false) {
     const sceneFolder = getStorySceneFolder(order);
     if (!force && storyScenePhotosCache.has(sceneFolder)) {
         return storyScenePhotosCache.get(sceneFolder);
@@ -610,42 +613,62 @@ async function loadStoryScenePhotos(order, force = false) {
         if (!res.ok) throw new Error(await res.text());
 
         const files = await res.json();
-        const images = (Array.isArray(files) ? files : [])
-            .filter(file => file.type === 'file' && /\.(jpe?g|png|gif|webp|bmp|svg)$/i.test(file.name))
+        const media = (Array.isArray(files) ? files : [])
+            .filter(file => file.type === 'file' && (STORY_IMAGE_EXT_RE.test(file.name) || STORY_VIDEO_EXT_RE.test(file.name)))
             .map(file => ({
                 name: file.name,
                 path: file.path,
                 url: window.getImageUrl(file.path),
-                size: file.size || 0
+                size: file.size || 0,
+                type: STORY_VIDEO_EXT_RE.test(file.name) ? 'video' : 'image'
             }))
             .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-        storyScenePhotosCache.set(sceneFolder, images);
-        return images;
+        storyScenePhotosCache.set(sceneFolder, media);
+        return media;
     } catch (e) {
-        console.error('加载故事幕相册失败:', e);
+        console.error('加载故事幕媒体失败:', e);
         return [];
     }
 }
 
 async function renderStoryScenePhotos(order, force = false) {
-    const container = document.getElementById('storyScenePhotos');
+    const photoContainer = document.getElementById('storyScenePhotos');
+    const videoContainer = document.getElementById('storySceneVideos');
     const folderPathEl = document.getElementById('storySceneFolderPath');
-    if (!container) return;
+    if (!photoContainer || !videoContainer) return;
     const sceneFolder = getStorySceneFolder(order);
     if (folderPathEl) folderPathEl.textContent = sceneFolder;
-    container.innerHTML = '<div class="story-scene-empty">正在加载本幕图片...</div>';
+    photoContainer.innerHTML = '<div class="story-scene-empty">正在加载本幕影像...</div>';
+    videoContainer.innerHTML = '';
 
-    const photosList = await loadStoryScenePhotos(order, force);
+    const mediaList = await loadStorySceneMedia(order, force);
+    const photosList = mediaList.filter(item => item.type === 'image');
+    const videosList = mediaList.filter(item => item.type === 'video');
     if (!photosList.length) {
-        container.innerHTML = '<div class="story-scene-empty">本幕还没有图片，进入编辑态后可以一次上传一组照片。</div>';
-        return;
+        photoContainer.innerHTML = '<div class="story-scene-empty">本幕还没有图片，进入编辑态后可以上传一组照片。</div>';
+    } else {
+        photoContainer.innerHTML = photosList.map(photo => `
+            <button class="story-scene-photo" type="button" data-url="${photo.url}" onclick="window.open(this.dataset.url, '_blank', 'noopener')">
+                <img src="${photo.url}" alt="${escapeStoryHtml(photo.name)}">
+                <span>${escapeStoryHtml(photo.name.replace(/^\d+_/, '').replace(/\.[^/.]+$/, ''))}</span>
+            </button>
+        `).join('');
     }
 
-    container.innerHTML = photosList.map(photo => `
-        <button class="story-scene-photo" type="button" data-url="${photo.url}" onclick="window.open(this.dataset.url, '_blank', 'noopener')">
-            <img src="${photo.url}" alt="${escapeStoryHtml(photo.name)}">
-        </button>
-    `).join('');
+    videoContainer.innerHTML = videosList.length
+        ? videosList.map(video => `
+            <article class="story-scene-video">
+                <div class="story-scene-video-frame">
+                    <span class="story-scene-video-badge">VIDEO CLIP</span>
+                    <video src="${video.url}" controls preload="metadata"></video>
+                </div>
+                <div class="story-scene-video-caption">
+                    <strong>${escapeStoryHtml(video.name.replace(/^\d+_/, '').replace(/\.[^/.]+$/, ''))}</strong>
+                    <small>按下播放，回到这一秒</small>
+                </div>
+            </article>
+        `).join('')
+        : '<div class="story-scene-empty">本幕还没有视频，适合放一段现场声音、路上的风景或小片段。</div>';
 }
 
 async function uploadStorySceneFile(file, order) {
@@ -669,7 +692,7 @@ async function uploadStorySceneFile(file, order) {
         method: 'PUT',
         headers,
         body: JSON.stringify({
-            message: `Upload story scene image ${file.name}`,
+            message: `Upload story scene media ${file.name}`,
             content: contentBase64,
             branch: window.CONFIG.branch
         })
@@ -680,21 +703,21 @@ async function uploadStorySceneFile(file, order) {
 async function handleStorySceneFiles(fileList) {
     const order = storyDetailOrder;
     if (order < 0 || !fileList) return;
-    const files = Array.from(fileList).filter(file => file.type.startsWith('image/'));
+    const files = Array.from(fileList).filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'));
     if (!files.length) {
-        alert('请选择图片文件');
+        alert('请选择图片或视频文件');
         return;
     }
     if (typeof window.showStatus !== 'function') return;
 
-    window.showStatus(`开始上传本幕图片（共 ${files.length} 张）...`, 'loading');
+    window.showStatus(`开始上传本幕影像（共 ${files.length} 个）...`, 'loading');
     let success = 0;
     for (const file of files) {
         try {
             await uploadStorySceneFile(file, order);
             success += 1;
         } catch (e) {
-            console.error('上传故事幕图片失败:', e);
+            console.error('上传故事幕影像失败:', e);
         }
     }
 
@@ -704,7 +727,7 @@ async function handleStorySceneFiles(fileList) {
     if (typeof window.refreshPhotos === 'function' && success > 0) {
         await window.refreshPhotos();
     }
-    window.showStatus(success > 0 ? `本幕图片上传成功 ${success} 张` : '本幕图片上传失败', success > 0 ? 'success' : 'error');
+    window.showStatus(success > 0 ? `本幕影像上传成功 ${success} 个` : '本幕影像上传失败', success > 0 ? 'success' : 'error');
     const input = document.getElementById('storySceneUploadInput');
     if (input) input.value = '';
 }
@@ -749,6 +772,7 @@ function saveStoryEdit() {
     const dateLabel = document.getElementById('storyEditDate')?.value.trim() || '';
     const title = document.getElementById('storyEditTitle')?.value.trim() || '';
     const text = document.getElementById('storyEditText')?.value.trim() || '';
+    const board = document.getElementById('storyEditBoard')?.value.trim() || '';
     const location = document.getElementById('storyEditLocation')?.value.trim() || '';
     const tags = parseTags(document.getElementById('storyEditTags')?.value || '');
     const moments = String(document.getElementById('storyEditMoments')?.value || '')
@@ -767,6 +791,7 @@ function saveStoryEdit() {
         dateLabel,
         title,
         text,
+        board,
         location,
         tags,
         moments,
