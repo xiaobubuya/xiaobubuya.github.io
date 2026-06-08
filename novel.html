@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">小说 - xiaobubuya</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f5f0eb;
+      color: #333;
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, #2c1810 0%, #4a2c1a 100%);
+      color: #fff;
+      padding: 20px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-inner {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .back { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; }
+    .back:hover { color: #fff; }
+    .header-title { flex: 1; font-size: 16px; font-weight: 500; }
+    .chapter-nav { display: flex; gap: 8px; }
+    .chapter-nav a {
+      color: rgba(255,255,255,0.7);
+      text-decoration: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .chapter-nav a:hover { color: #fff; border-color: rgba(255,255,255,0.5); }
+    .chapter-nav a.active { background: rgba(255,255,255,0.15); color: #fff; }
+
+    .container { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+    .chapter-content {
+      background: #fff;
+      border-radius: 8px;
+      padding: 40px;
+      line-height: 2;
+      font-size: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .chapter-title {
+      font-size: 22px;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #eee;
+    }
+    .loading { text-align: center; padding: 60px; color: #999; }
+    .chapter-select { display: none; }
+    @media (max-width: 600px) {
+      .chapter-content { padding: 20px; font-size: 15px; }
+      .chapter-nav a { padding: 4px 8px; font-size: 12px; }
+      .chapter-nav .ch-label { display: none; }
+      .chapter-select { display: block; background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 8px; font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-inner">
+      <a href="./" class="back">← 返回</a>
+      <span class="header-title" id="header-title">加载中...</span>
+      <div class="chapter-nav" id="chapter-nav"></div>
+      <select class="chapter-select" id="chapter-select"></select>
+    </div>
+  </div>
+  <div class="container">
+    <div class="chapter-content" id="chapter-content">
+      <div class="loading">加载中...</div>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const novelName = params.get('name');
+    const chapterNum = parseInt(params.get('ch')) || 1;
+
+    if (!novelName) {
+      document.getElementById('chapter-content').innerHTML = '<div class="loading">未指定小说</div>';
+    } else {
+      let novelData = null;
+      let chapters = [];
+
+      fetch('novels/index.json')
+        .then(r => r.json())
+        .then(data => {
+          novelData = data.novels.find(n => n.name === novelName);
+          if (!novelData) throw new Error('not found');
+          document.title = novelData.title + ' - xiaobubuya';
+          document.getElementById('header-title').textContent = novelData.title;
+
+          // load chapters list
+          return fetch('novels/' + novelName + '/index.json');
+        })
+        .then(r => r.json())
+        .then(chData => {
+          chapters = chData.chapters || [];
+          renderNav();
+          renderChapter(chapterNum);
+        })
+        .catch(() => {
+          document.getElementById('chapter-content').innerHTML = '<div class="loading">小说未找到</div>';
+        });
+
+      function renderNav() {
+        const nav = document.getElementById('chapter-nav');
+        const sel = document.getElementById('chapter-select');
+        nav.innerHTML = '';
+        sel.innerHTML = '';
+        chapters.forEach((ch, i) => {
+          const num = i + 1;
+          const a = document.createElement('a');
+          a.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + num;
+          a.textContent = num;
+          if (num === chapterNum) a.className = 'active';
+          nav.appendChild(a);
+
+          const opt = document.createElement('option');
+          opt.value = num;
+          opt.textContent = num + '. ' + ch.title;
+          if (num === chapterNum) opt.selected = true;
+          sel.appendChild(opt);
+        });
+
+        sel.addEventListener('change', function() {
+          location.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + this.value;
+        });
+      }
+
+      function renderChapter(num) {
+        const contentDiv = document.getElementById('chapter-content');
+        const ch = chapters[num - 1];
+        if (!ch) {
+          contentDiv.innerHTML = '<div class="loading">章节不存在</div>';
+          return;
+        }
+        contentDiv.innerHTML = '<div class="loading">加载中...</div>';
+
+        fetch('novels/' + novelName + '/' + ch.file)
+          .then(r => r.ok ? r.text() : Promise.reject())
+          .then(text => {
+            contentDiv.innerHTML = '<div class="chapter-title">' + ch.title + '</div>' + text;
+          })
+          .catch(() => {
+            contentDiv.innerHTML = '<div class="loading">章节加载失败</div>';
+          });
+      }
+    }
+  </script>
+</body>
+</html>
