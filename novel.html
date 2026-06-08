@@ -3,7 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title id="page-title">小说 - xiaobubuya</title>
+  <script>
+    // 缓存版本检测
+    (function(){
+      var key = 'novel_site_ver';
+      var last = localStorage.getItem(key);
+      fetch('/version.txt?v=' + Date.now()).then(function(r){return r.text()}).then(function(v){
+        v = v.trim();
+        if(last && last !== v) {
+          localStorage.clear();
+          location.reload(true);
+        }
+        localStorage.setItem(key, v);
+      }).catch(function(){});
+    })();
+  </script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -32,7 +50,6 @@
     .header-title { flex: 1; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .header-ch-info { font-size: 12px; color: rgba(255,255,255,0.5); white-space: nowrap; }
 
-    /* 跳转弹窗 */
     .jump-btn {
       background: rgba(255,255,255,0.1);
       color: rgba(255,255,255,0.8);
@@ -126,7 +143,6 @@
     }
     .loading { text-align: center; padding: 60px; color: #999; }
 
-    /* 上下章导航 */
     .chapter-pager {
       max-width: 800px;
       margin: 20px auto;
@@ -162,8 +178,8 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      max-width: 150px;
     }
-    .chapter-pager .pager-right { text-align: right; flex-direction: row-reverse; }
 
     @media (max-width: 600px) {
       .chapter-content { padding: 20px; font-size: 15px; }
@@ -183,7 +199,6 @@
     </div>
   </div>
 
-  <!-- 跳转弹窗 -->
   <div class="jump-overlay" id="jump-overlay">
     <div class="jump-panel">
       <div class="jump-panel-header">
@@ -203,68 +218,60 @@
   <div class="chapter-pager" id="chapter-pager"></div>
 
   <script>
-    const params = new URLSearchParams(location.search);
-    const novelName = params.get('name');
-    let chapterNum = parseInt(params.get('ch'));
+    function nocache(url) { return url + (url.indexOf('?') > -1 ? '&' : '?') + '_t=' + Date.now(); }
+
+    var params = new URLSearchParams(location.search);
+    var novelName = params.get('name');
+    var chapterNum = parseInt(params.get('ch'));
     if (!chapterNum || chapterNum < 1) chapterNum = 1;
 
     if (!novelName) {
       document.getElementById('chapter-content').innerHTML = '<div class="loading">未指定小说</div>';
     } else {
-      let novelTitle = '';
-      let chapters = [];
+      var novelTitle = '';
+      var chapters = [];
 
-      // 加载章节列表
-      fetch('novels/' + novelName + '/index.json')
-        .then(r => r.json())
-        .then(chData => {
-          chapters = chData.chapters || [];
-          // 获取小说标题
-          return fetch('novels/index.json');
-        })
-        .then(r => r.json())
-        .then(idxData => {
-          const n = idxData.novels.find(x => x.name === novelName);
-          novelTitle = n ? n.title : novelName;
-          document.title = novelTitle + ' - xiaobubuya';
-          document.getElementById('header-title').textContent = novelTitle;
-          renderAll();
-        })
-        .catch(() => {
-          document.getElementById('chapter-content').innerHTML = '<div class="loading">小说未找到</div>';
-        });
+      Promise.all([
+        fetch(nocache('novels/' + novelName + '/index.json')).then(function(r){return r.json()}),
+        fetch(nocache('novels/index.json')).then(function(r){return r.json()})
+      ]).then(function(results) {
+        chapters = results[0].chapters || [];
+        var idxData = results[1];
+        var n = idxData.novels.find(function(x){return x.name === novelName});
+        novelTitle = n ? n.title : novelName;
+        document.title = novelTitle + ' - xiaobubuya';
+        document.getElementById('header-title').textContent = novelTitle;
+        renderAll();
+      }).catch(function() {
+        document.getElementById('chapter-content').innerHTML = '<div class="loading">小说未找到</div>';
+      });
 
       function renderAll() {
-        renderNav();
+        updateHeaderCh();
         renderChapter(chapterNum);
         renderPager();
         renderJumpList();
       }
 
-      // 头部章节信息
       function updateHeaderCh() {
-        const info = document.getElementById('header-ch-info');
-        const total = chapters.length;
-        if (total > 0) info.textContent = chapterNum + '/' + total;
+        document.getElementById('header-ch-info').textContent = chapterNum + '/' + chapters.length;
       }
 
-      // 目录弹窗
       function renderJumpList() {
-        const list = document.getElementById('jump-list');
+        var list = document.getElementById('jump-list');
         list.innerHTML = '';
-        chapters.forEach((ch, i) => {
-          const num = i + 1;
-          const a = document.createElement('a');
+        chapters.forEach(function(ch, i) {
+          var num = i + 1;
+          var a = document.createElement('a');
           a.className = 'jump-item' + (num === chapterNum ? ' active' : '');
           a.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + num;
-          const span = document.createElement('span');
+          var span = document.createElement('span');
           span.className = 'jump-num';
           span.textContent = num + '.';
           a.appendChild(span);
           a.appendChild(document.createTextNode(ch.title));
           list.appendChild(a);
         });
-        // 弹窗开关
         document.getElementById('jump-btn').onclick = function() {
           document.getElementById('jump-overlay').classList.add('open');
         };
@@ -276,53 +283,45 @@
         };
       }
 
-      function renderNav() {
-        updateHeaderCh();
-      }
-
       function renderChapter(num) {
-        const contentDiv = document.getElementById('chapter-content');
-        const ch = chapters[num - 1];
+        var contentDiv = document.getElementById('chapter-content');
+        var ch = chapters[num - 1];
         if (!ch) {
           contentDiv.innerHTML = '<div class="loading">章节不存在</div>';
           return;
         }
         contentDiv.innerHTML = '<div class="loading">加载中...</div>';
 
-        fetch('novels/' + novelName + '/' + ch.file)
-          .then(r => r.ok ? r.text() : Promise.reject())
-          .then(text => {
-            // 去除章节标题行（第X章：xxx），由前端显示
-            let body = text;
-            const lines = text.split('\n');
-            if (lines[0].trim().match(/^(第[一二三四五六七八九十百千\d]+章)/)) {
+        fetch(nocache('novels/' + novelName + '/' + ch.file))
+          .then(function(r){return r.ok ? r.text() : Promise.reject()})
+          .then(function(text) {
+            var body = text;
+            var lines = text.split('\n');
+            if (lines[0].trim().match(/^第[一二三四五六七八九十百千\d]+章/)) {
               body = lines.slice(1).join('\n').trim();
             }
             contentDiv.innerHTML = '<div class="chapter-title">' + ch.title + '</div>' + body;
             updateHeaderCh();
             renderPager();
-            // 刷新弹窗高亮
-            document.querySelectorAll('.jump-item').forEach((el, i) => {
+            document.querySelectorAll('.jump-item').forEach(function(el, i) {
               el.className = 'jump-item' + ((i + 1) === num ? ' active' : '');
             });
           })
-          .catch(() => {
+          .catch(function() {
             contentDiv.innerHTML = '<div class="loading">章节加载失败</div>';
           });
       }
 
       function renderPager() {
-        const pager = document.getElementById('chapter-pager');
-        const total = chapters.length;
-        const hasPrev = chapterNum > 1;
-        const hasNext = chapterNum < total;
-
-        const prevCh = hasPrev ? chapters[chapterNum - 2] : null;
-        const nextCh = hasNext ? chapters[chapterNum] : null;
+        var pager = document.getElementById('chapter-pager');
+        var total = chapters.length;
+        var hasPrev = chapterNum > 1;
+        var hasNext = chapterNum < total;
+        var prevCh = hasPrev ? chapters[chapterNum - 2] : null;
+        var nextCh = hasNext ? chapters[chapterNum] : null;
 
         pager.innerHTML = '';
-        // 上一章
-        const prevLink = document.createElement('a');
+        var prevLink = document.createElement('a');
         if (hasPrev) {
           prevLink.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + (chapterNum - 1);
         } else {
@@ -331,8 +330,7 @@
         prevLink.innerHTML = '<span class="pager-dir">‹</span><span><div style="font-size:11px;color:#999;">上一章</div><div class="pager-title">' + (prevCh ? prevCh.title : '') + '</div></span>';
         pager.appendChild(prevLink);
 
-        // 下一章
-        const nextLink = document.createElement('a');
+        var nextLink = document.createElement('a');
         nextLink.style.textAlign = 'right';
         nextLink.style.flexDirection = 'row-reverse';
         if (hasNext) {

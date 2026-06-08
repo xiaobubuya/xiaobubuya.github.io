@@ -108,6 +108,9 @@ done
 echo "$METADATA" > "$NOVELS_JSON"
 echo "📝 novels/index.json 已更新"
 
+# 更新版本号（强制浏览器刷新）
+echo "$(date '+%s')" > "$REPO_DIR/version.txt"
+
 # Git 提交推送
 echo "🚀 提交到 GitHub..."
 git add -A

@@ -3,7 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>小说站 - xiaobubuya</title>
+  <script>
+    // 缓存版本检测：内容更新时自动刷新
+    (function(){
+      var key = 'novel_site_ver';
+      var last = localStorage.getItem(key);
+      fetch('/version.txt?v=' + Date.now()).then(function(r){return r.text()}).then(function(v){
+        v = v.trim();
+        if(last && last !== v) {
+          localStorage.clear();
+          location.reload(true);
+        }
+        localStorage.setItem(key, v);
+      }).catch(function(){});
+    })();
+  </script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -69,23 +87,26 @@
     <p>&copy; 2026 xiaobubuya</p>
   </div>
   <script>
-    fetch('novels/index.json')
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
-        const list = document.getElementById('novel-list');
+    // 所有 fetch 请求带时间戳防缓存
+    function nocache(url) { return url + (url.indexOf('?') > -1 ? '&' : '?') + '_t=' + Date.now(); }
+
+    fetch(nocache('novels/index.json'))
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function(data) {
+        var list = document.getElementById('novel-list');
         if (!data.novels || data.novels.length === 0) {
           list.innerHTML = '<div class="empty"><p>📝 暂无小说</p><p>敬请期待</p></div>';
           return;
         }
-        list.innerHTML = data.novels.map(n => `
-          <a href="novel.html?name=${encodeURIComponent(n.name)}" class="novel-card">
-            <div class="novel-title">${n.title}</div>
-            <div class="novel-meta">${n.type} · ${n.style} · ${n.chapters}章 · ${n.words}字</div>
-            <div class="novel-desc">${n.desc || ''}</div>
-          </a>
-        `).join('');
+        list.innerHTML = data.novels.map(function(n) {
+          return '<a href="novel.html?name=' + encodeURIComponent(n.name) + '" class="novel-card">' +
+            '<div class="novel-title">' + n.title + '</div>' +
+            '<div class="novel-meta">' + (n.type || '') + (n.style ? ' · ' + n.style : '') + ' · ' + n.chapters + '章 · ' + n.words + '字</div>' +
+            (n.desc ? '<div class="novel-desc">' + n.desc + '</div>' : '') +
+            '</a>';
+        }).join('');
       })
-      .catch(() => {
+      .catch(function() {
         document.getElementById('novel-list').innerHTML = '<div class="empty"><p>📝 暂无小说</p><p>敬请期待</p></div>';
       });
   </script>
