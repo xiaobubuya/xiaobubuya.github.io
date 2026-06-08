@@ -15,7 +15,7 @@
     .header {
       background: linear-gradient(135deg, #2c1810 0%, #4a2c1a 100%);
       color: #fff;
-      padding: 20px;
+      padding: 16px 20px;
       position: sticky;
       top: 0;
       z-index: 100;
@@ -25,22 +25,85 @@
       margin: 0 auto;
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
     }
-    .back { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; }
+    .back { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; white-space: nowrap; }
     .back:hover { color: #fff; }
-    .header-title { flex: 1; font-size: 16px; font-weight: 500; }
-    .chapter-nav { display: flex; gap: 8px; }
-    .chapter-nav a {
-      color: rgba(255,255,255,0.7);
-      text-decoration: none;
-      padding: 4px 10px;
+    .header-title { flex: 1; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .header-ch-info { font-size: 12px; color: rgba(255,255,255,0.5); white-space: nowrap; }
+
+    /* 跳转弹窗 */
+    .jump-btn {
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.8);
+      border: 1px solid rgba(255,255,255,0.25);
       border-radius: 4px;
+      padding: 6px 12px;
       font-size: 13px;
-      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
     }
-    .chapter-nav a:hover { color: #fff; border-color: rgba(255,255,255,0.5); }
-    .chapter-nav a.active { background: rgba(255,255,255,0.15); color: #fff; }
+    .jump-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+    .jump-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 200;
+      justify-content: center;
+      align-items: center;
+    }
+    .jump-overlay.open { display: flex; }
+    .jump-panel {
+      background: #fff;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 420px;
+      max-height: 70vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+    }
+    .jump-panel-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid #eee;
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .jump-panel-close {
+      cursor: pointer;
+      color: #999;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .jump-panel-close:hover { color: #333; }
+    .jump-panel-list {
+      overflow-y: auto;
+      padding: 8px 0;
+      flex: 1;
+    }
+    .jump-item {
+      display: block;
+      padding: 10px 20px;
+      text-decoration: none;
+      color: #333;
+      font-size: 14px;
+      border-left: 3px solid transparent;
+      transition: background 0.15s;
+    }
+    .jump-item:hover { background: #f5f0eb; }
+    .jump-item.active {
+      background: #f5f0eb;
+      border-left-color: #4a2c1a;
+      font-weight: 600;
+    }
+    .jump-item .jump-num { color: #999; margin-right: 6px; }
 
     .container { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
     .chapter-content {
@@ -62,12 +125,51 @@
       border-bottom: 1px solid #eee;
     }
     .loading { text-align: center; padding: 60px; color: #999; }
-    .chapter-select { display: none; }
+
+    /* 上下章导航 */
+    .chapter-pager {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .chapter-pager a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      color: #333;
+      text-decoration: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      transition: all 0.2s;
+      max-width: 48%;
+    }
+    .chapter-pager a:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+    .chapter-pager a.disabled {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+    .chapter-pager .pager-dir { font-size: 18px; }
+    .chapter-pager .pager-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chapter-pager .pager-right { text-align: right; flex-direction: row-reverse; }
+
     @media (max-width: 600px) {
       .chapter-content { padding: 20px; font-size: 15px; }
-      .chapter-nav a { padding: 4px 8px; font-size: 12px; }
-      .chapter-nav .ch-label { display: none; }
-      .chapter-select { display: block; background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 8px; font-size: 13px; }
+      .chapter-pager { flex-direction: column; }
+      .chapter-pager a { max-width: 100%; }
+      .header-title { font-size: 14px; }
     }
   </style>
 </head>
@@ -76,70 +178,106 @@
     <div class="header-inner">
       <a href="./" class="back">← 返回</a>
       <span class="header-title" id="header-title">加载中...</span>
-      <div class="chapter-nav" id="chapter-nav"></div>
-      <select class="chapter-select" id="chapter-select"></select>
+      <span class="header-ch-info" id="header-ch-info"></span>
+      <button class="jump-btn" id="jump-btn">📖 目录</button>
     </div>
   </div>
+
+  <!-- 跳转弹窗 -->
+  <div class="jump-overlay" id="jump-overlay">
+    <div class="jump-panel">
+      <div class="jump-panel-header">
+        <span id="jump-panel-title">目录</span>
+        <span class="jump-panel-close" id="jump-close">✕</span>
+      </div>
+      <div class="jump-panel-list" id="jump-list"></div>
+    </div>
+  </div>
+
   <div class="container">
     <div class="chapter-content" id="chapter-content">
       <div class="loading">加载中...</div>
     </div>
   </div>
+
+  <div class="chapter-pager" id="chapter-pager"></div>
+
   <script>
     const params = new URLSearchParams(location.search);
     const novelName = params.get('name');
-    const chapterNum = parseInt(params.get('ch')) || 1;
+    let chapterNum = parseInt(params.get('ch'));
+    if (!chapterNum || chapterNum < 1) chapterNum = 1;
 
     if (!novelName) {
       document.getElementById('chapter-content').innerHTML = '<div class="loading">未指定小说</div>';
     } else {
-      let novelData = null;
+      let novelTitle = '';
       let chapters = [];
 
-      fetch('novels/index.json')
-        .then(r => r.json())
-        .then(data => {
-          novelData = data.novels.find(n => n.name === novelName);
-          if (!novelData) throw new Error('not found');
-          document.title = novelData.title + ' - xiaobubuya';
-          document.getElementById('header-title').textContent = novelData.title;
-
-          // load chapters list
-          return fetch('novels/' + novelName + '/index.json');
-        })
+      // 加载章节列表
+      fetch('novels/' + novelName + '/index.json')
         .then(r => r.json())
         .then(chData => {
           chapters = chData.chapters || [];
-          renderNav();
-          renderChapter(chapterNum);
+          // 获取小说标题
+          return fetch('novels/index.json');
+        })
+        .then(r => r.json())
+        .then(idxData => {
+          const n = idxData.novels.find(x => x.name === novelName);
+          novelTitle = n ? n.title : novelName;
+          document.title = novelTitle + ' - xiaobubuya';
+          document.getElementById('header-title').textContent = novelTitle;
+          renderAll();
         })
         .catch(() => {
           document.getElementById('chapter-content').innerHTML = '<div class="loading">小说未找到</div>';
         });
 
-      function renderNav() {
-        const nav = document.getElementById('chapter-nav');
-        const sel = document.getElementById('chapter-select');
-        nav.innerHTML = '';
-        sel.innerHTML = '';
+      function renderAll() {
+        renderNav();
+        renderChapter(chapterNum);
+        renderPager();
+        renderJumpList();
+      }
+
+      // 头部章节信息
+      function updateHeaderCh() {
+        const info = document.getElementById('header-ch-info');
+        const total = chapters.length;
+        if (total > 0) info.textContent = chapterNum + '/' + total;
+      }
+
+      // 目录弹窗
+      function renderJumpList() {
+        const list = document.getElementById('jump-list');
+        list.innerHTML = '';
         chapters.forEach((ch, i) => {
           const num = i + 1;
           const a = document.createElement('a');
+          a.className = 'jump-item' + (num === chapterNum ? ' active' : '');
           a.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + num;
-          a.textContent = num;
-          if (num === chapterNum) a.className = 'active';
-          nav.appendChild(a);
-
-          const opt = document.createElement('option');
-          opt.value = num;
-          opt.textContent = num + '. ' + ch.title;
-          if (num === chapterNum) opt.selected = true;
-          sel.appendChild(opt);
+          const span = document.createElement('span');
+          span.className = 'jump-num';
+          span.textContent = num + '.';
+          a.appendChild(span);
+          a.appendChild(document.createTextNode(ch.title));
+          list.appendChild(a);
         });
+        // 弹窗开关
+        document.getElementById('jump-btn').onclick = function() {
+          document.getElementById('jump-overlay').classList.add('open');
+        };
+        document.getElementById('jump-close').onclick = function() {
+          document.getElementById('jump-overlay').classList.remove('open');
+        };
+        document.getElementById('jump-overlay').onclick = function(e) {
+          if (e.target === this) this.classList.remove('open');
+        };
+      }
 
-        sel.addEventListener('change', function() {
-          location.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + this.value;
-        });
+      function renderNav() {
+        updateHeaderCh();
       }
 
       function renderChapter(num) {
@@ -154,11 +292,56 @@
         fetch('novels/' + novelName + '/' + ch.file)
           .then(r => r.ok ? r.text() : Promise.reject())
           .then(text => {
-            contentDiv.innerHTML = '<div class="chapter-title">' + ch.title + '</div>' + text;
+            // 去除章节标题行（第X章：xxx），由前端显示
+            let body = text;
+            const lines = text.split('\n');
+            if (lines[0].trim().match(/^(第[一二三四五六七八九十百千\d]+章)/)) {
+              body = lines.slice(1).join('\n').trim();
+            }
+            contentDiv.innerHTML = '<div class="chapter-title">' + ch.title + '</div>' + body;
+            updateHeaderCh();
+            renderPager();
+            // 刷新弹窗高亮
+            document.querySelectorAll('.jump-item').forEach((el, i) => {
+              el.className = 'jump-item' + ((i + 1) === num ? ' active' : '');
+            });
           })
           .catch(() => {
             contentDiv.innerHTML = '<div class="loading">章节加载失败</div>';
           });
+      }
+
+      function renderPager() {
+        const pager = document.getElementById('chapter-pager');
+        const total = chapters.length;
+        const hasPrev = chapterNum > 1;
+        const hasNext = chapterNum < total;
+
+        const prevCh = hasPrev ? chapters[chapterNum - 2] : null;
+        const nextCh = hasNext ? chapters[chapterNum] : null;
+
+        pager.innerHTML = '';
+        // 上一章
+        const prevLink = document.createElement('a');
+        if (hasPrev) {
+          prevLink.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + (chapterNum - 1);
+        } else {
+          prevLink.className = 'disabled';
+        }
+        prevLink.innerHTML = '<span class="pager-dir">‹</span><span><div style="font-size:11px;color:#999;">上一章</div><div class="pager-title">' + (prevCh ? prevCh.title : '') + '</div></span>';
+        pager.appendChild(prevLink);
+
+        // 下一章
+        const nextLink = document.createElement('a');
+        nextLink.style.textAlign = 'right';
+        nextLink.style.flexDirection = 'row-reverse';
+        if (hasNext) {
+          nextLink.href = '?name=' + encodeURIComponent(novelName) + '&ch=' + (chapterNum + 1);
+        } else {
+          nextLink.className = 'disabled';
+        }
+        nextLink.innerHTML = '<span class="pager-dir">›</span><span><div style="font-size:11px;color:#999;">下一章</div><div class="pager-title">' + (nextCh ? nextCh.title : '') + '</div></span>';
+        pager.appendChild(nextLink);
       }
     }
   </script>
