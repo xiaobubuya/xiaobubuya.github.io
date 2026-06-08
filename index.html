@@ -3,19 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>小说站 - xiaobubuya</title>
   <script>
-    // 缓存版本检测：内容更新时自动刷新
+    // 版本检测：有新内容时静默刷新（不清除阅读记录）
     (function(){
       var key = 'novel_site_ver';
       var last = localStorage.getItem(key);
       fetch('/version.txt?v=' + Date.now()).then(function(r){return r.text()}).then(function(v){
         v = v.trim();
         if(last && last !== v) {
-          localStorage.clear();
+          // 仅刷新页面，不清除阅读记录
           location.reload(true);
         }
         localStorage.setItem(key, v);
@@ -50,6 +47,7 @@
       text-decoration: none;
       color: inherit;
       display: block;
+      position: relative;
     }
     .novel-card:hover {
       transform: translateY(-2px);
@@ -58,6 +56,15 @@
     .novel-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
     .novel-meta { font-size: 13px; color: #999; margin-bottom: 8px; }
     .novel-desc { font-size: 14px; color: #666; line-height: 1.6; }
+    .novel-progress {
+      display: inline-block;
+      font-size: 12px;
+      color: #4a2c1a;
+      background: #f5f0eb;
+      padding: 2px 10px;
+      border-radius: 10px;
+      margin-top: 6px;
+    }
     .empty { text-align: center; padding: 60px 20px; color: #999; }
     .empty p { font-size: 16px; margin-bottom: 8px; }
     .footer {
@@ -87,8 +94,15 @@
     <p>&copy; 2026 xiaobubuya</p>
   </div>
   <script>
-    // 所有 fetch 请求带时间戳防缓存
     function nocache(url) { return url + (url.indexOf('?') > -1 ? '&' : '?') + '_t=' + Date.now(); }
+
+    // 读取阅读记录
+    function getProgress(novelName) {
+      try {
+        var data = JSON.parse(localStorage.getItem('novel_progress') || '{}');
+        return data[novelName] || null;
+      } catch(e) { return null; }
+    }
 
     fetch(nocache('novels/index.json'))
       .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
@@ -99,10 +113,18 @@
           return;
         }
         list.innerHTML = data.novels.map(function(n) {
-          return '<a href="novel.html?name=' + encodeURIComponent(n.name) + '" class="novel-card">' +
+          var prog = getProgress(n.name);
+          var progHtml = '';
+          if (prog) {
+            progHtml = '<div class="novel-progress">读到第' + prog.chapter + '章 · ' + prog.title + '</div>';
+          }
+          var ch = '?name=' + encodeURIComponent(n.name);
+          if (prog) ch += '&ch=' + prog.chapter;
+          return '<a href="' + ch + '" class="novel-card">' +
             '<div class="novel-title">' + n.title + '</div>' +
-            '<div class="novel-meta">' + (n.type || '') + (n.style ? ' · ' + n.style : '') + ' · ' + n.chapters + '章 · ' + n.words + '字</div>' +
+            '<div class="novel-meta">' + (n.type || '') + (n.style ? ' · ' + n.style : '') + ' · ' + n.chapters + '章</div>' +
             (n.desc ? '<div class="novel-desc">' + n.desc + '</div>' : '') +
+            progHtml +
             '</a>';
         }).join('');
       })

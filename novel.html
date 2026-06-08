@@ -3,9 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title id="page-title">小说 - xiaobubuya</title>
   <script>
     // 缓存版本检测
@@ -15,7 +12,7 @@
       fetch('/version.txt?v=' + Date.now()).then(function(r){return r.text()}).then(function(v){
         v = v.trim();
         if(last && last !== v) {
-          localStorage.clear();
+          // 仅刷新页面，不清 localStorage（保留阅读记录）
           location.reload(true);
         }
         localStorage.setItem(key, v);
@@ -220,6 +217,15 @@
   <script>
     function nocache(url) { return url + (url.indexOf('?') > -1 ? '&' : '?') + '_t=' + Date.now(); }
 
+    // 保存阅读进度
+    function saveProgress(novelName, chapterNum, chapterTitle) {
+      try {
+        var data = JSON.parse(localStorage.getItem('novel_progress') || '{}');
+        data[novelName] = { chapter: chapterNum, title: chapterTitle, time: Date.now() };
+        localStorage.setItem('novel_progress', JSON.stringify(data));
+      } catch(e) {}
+    }
+
     var params = new URLSearchParams(location.search);
     var novelName = params.get('name');
     var chapterNum = parseInt(params.get('ch'));
@@ -301,6 +307,8 @@
               body = lines.slice(1).join('\n').trim();
             }
             contentDiv.innerHTML = '<div class="chapter-title">' + ch.title + '</div>' + body;
+            // 保存阅读进度
+            saveProgress(novelName, num, ch.title);
             updateHeaderCh();
             renderPager();
             document.querySelectorAll('.jump-item').forEach(function(el, i) {
