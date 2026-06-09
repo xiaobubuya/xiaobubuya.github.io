@@ -5,17 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title id="page-title">小说 - xiaobubuya</title>
   <script>
-    // 缓存版本检测
+    // 静默更新版本号，不刷新页面（防止打断阅读）
     (function(){
-      var key = 'novel_site_ver';
-      var last = localStorage.getItem(key);
       fetch('/version.txt?v=' + Date.now()).then(function(r){return r.text()}).then(function(v){
-        v = v.trim();
-        if(last && last !== v) {
-          // 仅刷新页面，不清 localStorage（保留阅读记录）
-          location.reload(true);
-        }
-        localStorage.setItem(key, v);
+        localStorage.setItem('novel_site_ver', v.trim());
       }).catch(function(){});
     })();
   </script>
