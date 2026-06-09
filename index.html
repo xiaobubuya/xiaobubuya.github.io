@@ -18,6 +18,14 @@
         localStorage.setItem(key, v);
       }).catch(function(){});
     })();
+
+    // 如果有 name 参数则跳转到小说页（处理外部直接链接的情况）
+    (function(){
+      var p = new URLSearchParams(location.search);
+      if (p.get('name')) {
+        location.href = 'novel.html?' + location.search.substring(1);
+      }
+    })();
   </script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
