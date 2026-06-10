@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title id="page-title">小说 - xiaobubuya</title>
   <script>
-    // 静默更新版本号，不刷新页面（防止打断阅读）
     (function(){
       fetch('/version.txt?v=' + Date.now()).then(function(r){return r.text()}).then(function(v){
         localStorage.setItem('novel_site_ver', v.trim());
@@ -19,11 +18,34 @@
       background: #f5f0eb;
       color: #333;
       min-height: 100vh;
+      transition: background 0.3s, color 0.3s;
     }
+    /* 阅读主题 */
+    body.theme-sepia { background: #f4ecd8; color: #5b4636; }
+    body.theme-sepia .chapter-content { background: #f4ecd8; }
+    body.theme-sepia .chapter-title { border-color: #d4c5a9; }
+
+    body.theme-dark { background: #1a1a1a; color: #ccc; }
+    body.theme-dark .chapter-content { background: #222; color: #ccc; }
+    body.theme-dark .chapter-title { border-color: #333; color: #eee; }
+    body.theme-dark .chapter-pager a { background: #333; color: #ccc; }
+    body.theme-dark .jump-panel { background: #333; color: #ccc; }
+    body.theme-dark .jump-panel-header { border-color: #444; }
+    body.theme-dark .jump-item { color: #ccc; }
+    body.theme-dark .jump-item:hover { background: #444; }
+    body.theme-dark .jump-item.active { background: #444; border-left-color: #8a6e3b; }
+    body.theme-dark .header { background: linear-gradient(135deg, #111 0%, #222 100%); }
+
+    /* 字体大小 */
+    body.size-s .chapter-content { font-size: 14px; }
+    body.size-m .chapter-content { font-size: 16px; }
+    body.size-l .chapter-content { font-size: 18px; }
+    body.size-xl .chapter-content { font-size: 20px; }
+
     .header {
       background: linear-gradient(135deg, #2c1810 0%, #4a2c1a 100%);
       color: #fff;
-      padding: 16px 20px;
+      padding: 12px 16px;
       position: sticky;
       top: 0;
       z-index: 100;
@@ -33,26 +55,64 @@
       margin: 0 auto;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
-    .back { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 14px; white-space: nowrap; }
+    .back { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 13px; white-space: nowrap; }
     .back:hover { color: #fff; }
-    .header-title { flex: 1; font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .header-ch-info { font-size: 12px; color: rgba(255,255,255,0.5); white-space: nowrap; }
+    .header-title { flex: 1; font-size: 15px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .header-ch-info { font-size: 11px; color: rgba(255,255,255,0.5); white-space: nowrap; }
 
-    .jump-btn {
+    .head-btn {
       background: rgba(255,255,255,0.1);
       color: rgba(255,255,255,0.8);
-      border: 1px solid rgba(255,255,255,0.25);
+      border: 1px solid rgba(255,255,255,0.2);
       border-radius: 4px;
-      padding: 6px 12px;
-      font-size: 13px;
+      padding: 5px 10px;
+      font-size: 12px;
       cursor: pointer;
       white-space: nowrap;
-      transition: background 0.2s;
     }
-    .jump-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+    .head-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
+    /* 设置弹窗 */
+    .overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 200;
+      justify-content: center;
+      align-items: center;
+    }
+    .overlay.open { display: flex; }
+    .panel {
+      background: #fff;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 380px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+      padding: 20px;
+    }
+    .panel-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; display: flex; justify-content: space-between; }
+    .panel-close { cursor: pointer; color: #999; font-size: 18px; }
+    .panel-close:hover { color: #333; }
+    .setting-group { margin-bottom: 16px; }
+    .setting-label { font-size: 13px; color: #999; margin-bottom: 8px; }
+    .setting-options { display: flex; gap: 8px; flex-wrap: wrap; }
+    .setting-opt {
+      padding: 6px 14px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      background: #fff;
+      transition: all 0.2s;
+    }
+    .setting-opt:hover { border-color: #4a2c1a; }
+    .setting-opt.active { border-color: #4a2c1a; background: #f5f0eb; font-weight: 600; }
+
+    /* 跳转弹窗 */
     .jump-overlay {
       display: none;
       position: fixed;
@@ -83,112 +143,101 @@
       justify-content: space-between;
       align-items: center;
     }
-    .jump-panel-close {
-      cursor: pointer;
-      color: #999;
-      font-size: 18px;
-      line-height: 1;
-    }
+    .jump-panel-close { cursor: pointer; color: #999; font-size: 18px; }
     .jump-panel-close:hover { color: #333; }
-    .jump-panel-list {
-      overflow-y: auto;
-      padding: 8px 0;
-      flex: 1;
-    }
+    .jump-panel-list { overflow-y: auto; padding: 8px 0; flex: 1; }
     .jump-item {
-      display: block;
-      padding: 10px 20px;
-      text-decoration: none;
-      color: #333;
-      font-size: 14px;
-      border-left: 3px solid transparent;
+      display: block; padding: 10px 20px; text-decoration: none;
+      color: #333; font-size: 14px; border-left: 3px solid transparent;
       transition: background 0.15s;
     }
     .jump-item:hover { background: #f5f0eb; }
-    .jump-item.active {
-      background: #f5f0eb;
-      border-left-color: #4a2c1a;
-      font-weight: 600;
-    }
+    .jump-item.active { background: #f5f0eb; border-left-color: #4a2c1a; font-weight: 600; }
     .jump-item .jump-num { color: #999; margin-right: 6px; }
 
-    .container { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
+    .container { max-width: 800px; margin: 0 auto; padding: 20px 16px 10px; }
     .chapter-content {
       background: #fff;
       border-radius: 8px;
-      padding: 40px;
+      padding: 32px 36px;
       line-height: 2;
       font-size: 16px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
       white-space: pre-wrap;
       word-wrap: break-word;
+      transition: background 0.3s, font-size 0.2s;
     }
     .chapter-title {
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 600;
       text-align: center;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
       border-bottom: 1px solid #eee;
     }
     .loading { text-align: center; padding: 60px; color: #999; }
 
     .chapter-pager {
       max-width: 800px;
-      margin: 20px auto;
-      padding: 0 20px;
+      margin: 16px auto;
+      padding: 0 16px;
       display: flex;
       justify-content: space-between;
       gap: 12px;
     }
     .chapter-pager a {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: #fff;
-      color: #333;
-      text-decoration: none;
-      padding: 12px 20px;
-      border-radius: 8px;
-      font-size: 14px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      transition: all 0.2s;
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #fff; color: #333; text-decoration: none;
+      padding: 10px 16px; border-radius: 8px; font-size: 13px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s;
       max-width: 48%;
     }
-    .chapter-pager a:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-    }
-    .chapter-pager a.disabled {
-      opacity: 0.3;
-      pointer-events: none;
-    }
+    .chapter-pager a:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+    .chapter-pager a.disabled { opacity: 0.3; pointer-events: none; }
     .chapter-pager .pager-dir { font-size: 18px; }
-    .chapter-pager .pager-title {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 150px;
-    }
 
     @media (max-width: 600px) {
       .chapter-content { padding: 20px; font-size: 15px; }
-      .chapter-pager { flex-direction: column; }
-      .chapter-pager a { max-width: 100%; }
-      .header-title { font-size: 14px; }
+      .header-title { font-size: 13px; }
     }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="header-inner">
-      <a href="./" class="back">← 返回</a>
+      <a href="./" class="back">←</a>
       <span class="header-title" id="header-title">加载中...</span>
       <span class="header-ch-info" id="header-ch-info"></span>
-      <button class="jump-btn" id="jump-btn">📖 目录</button>
+      <button class="head-btn" id="jump-btn">📖</button>
+      <button class="head-btn" id="setting-btn">⚙</button>
     </div>
   </div>
 
+  <!-- 设置弹窗 -->
+  <div class="overlay" id="setting-overlay">
+    <div class="panel">
+      <div class="panel-title">阅读设置 <span class="panel-close" id="setting-close">✕</span></div>
+      <div class="setting-group">
+        <div class="setting-label">字体大小</div>
+        <div class="setting-options" id="font-options">
+          <span class="setting-opt" data-size="s">小</span>
+          <span class="setting-opt active" data-size="m">中</span>
+          <span class="setting-opt" data-size="l">大</span>
+          <span class="setting-opt" data-size="xl">超大</span>
+        </div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-label">阅读背景</div>
+        <div class="setting-options" id="theme-options">
+          <span class="setting-opt active" data-theme="">📖 白底</span>
+          <span class="setting-opt" data-theme="sepia">📜 护眼</span>
+          <span class="setting-opt" data-theme="dark">🌙 夜间</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 跳转弹窗 -->
   <div class="jump-overlay" id="jump-overlay">
     <div class="jump-panel">
       <div class="jump-panel-header">
@@ -208,16 +257,48 @@
   <div class="chapter-pager" id="chapter-pager"></div>
 
   <script>
-    function nocache(url) { return url + (url.indexOf('?') > -1 ? '&' : '?') + '_t=' + Date.now(); }
+    // === 阅读设置 ===
+    (function(){
+      var size = localStorage.getItem('read_size') || 'm';
+      var theme = localStorage.getItem('read_theme') || '';
+      document.body.className = 'size-' + size + ' theme-' + theme;
+      document.querySelectorAll('#font-options .setting-opt').forEach(function(el){
+        el.classList.toggle('active', el.dataset.size === size);
+      });
+      document.querySelectorAll('#theme-options .setting-opt').forEach(function(el){
+        el.classList.toggle('active', el.dataset.theme === theme);
+      });
+      document.getElementById('font-options').onclick = function(e){
+        var opt = e.target.closest('.setting-opt');
+        if(!opt) return;
+        var s = opt.dataset.size;
+        this.querySelectorAll('.setting-opt').forEach(function(o){o.classList.remove('active')});
+        opt.classList.add('active');
+        document.body.className = document.body.className.replace(/size-\S+/g, '').trim() + ' size-' + s;
+        localStorage.setItem('read_size', s);
+      };
+      document.getElementById('theme-options').onclick = function(e){
+        var opt = e.target.closest('.setting-opt');
+        if(!opt) return;
+        var t = opt.dataset.theme;
+        this.querySelectorAll('.setting-opt').forEach(function(o){o.classList.remove('active')});
+        opt.classList.add('active');
+        document.body.className = document.body.className.replace(/theme-\S+/g, '').trim() + ' theme-' + t;
+        localStorage.setItem('read_theme', t);
+      };
+      document.getElementById('setting-btn').onclick = function(){
+        document.getElementById('setting-overlay').classList.add('open');
+      };
+      document.getElementById('setting-close').onclick = function(){
+        document.getElementById('setting-overlay').classList.remove('open');
+      };
+      document.getElementById('setting-overlay').onclick = function(e){
+        if(e.target === this) this.classList.remove('open');
+      };
+    })();
 
-    // 保存阅读进度
-    function saveProgress(novelName, chapterNum, chapterTitle) {
-      try {
-        var data = JSON.parse(localStorage.getItem('novel_progress') || '{}');
-        data[novelName] = { chapter: chapterNum, title: chapterTitle, time: Date.now() };
-        localStorage.setItem('novel_progress', JSON.stringify(data));
-      } catch(e) {}
-    }
+    // === 小说阅读逻辑 ===
+    function nocache(url) { return url + (url.indexOf('?') > -1 ? '&' : '?') + '_t=' + Date.now(); }
 
     var params = new URLSearchParams(location.search);
     var novelName = params.get('name');
@@ -300,8 +381,6 @@
               body = lines.slice(1).join('\n').trim();
             }
             contentDiv.innerHTML = '<div class="chapter-title">' + ch.title + '</div>' + body;
-            // 保存阅读进度
-            saveProgress(novelName, num, ch.title);
             updateHeaderCh();
             renderPager();
             document.querySelectorAll('.jump-item').forEach(function(el, i) {
@@ -328,7 +407,7 @@
         } else {
           prevLink.className = 'disabled';
         }
-        prevLink.innerHTML = '<span class="pager-dir">‹</span><span><div style="font-size:11px;color:#999;">上一章</div><div class="pager-title">' + (prevCh ? prevCh.title : '') + '</div></span>';
+        prevLink.innerHTML = '<span class="pager-dir">‹</span><span><div style="font-size:11px;color:#999;">上一章</div>' + (prevCh ? prevCh.title : '') + '</span>';
         pager.appendChild(prevLink);
 
         var nextLink = document.createElement('a');
@@ -339,7 +418,7 @@
         } else {
           nextLink.className = 'disabled';
         }
-        nextLink.innerHTML = '<span class="pager-dir">›</span><span><div style="font-size:11px;color:#999;">下一章</div><div class="pager-title">' + (nextCh ? nextCh.title : '') + '</div></span>';
+        nextLink.innerHTML = '<span class="pager-dir">›</span><span><div style="font-size:11px;color:#999;">下一章</div>' + (nextCh ? nextCh.title : '') + '</span>';
         pager.appendChild(nextLink);
       }
     }
