@@ -7,12 +7,16 @@
    外壳（HTML/CSS/JS/图标）不含任何隐私数据，可安全缓存。
    ================================================================ */
 
-const SHELL = 'shell-v1';
+const SHELL = 'shell-v2';
 const ASSETS = [
   '/',
   '/index.html',
+  '/album.html',
   '/styles.css',
+  '/album.css',
+  '/common.js',
   '/app.js',
+  '/album.js',
   '/icon.svg',
   '/manifest.webmanifest'
 ];

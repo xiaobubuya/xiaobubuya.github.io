@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#faf7f4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="我们的相册">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="album.css">
+<title>相册 · 我们的婚纱照</title>
+</head>
+<body class="album-page">
+
+<div id="boot" class="boot">
+  <div class="spinner"></div>
+</div>
+
+<!-- ============================ 相册列表 ============================ -->
+<div id="listView" class="view" hidden>
+  <header class="topbar">
+    <div class="tb-main">
+      <h1><span class="dot"></span>我们的相册</h1>
+      <div class="meta" id="listMeta">加载中…</div>
+    </div>
+    <a class="icon-btn" href="/" aria-label="回到照片">🖼</a>
+  </header>
+
+  <main id="albumGrid" class="album-grid"></main>
+
+  <div id="listEmpty" class="empty" hidden>
+    <p>还没有相册</p>
+    <p class="dim">点右下角 ＋ 新建一个，把照片排成故事</p>
+  </div>
+
+  <button id="btnNewAlbum" class="fab" aria-label="新建相册">＋</button>
+</div>
+
+<!-- ============================ 编辑器 ============================ -->
+<div id="editView" class="view edit-view" hidden>
+  <div class="edit-bar">
+    <button id="btnBack" class="icon-btn" aria-label="返回">‹</button>
+    <input id="albumTitle" class="title-input" maxlength="60" placeholder="相册名">
+
+    <span class="bar-sep"></span>
+    <button id="btnUndo" class="icon-btn" title="撤销">↶</button>
+    <button id="btnRedo" class="icon-btn" title="重做">↷</button>
+
+    <span class="bar-sep"></span>
+    <button id="btnPrevPage" class="icon-btn">‹</button>
+    <button id="btnPage" class="icon-btn wide">1/1</button>
+    <button id="btnNextPage" class="icon-btn">›</button>
+    <button id="btnAddPage" class="icon-btn" title="加一页">＋页</button>
+    <button id="btnDelPage" class="icon-btn" title="删除本页">🗑页</button>
+
+    <span class="bar-sep"></span>
+    <button id="btnRatio" class="icon-btn wide">3:2</button>
+
+    <span class="bar-sep"></span>
+    <button id="btnFront" class="icon-btn" title="置顶">⤒</button>
+    <button id="btnUp" class="icon-btn" title="上移">↑</button>
+    <button id="btnDown" class="icon-btn" title="下移">↓</button>
+    <button id="btnBack2" class="icon-btn" title="置底">⤓</button>
+    <button id="btnDelItem" class="icon-btn" title="删除选中">✕</button>
+
+    <span class="bar-sep"></span>
+    <button id="btnRead" class="icon-btn" title="预览翻页">▶</button>
+    <span id="saveState" class="save-state"></span>
+  </div>
+
+  <div id="stage" class="stage">
+    <div id="canvas" class="canvas">
+      <div id="itemLayer" class="item-layer"></div>
+      <div id="guides" class="guides"><i class="v"></i><i class="h"></i></div>
+    </div>
+    <div id="rotateTip" class="rotate-tip">
+      <span><b>横屏编辑更顺手</b> —— 画布是横向的，竖屏下可操作区域偏窄。</span>
+      <button id="tipClose" class="mini-btn">知道了</button>
+    </div>
+  </div>
+
+  <div id="tray" class="tray">
+    <button id="btnAddPhoto" class="tray-add">＋<br>加照片</button>
+    <div id="trayScroll" class="tray-scroll"></div>
+  </div>
+</div>
+
+<!-- ============================ 阅读器 ============================ -->
+<div id="readView" class="view read-view" hidden>
+  <div class="read-slides" id="readSlides"></div>
+  <div class="read-bar" id="readBar">
+    <button id="readExit" class="icon-btn light">✕</button>
+    <span class="read-title" id="readTitle"></span>
+    <span class="read-pos" id="readPos"></span>
+  </div>
+  <div class="read-hint" id="readHint">左右滑动翻页</div>
+</div>
+
+<!-- ============================ 选照片 ============================ -->
+<div id="picker" class="sheet" hidden>
+  <div class="sheet-mask" data-close></div>
+  <div class="sheet-body tall">
+    <div class="sheet-head">
+      <span id="pickerTitle">选择照片</span>
+      <button class="mini-btn" data-close>关闭</button>
+    </div>
+    <div id="pickerGrid" class="picker-grid"></div>
+    <div id="pickerLoading" class="loading"><div class="spinner"></div><span>加载中…</span></div>
+  </div>
+</div>
+
+<!-- ============================ 新建相册 ============================ -->
+<div id="newSheet" class="sheet" hidden>
+  <div class="sheet-mask" data-close></div>
+  <div class="sheet-body">
+    <div class="sheet-head"><span>新建相册</span></div>
+    <label class="field">
+      <span>相册名</span>
+      <input id="newTitle" maxlength="60" placeholder="例如：我们的婚礼">
+    </label>
+    <label class="field">
+      <span>画布比例</span>
+      <div class="seg" id="newRatio">
+        <button type="button" data-r="1.5" class="on">横版 3:2</button>
+        <button type="button" data-r="1">方版 1:1</button>
+        <button type="button" data-r="0.6667">竖版 2:3</button>
+      </div>
+    </label>
+    <button id="btnCreate" class="primary">创建</button>
+    <button class="sheet-item" data-close>取消</button>
+  </div>
+</div>
+
+<!-- ============================ 冲突提示 ============================ -->
+<div id="conflict" class="sheet" hidden>
+  <div class="sheet-mask"></div>
+  <div class="sheet-body">
+    <div class="sheet-head"><span>这一页在别处被改过了</span></div>
+    <p class="sheet-note" id="conflictNote"></p>
+    <button id="btnOverwrite" class="primary">用我的版本覆盖</button>
+    <button id="btnUseServer" class="sheet-item">放弃我的改动，加载对方的版本</button>
+    <button class="sheet-item" id="btnConflictLater">先不管，继续编辑</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="common.js"></script>
+<script src="album.js"></script>
+</body>
+</html>
