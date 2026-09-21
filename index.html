@@ -1,144 +1,46 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>小说站 - xiaobubuya</title>
-  <script>
-    // 版本检测：有新内容时静默刷新（不清除阅读记录）
-    (function(){
-      var key = 'novel_site_ver';
-      var last = localStorage.getItem(key);
-      fetch('/version.txt?v=' + Date.now()).then(function(r){return r.text()}).then(function(v){
-        v = v.trim();
-        if(last && last !== v) {
-          // 仅刷新页面，不清除阅读记录
-          location.reload(true);
-        }
-        localStorage.setItem(key, v);
-      }).catch(function(){});
-    })();
-
-    // 如果有 name 参数则跳转到小说页（处理外部直接链接的情况）
-    (function(){
-      var p = new URLSearchParams(location.search);
-      if (p.get('name')) {
-        location.href = 'novel.html?' + location.search.substring(1);
-      }
-    })();
-  </script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: #f5f0eb;
-      color: #333;
-      min-height: 100vh;
-    }
-    .header {
-      background: linear-gradient(135deg, #2c1810 0%, #4a2c1a 100%);
-      color: #fff;
-      padding: 40px 20px;
-      text-align: center;
-    }
-    .header h1 { font-size: 28px; font-weight: 300; letter-spacing: 4px; margin-bottom: 8px; }
-    .header p { font-size: 14px; opacity: 0.7; }
-    .container { max-width: 800px; margin: 0 auto; padding: 30px 20px; }
-    .novel-list { display: flex; flex-direction: column; gap: 16px; }
-    .novel-card {
-      background: #fff;
-      border-radius: 8px;
-      padding: 24px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
-      text-decoration: none;
-      color: inherit;
-      display: block;
-      position: relative;
-    }
-    .novel-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-    }
-    .novel-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-    .novel-meta { font-size: 13px; color: #999; margin-bottom: 8px; }
-    .novel-desc { font-size: 14px; color: #666; line-height: 1.6; }
-    .novel-progress {
-      display: inline-block;
-      font-size: 12px;
-      color: #4a2c1a;
-      background: #f5f0eb;
-      padding: 2px 10px;
-      border-radius: 10px;
-      margin-top: 6px;
-    }
-    .empty { text-align: center; padding: 60px 20px; color: #999; }
-    .empty p { font-size: 16px; margin-bottom: 8px; }
-    .footer {
-      text-align: center;
-      padding: 30px;
-      color: #999;
-      font-size: 12px;
-    }
-    @media (max-width: 600px) {
-      .header { padding: 30px 16px; }
-      .header h1 { font-size: 22px; }
-      .novel-card { padding: 16px; }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#faf7f4">
+<meta name="robots" content="noindex">
+<title>我们的婚纱照</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:#faf7f4;color:#2b2320;
+    display:grid;place-items:center;
+    padding:32px;
+    text-align:center;
+  }
+  .wrap{max-width:320px}
+  .ring{
+    width:44px;height:44px;margin:0 auto 22px;
+    border:1.5px solid #b08d6a;border-radius:50%;
+    position:relative;
+  }
+  .ring::after{
+    content:"";position:absolute;inset:7px;
+    border:1.5px solid rgba(176,141,106,.45);border-radius:50%;
+  }
+  h1{font-size:19px;font-weight:600;letter-spacing:.03em}
+  p{margin-top:10px;font-size:13.5px;line-height:1.75;color:#7d726a}
+  .hint{
+    margin-top:26px;padding-top:18px;
+    border-top:1px solid rgba(43,35,32,.08);
+    font-size:11.5px;color:#b3a89f;line-height:1.7;
+  }
+</style>
 </head>
 <body>
-  <div class="header">
-    <h1>📖 小说小站</h1>
-    <p>写故事的人</p>
+  <div class="wrap">
+    <div class="ring"></div>
+    <h1>我们的婚纱照</h1>
+    <p>相册正在建设中</p>
+    <div class="hint">这是临时占位页，相册上线后会被替换</div>
   </div>
-  <div class="container">
-    <div id="novel-list" class="novel-list">
-      <div class="empty"><p>加载中...</p></div>
-    </div>
-  </div>
-  <div class="footer">
-    <p>&copy; 2026 xiaobubuya</p>
-  </div>
-  <script>
-    function nocache(url) { return url + (url.indexOf('?') > -1 ? '&' : '?') + '_t=' + Date.now(); }
-
-    // 读取阅读记录
-    function getProgress(novelName) {
-      try {
-        var data = JSON.parse(localStorage.getItem('novel_progress') || '{}');
-        return data[novelName] || null;
-      } catch(e) { return null; }
-    }
-
-    fetch(nocache('novels/index.json'))
-      .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function(data) {
-        var list = document.getElementById('novel-list');
-        if (!data.novels || data.novels.length === 0) {
-          list.innerHTML = '<div class="empty"><p>📝 暂无小说</p><p>敬请期待</p></div>';
-          return;
-        }
-        list.innerHTML = data.novels.map(function(n) {
-          var prog = getProgress(n.name);
-          var progHtml = '';
-          if (prog) {
-            progHtml = '<div class="novel-progress">读到第' + prog.chapter + '章 · ' + prog.title + '</div>';
-          }
-          var ch = '?name=' + encodeURIComponent(n.name);
-          if (prog) ch += '&ch=' + prog.chapter;
-          return '<a href="' + ch + '" class="novel-card">' +
-            '<div class="novel-title">' + n.title + '</div>' +
-            '<div class="novel-meta">' + (n.type || '') + (n.style ? ' · ' + n.style : '') + ' · ' + n.chapters + '章</div>' +
-            (n.desc ? '<div class="novel-desc">' + n.desc + '</div>' : '') +
-            progHtml +
-            '</a>';
-        }).join('');
-      })
-      .catch(function() {
-        document.getElementById('novel-list').innerHTML = '<div class="empty"><p>📝 暂无小说</p><p>敬请期待</p></div>';
-      });
-  </script>
 </body>
 </html>
