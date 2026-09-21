@@ -15,7 +15,6 @@
 
 /* ---------------- 配置 ---------------- */
 const PROD_API = 'https://api.muyaya.world';
-const LOCAL_API = 'http://127.0.0.1:8787';
 
 const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(location.hostname);
 // 本地开发时 API 必须跟页面同 host（仅端口不同）——
