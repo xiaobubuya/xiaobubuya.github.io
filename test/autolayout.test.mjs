@@ -205,36 +205,55 @@ console.log('\n=== 5. 版式序号循环 ===');
 }
 
 /* ================================================================
-   6. 大槽优先 + 比例最接近的照片
+   6. 填槽策略
    ================================================================ */
-console.log('\n=== 6. 填槽策略：大槽优先，选比例最接近的照片 ===');
+console.log('\n=== 6. 填槽策略 ===');
 {
   const ratio = 1.5;
-  // 一张超宽、一张超高的照片，配「一主两副」版式
-  const wide  = { k: 'w'.repeat(16), w: 1600, h: 600  };   // 8:3 超宽
-  const tall  = { k: 't'.repeat(16), w: 600,  h: 1600 };   // 3:8 超高
-  const items = [
-    { id: '1', photo: wide.k, x: 0, y: 0, w: .2, h: .2, rot: 0, z: 0, fit: 'cover', radius: 0, caption: '' },
-    { id: '2', photo: tall.k, x: 0, y: 0, w: .2, h: .2, rot: 0, z: 1, fit: 'cover', radius: 0, caption: '' },
-  ];
-  const d = { [wide.k]: { w: wide.w, h: wide.h }, [tall.k]: { w: tall.w, h: tall.h } };
-  const out = Auto.layout(items, d, ratio, 0);   // side 版式：两个等大槽
 
-  ok(out.items.length === 2, '两张都排进去了');
-  // 等大槽时顺序无所谓，只验证没有崩、都在界内
-  ok(out.items.every(i => inCanvas([i.x, i.y, i.w, i.h], Auto.EDGE - 1e-6)), '结果都在界内');
+  /* 6a. 比例相同时保持原顺序 —— 这是最常见的情况
+         （一批婚纱照往往都是同一个比例）*/
+  {
+    const same = (ch, k) => ({ k: ch.repeat(16), w: 3000, h: 2000 });   // 全是 3:2
+    const a = same('a'), b = same('b'), c = same('c');
+    const items = [a, b, c].map((p, i) => ({
+      id: 'i' + i, photo: p.k, x: 0, y: 0, w: .2, h: .2, rot: 0, z: i,
+      fit: 'cover', radius: 0, caption: ''
+    }));
+    const dims = { [a.k]: { w: a.w, h: a.h }, [b.k]: { w: b.w, h: b.h }, [c.k]: { w: c.w, h: c.h } };
 
-  // 用「一大一小」版式验证大槽确实分给了更合适的照片
-  const tplHero = Auto.templatesFor(2, ratio).findIndex(t => t.id === 'hero');
-  const hero = Auto.layout(items, d, ratio, tplHero);
-  const big = hero.items.reduce((a, b) => (a.w * a.h >= b.w * b.h ? a : b));
-  const slots = Auto.templatesFor(2, ratio)[tplHero].slots;
-  const bigSlotAR = (Math.max(slots[0][2] * slots[0][3], slots[1][2] * slots[1][3]) === slots[0][2] * slots[0][3])
-    ? (slots[0][2] / slots[0][3]) * ratio : (slots[1][2] / slots[1][3]) * ratio;
-  const bigPhotoAR = big.photo === wide.k ? wide.w / wide.h : tall.w / tall.h;
-  // 大槽是竖长的，应该拿到竖照片；或者反过来也要自洽
-  ok(Math.abs(Math.log(bigPhotoAR / bigSlotAR)) < Math.log(4),
-     `大槽拿到比例较接近的照片（槽 ${bigSlotAR.toFixed(2)}, 照片 ${bigPhotoAR.toFixed(2)}）`);
+    for (const tplId of ['hero2', 'pin', 'row3']) {
+      const ti = Auto.templatesFor(3, ratio).findIndex(t => t.id === tplId);
+      const out = Auto.layout(items, dims, ratio, ti);
+      const big = out.items.reduce((x, y) => (x.w * x.h >= y.w * y.h ? x : y));
+      ok(big.photo === a.k,
+         `${tplId}：比例相同时大槽给第一张（拿到 ${big.photo[0]}，期望 a）`);
+    }
+  }
+
+  /* 6b. 比例差很多时，挑最接近的，别把照片裁烂 */
+  {
+    const wide = { k: 'w'.repeat(16), w: 1600, h: 600 };   // 8:3 超宽
+    const tall = { k: 't'.repeat(16), w: 600, h: 1600 };   // 3:8 超高
+    const items = [wide, tall].map((p, i) => ({
+      id: 'i' + i, photo: p.k, x: 0, y: 0, w: .2, h: .2, rot: 0, z: i,
+      fit: 'cover', radius: 0, caption: ''
+    }));
+    const dims = { [wide.k]: { w: wide.w, h: wide.h }, [tall.k]: { w: tall.w, h: tall.h } };
+
+    // 竖长的大槽：超宽的照片明显不合适，应该让给竖照片
+    const tplHero = Auto.templatesFor(2, ratio).findIndex(t => t.id === 'hero');
+    const slots = Auto.templatesFor(2, ratio)[tplHero].slots;
+    const bigSlot = slots.reduce((a, b) => (a[2] * a[3] >= b[2] * b[3] ? a : b));
+    const wantAR = (bigSlot[2] / bigSlot[3]) * ratio;
+
+    const out = Auto.layout(items, dims, ratio, tplHero);
+    const big = out.items.reduce((x, y) => (x.w * x.h >= y.w * y.h ? x : y));
+    const gotAR = big.photo === wide.k ? wide.w / wide.h : tall.w / tall.h;
+
+    ok(big.photo === tall.k,
+       `竖长槽位分给竖照片（槽 ${wantAR.toFixed(2)}，拿到 ${gotAR.toFixed(2)}）`);
+  }
 }
 
 /* ================================================================

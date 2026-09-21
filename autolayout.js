@@ -158,7 +158,12 @@
 
   /**
    * 大槽优先，用宽高比最接近的照片填 —— 尽量少裁切。
-   * 返回 [{ slot, idx }]
+   *
+   * 比例相同时保持原顺序（比较用严格小于，第一个胜出），
+   * 所以同一批照片（比如都是 3:2）排版时会尊重用户在图层面板里的排序。
+   * 用对数比比较，避免「过宽」和「过高」被不对称地惩罚。
+   *
+   * 返回 [{ slot, item }]
    */
   function assign(slots, items, dims, ratio) {
     const order = slots
@@ -174,9 +179,7 @@
       for (let k = 0; k < free.length; k++) {
         const it = items[free[k]];
         const d = dims[it.photo] || { w: 4, h: 3 };
-        const have = d.w / d.h;
-        // 用对数比，避免「过宽」和「过高」被不对称地惩罚
-        const diff = Math.abs(Math.log(have / want));
+        const diff = Math.abs(Math.log((d.w / d.h) / want));
         if (diff < bestDiff) { bestDiff = diff; pick = k; }
       }
       out.push({ slot: i, item: free[pick] });
