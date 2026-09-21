@@ -50,8 +50,39 @@
     return map[String(r)] || Number(r).toFixed(2);
   };
 
-  let idSeq = 0;
-  const newId = () => 'it_' + (++idSeq).toString(36).padStart(3, '0');
+  /**
+   * 元素 id。
+   * ⚠️ 必须跨会话唯一 —— 早期版本用的是会话内自增计数器，
+   * 刷新页面后计数归零，再添加元素就会和上一轮的 id 撞上，
+   * 表现为「一次选中两个元素」，而且改的其实是第一个。
+   * 现在用随机串，撞车概率可以忽略。
+   */
+  function newId() {
+    const r = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID().replace(/-/g, '')
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    return 'it_' + r.slice(0, 11);
+  }
+
+  /**
+   * 修复历史数据里重复的元素 id。
+   * 发现重复就重新分配，保证同一页内唯一。
+   * @returns {number} 修好的个数
+   */
+  function repairItemIds(pages) {
+    let fixed = 0;
+    for (const p of pages) {
+      const seen = new Set();
+      for (const it of (p.layout && p.layout.items) || []) {
+        if (!it.id || seen.has(it.id)) {
+          it.id = newId();
+          fixed++;
+        }
+        seen.add(it.id);
+      }
+    }
+    return fixed;
+  }
 
   /* ================================================================
      视图切换
@@ -131,6 +162,14 @@
       S.cur = 0;
       S.sel = null;
       S.undo = []; S.redo = [];
+
+      // 修掉历史数据里重复的元素 id（早期版本的计数器会撞车）
+      const fixed = repairItemIds(S.pages);
+      if (fixed) {
+        A.toast(`修复了 ${fixed} 个重复的元素编号`);
+        scheduleSave();
+      }
+
       el('albumTitle').value = S.album.title;
       show('edit');
       renderEditor();
