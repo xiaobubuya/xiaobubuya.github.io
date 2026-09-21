@@ -1,0 +1,18 @@
+{
+  "name": "我们的婚纱照",
+  "short_name": "婚纱照",
+  "description": "只属于我们俩的相册",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf7f4",
+  "theme_color": "#faf7f4",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "icon.svg",     "sizes": "any",     "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

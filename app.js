@@ -1,0 +1,529 @@
+/* ================================================================
+   我们的婚纱照 — 前端
+   ================================================================
+   与后端约定（见 album-api/README.md）：
+     GET  /api/me                      → { user } | 401
+     POST /api/login   {user,pass}     → 200 + 签名 Cookie
+     POST /api/logout
+     GET  /api/photos?cursor=&limit=   → { photos:[], nextCursor }
+     GET  /api/photos/days             → { days:[{day,count}] }
+     GET  /api/img/:size/:key          → 图片字节
+
+   安全模型：照片字节全部经 Worker 鉴权后流出，前端只持有 Cookie。
+   本文件不含任何密钥。
+   ================================================================ */
+
+/* ---------------- 配置 ---------------- */
+const PROD_API = 'https://api.muyaya.world';
+const LOCAL_API = 'http://127.0.0.1:8787';
+
+const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(location.hostname);
+// 本地开发时 API 必须跟页面同 host（仅端口不同）——
+// localhost 与 127.0.0.1 属于不同 host，会被浏览器当作跨站，Cookie 不发送。
+const LOCAL_API = `http://${location.hostname || '127.0.0.1'}:8787`;
+const API = IS_LOCAL ? LOCAL_API : PROD_API;
+
+const PAGE_SIZE = 60;
+const SLIDE_MS = 4000;
+
+/* ---------------- DOM ---------------- */
+const $ = id => document.getElementById(id);
+const el = {
+  login: $('login'), loginForm: $('loginForm'), userSeg: $('userSeg'),
+  pass: $('pass'), loginBtn: $('loginBtn'), loginError: $('loginError'),
+
+  app: $('app'), meta: $('meta'), timeline: $('timeline'),
+  loading: $('loading'), empty: $('empty'), sentinel: $('sentinel'),
+  btnMenu: $('btnMenu'), btnTop: $('btnTop'),
+
+  menu: $('menu'), btnSlideshow: $('btnSlideshow'), btnReload: $('btnReload'),
+  btnLogout: $('btnLogout'), sheetFoot: $('sheetFoot'),
+
+  viewer: $('viewer'), viewerStage: $('viewerStage'), viewerImg: $('viewerImg'),
+  viewerSpinner: $('viewerSpinner'), viewerPos: $('viewerPos'),
+  viewerTime: $('viewerTime'), viewerClose: $('viewerClose'),
+  viewerPrev: $('viewerPrev'), viewerNext: $('viewerNext'),
+
+  show: $('show'), showImg: $('showImg'), showBar: $('showBar'),
+  showToggle: $('showToggle'), showPos: $('showPos'), showExit: $('showExit'),
+
+  toast: $('toast')
+};
+
+/* ---------------- 状态 ---------------- */
+const state = {
+  user: null,
+  photos: [],          // 已加载的照片（taken_at 倒序）
+  cursor: null,
+  loading: false,
+  done: false,
+  viewerIndex: -1,
+  slideTimer: null,
+  slideIndex: 0,
+  paused: false
+};
+
+/* ================================================================
+   工具
+   ================================================================ */
+function toast(msg, ms = 2200) {
+  el.toast.textContent = msg;
+  el.toast.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.toast.hidden = true; }, ms);
+}
+
+/** JSON 请求；统一带 Cookie */
+async function api(path, opts = {}) {
+  return fetch(API + path, {
+    credentials: 'include',
+    headers: opts.body ? { 'Content-Type': 'application/json' } : {},
+    ...opts
+  });
+}
+
+/** 北京时间的今天（YYYY-MM-DD）—— 与后端 taken_day 口径一致 */
+function beijingToday() {
+  return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/** 2025-09-18 → 「2025年9月18日 · 星期四」；近两天用「今天 / 昨天」 */
+function dayLabel(day) {
+  const [y, m, d] = day.split('-').map(Number);
+  // 用 UTC 正午代表这一天，规避宿主时区影响
+  const dt = new Date(Date.UTC(y, m - 1, d, 4));
+  const wd = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'][dt.getUTCDay()];
+
+  const today = beijingToday();
+  const yest = new Date(Date.now() + 8 * 3600 * 1000 - 86400000).toISOString().slice(0, 10);
+  if (day === today) return `今天 · ${wd}`;
+  if (day === yest) return `昨天 · ${wd}`;
+
+  const sameYear = today.slice(0, 4) === String(y);
+  return sameYear ? `${m}月${d}日 · ${wd}` : `${y}年${m}月${d}日 · ${wd}`;
+}
+
+/** 本地时刻（北京时间）—— 显式指定时区，避免设备时区不同导致显示不一致 */
+function timeLabel(iso) {
+  try {
+    return new Date(iso).toLocaleTimeString('zh-CN', {
+      hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai'
+    });
+  } catch { return ''; }
+}
+
+const thumbUrl = k => `${API}/api/img/thumb/${k}`;
+const previewUrl = k => `${API}/api/img/preview/${k}`;
+
+function debounce(fn, ms) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+}
+
+/* ================================================================
+   认证
+   ================================================================ */
+let pickedUser = 'yuge';
+
+el.userSeg.addEventListener('click', e => {
+  const b = e.target.closest('button[data-user]');
+  if (!b) return;
+  pickedUser = b.dataset.user;
+  [...el.userSeg.children].forEach(x => x.classList.toggle('on', x === b));
+});
+
+el.loginForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const pass = el.pass.value;
+  if (!pass) return;
+
+  el.loginBtn.disabled = true;
+  el.loginError.textContent = '';
+
+  try {
+    const res = await api('/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ user: pickedUser, pass })
+    });
+    if (res.ok) {
+      const d = await res.json();
+      state.user = d.user;
+      el.pass.value = '';
+      await enterApp();
+      return;
+    }
+    el.loginError.textContent = res.status === 429
+      ? '尝试太频繁，请 15 分钟后再试'
+      : '口令不正确';
+  } catch {
+    el.loginError.textContent = '连不上服务器，检查网络';
+  } finally {
+    el.loginBtn.disabled = false;
+  }
+});
+
+async function checkAuth() {
+  try {
+    const res = await api('/api/me');
+    if (!res.ok) return false;
+    state.user = (await res.json()).user;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function logout() {
+  try { await api('/api/logout', { method: 'POST' }); } catch { /* 忽略 */ }
+  location.reload();
+}
+
+/* ================================================================
+   启动
+   ================================================================ */
+async function boot() {
+  if (await checkAuth()) {
+    await enterApp();
+  } else {
+    el.login.hidden = false;
+    el.pass.focus();
+  }
+}
+
+async function enterApp() {
+  el.login.hidden = true;
+  el.app.hidden = false;
+  el.sheetFoot.textContent = IS_LOCAL ? `开发模式 · ${API}` : `已登录：${state.user}`;
+
+  await loadDays();
+  await loadMore();
+
+  const io = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) loadMore();
+  }, { rootMargin: '600px' });
+  io.observe(el.sentinel);
+
+  addEventListener('scroll', () => { el.btnTop.hidden = scrollY < 900; }, { passive: true });
+  addEventListener('resize', debounce(relayout, 120));
+}
+
+/* ================================================================
+   时间线
+   ================================================================ */
+let dayCounts = {};
+
+async function loadDays() {
+  try {
+    const res = await api('/api/photos/days');
+    if (!res.ok) return;
+    const d = await res.json();
+    const days = d.days || [];
+    dayCounts = Object.fromEntries(days.map(x => [x.day, x.count]));
+    const total = days.reduce((s, x) => s + x.count, 0);
+    el.meta.textContent = total
+      ? `共 ${total} 张 · ${days.length} 天`
+      : '还没有照片';
+  } catch { /* 静默 */ }
+}
+
+async function loadMore() {
+  if (state.loading || state.done) return;
+  state.loading = true;
+  el.loading.hidden = false;
+
+  try {
+    const q = new URLSearchParams({ limit: PAGE_SIZE });
+    if (state.cursor) q.set('cursor', state.cursor);
+
+    const res = await api('/api/photos?' + q);
+    if (res.status === 401) { location.reload(); return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+
+    const d = await res.json();
+    const list = d.photos || [];
+
+    if (!list.length) {
+      state.done = true;
+    } else {
+      state.photos.push(...list);
+      state.cursor = d.nextCursor;
+      if (!d.nextCursor) state.done = true;
+      renderNew(list);
+    }
+
+    el.empty.hidden = state.photos.length > 0;
+  } catch (err) {
+    toast('加载失败：' + err.message);
+  } finally {
+    state.loading = false;
+    el.loading.hidden = true;
+  }
+}
+
+/* ---- 增量渲染：只在末尾追加，避免整表重排 ---- */
+function renderNew(list) {
+  const groups = [];
+  for (const p of list) {
+    const day = p.takenDay || (p.takenAt || '').slice(0, 10);
+    let g = groups[groups.length - 1];
+    if (!g || g.day !== day) { g = { day, items: [] }; groups.push(g); }
+    g.items.push(p);
+  }
+
+  for (const g of groups) {
+    let sec = el.timeline.querySelector(`.day[data-day="${g.day}"]`);
+
+    if (!sec) {
+      sec = document.createElement('section');
+      sec.className = 'day';
+      sec.dataset.day = g.day;
+
+      const h = document.createElement('h2');
+      h.className = 'day-title';
+      const n = dayCounts[g.day];
+      h.innerHTML = `${dayLabel(g.day)}${n ? `<span class="count">${n} 张</span>` : ''}`;
+
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+
+      sec.append(h, grid);
+      el.timeline.appendChild(sec);
+    }
+
+    const grid = sec.querySelector('.grid');
+    for (const p of g.items) grid.appendChild(makeCell(p));
+  }
+
+  relayout();
+}
+
+function makeCell(p) {
+  const i = state.photos.indexOf(p);
+
+  const c = document.createElement('div');
+  c.className = 'cell';
+  c.dataset.i = i;
+
+  const ph = document.createElement('div');
+  ph.className = 'ph';
+
+  const img = document.createElement('img');
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.alt = '';
+  img.src = thumbUrl(p.k);
+  img.addEventListener('load', () => c.classList.add('ready'), { once: true });
+  img.addEventListener('error', () => c.classList.add('ready'), { once: true });
+
+  c.append(ph, img);
+
+  if (p.pending) {
+    const b = document.createElement('div');
+    b.className = 'badge';
+    b.textContent = '处理中';
+    c.appendChild(b);
+  }
+
+  c.addEventListener('click', () => openViewer(i));
+  return c;
+}
+
+/* ---- 行优先瀑布流：用已知宽高比预算高度，图片加载前就占好位，无 CLS ---- */
+function relayout() {
+  const topbarH = document.querySelector('.topbar').offsetHeight;
+  document.querySelectorAll('.day-title').forEach(t => { t.style.top = topbarH + 'px'; });
+
+  const gap = 8, row = 8;
+
+  document.querySelectorAll('.grid').forEach(grid => {
+    const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+    const colW = (grid.clientWidth - (cols - 1) * gap) / cols;
+
+    grid.querySelectorAll('.cell').forEach(cell => {
+      const p = state.photos[+cell.dataset.i];
+      if (!p || !p.w || !p.h) return;
+      const h = colW * (p.h / p.w);
+      cell.style.gridRowEnd = `span ${Math.max(1, Math.round((h + gap) / (row + gap)))}`;
+    });
+  });
+}
+
+/* ================================================================
+   大图
+   ================================================================ */
+let touchStart = null;
+
+function openViewer(i) {
+  if (i < 0 || i >= state.photos.length) return;
+  state.viewerIndex = i;
+  el.viewer.hidden = false;
+  document.body.style.overflow = 'hidden';
+  showViewerImage();
+}
+
+function closeViewer() {
+  el.viewer.hidden = true;
+  el.viewerImg.removeAttribute('src');
+  document.body.style.overflow = '';
+  state.viewerIndex = -1;
+}
+
+function showViewerImage() {
+  const i = state.viewerIndex;
+  const p = state.photos[i];
+  if (!p) return;
+
+  el.viewerPos.textContent = `${i + 1} / ${state.photos.length}`;
+  el.viewerTime.textContent = timeLabel(p.takenAt);
+  el.viewerImg.style.transform = '';
+
+  const thumb = thumbUrl(p.k);
+  const big = previewUrl(p.k);
+
+  // 先上缩略图（多半已缓存，瞬时），大图加载完再换 —— 避免白屏
+  el.viewerImg.src = thumb;
+  el.viewerSpinner.hidden = false;
+
+  const pre = new Image();
+  pre.onload = () => {
+    if (state.viewerIndex !== i) return;   // 已经切走了
+    el.viewerImg.src = big;
+    el.viewerSpinner.hidden = true;
+  };
+  pre.onerror = () => { el.viewerSpinner.hidden = true; };
+  pre.src = big;
+
+  // 预加载相邻，滑动更跟手
+  [i - 1, i + 1].forEach(j => {
+    const q = state.photos[j];
+    if (q) new Image().src = previewUrl(q.k);
+  });
+}
+
+function step(delta) {
+  const n = state.photos.length;
+  if (!n) return;
+  state.viewerIndex = (state.viewerIndex + delta + n) % n;
+  showViewerImage();
+}
+
+el.viewerClose.addEventListener('click', closeViewer);
+el.viewerPrev.addEventListener('click', () => step(-1));
+el.viewerNext.addEventListener('click', () => step(1));
+
+addEventListener('keydown', e => {
+  if (el.viewer.hidden) return;
+  if (e.key === 'Escape') closeViewer();
+  if (e.key === 'ArrowLeft') step(-1);
+  if (e.key === 'ArrowRight') step(1);
+});
+
+// 触摸：左右滑切换，下滑关闭
+el.viewerStage.addEventListener('touchstart', e => {
+  const t = e.changedTouches[0];
+  touchStart = { x: t.clientX, y: t.clientY, t: Date.now() };
+}, { passive: true });
+
+el.viewerStage.addEventListener('touchend', e => {
+  if (!touchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const dt = Date.now() - touchStart.t;
+  touchStart = null;
+  if (dt > 800) return;
+
+  if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+    step(dx < 0 ? 1 : -1);
+  } else if (dy > 90 && Math.abs(dy) > Math.abs(dx)) {
+    closeViewer();
+  }
+}, { passive: true });
+
+/* ================================================================
+   幻灯片
+   ================================================================ */
+el.btnSlideshow.addEventListener('click', () => {
+  closeMenu();
+  if (!state.photos.length) { toast('还没有照片'); return; }
+  state.slideIndex = Math.max(0, state.viewerIndex);
+  el.viewer.hidden = true;
+  el.show.hidden = false;
+  state.paused = false;
+  el.showToggle.textContent = '❚❚';
+  showSlide();
+  scheduleSlide();
+  document.body.style.overflow = 'hidden';
+});
+
+function showSlide() {
+  const p = state.photos[state.slideIndex];
+  if (!p) return;
+  el.showImg.src = previewUrl(p.k);
+  el.showPos.textContent = `${state.slideIndex + 1} / ${state.photos.length}`;
+  el.showImg.style.animation = 'none';
+  void el.showImg.offsetWidth;
+  el.showImg.style.animation = '';
+}
+
+function scheduleSlide() {
+  clearTimeout(state.slideTimer);
+  if (state.paused) return;
+  state.slideTimer = setTimeout(() => {
+    state.slideIndex = (state.slideIndex + 1) % state.photos.length;
+    // 播到接近末尾时补拉下一页
+    if (state.slideIndex > state.photos.length - 5 && !state.done) loadMore();
+    showSlide();
+    scheduleSlide();
+  }, SLIDE_MS);
+}
+
+el.showToggle.addEventListener('click', () => {
+  state.paused = !state.paused;
+  el.showToggle.textContent = state.paused ? '▶' : '❚❚';
+  scheduleSlide();
+});
+
+function exitShow() {
+  clearTimeout(state.slideTimer);
+  el.show.hidden = true;
+  el.showImg.removeAttribute('src');
+  document.body.style.overflow = '';
+}
+
+el.showExit.addEventListener('click', exitShow);
+
+el.show.addEventListener('click', e => {
+  if (e.target.closest('.show-bar')) return;
+  el.showBar.classList.toggle('hide');
+});
+
+// 切到后台暂停（省流量，也避免回来时突然跳）
+document.addEventListener('visibilitychange', () => {
+  if (el.show.hidden) return;
+  state.paused = document.hidden;
+  el.showToggle.textContent = state.paused ? '▶' : '❚❚';
+  scheduleSlide();
+});
+
+/* ================================================================
+   菜单
+   ================================================================ */
+function closeMenu() { el.menu.hidden = true; }
+el.btnMenu.addEventListener('click', () => { el.menu.hidden = false; });
+el.menu.addEventListener('click', e => { if (e.target.closest('[data-close]')) closeMenu(); });
+el.btnReload.addEventListener('click', () => location.reload());
+el.btnLogout.addEventListener('click', logout);
+el.btnTop.addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
+
+/* ================================================================
+   启动
+   ================================================================ */
+boot();
+
+/* PWA：只在 https 下注册（本地 http 调试不注册，避免缓存干扰） */
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* 忽略 */ });
+  });
+}

@@ -2,45 +2,109 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#faf7f4">
-<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="我们的婚纱照">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
 <title>我们的婚纱照</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-    background:#faf7f4;color:#2b2320;
-    display:grid;place-items:center;
-    padding:32px;
-    text-align:center;
-  }
-  .wrap{max-width:320px}
-  .ring{
-    width:44px;height:44px;margin:0 auto 22px;
-    border:1.5px solid #b08d6a;border-radius:50%;
-    position:relative;
-  }
-  .ring::after{
-    content:"";position:absolute;inset:7px;
-    border:1.5px solid rgba(176,141,106,.45);border-radius:50%;
-  }
-  h1{font-size:19px;font-weight:600;letter-spacing:.03em}
-  p{margin-top:10px;font-size:13.5px;line-height:1.75;color:#7d726a}
-  .hint{
-    margin-top:26px;padding-top:18px;
-    border-top:1px solid rgba(43,35,32,.08);
-    font-size:11.5px;color:#b3a89f;line-height:1.7;
-  }
-</style>
 </head>
 <body>
-  <div class="wrap">
+
+<!-- ============================ 登录 ============================ -->
+<div id="login" class="login">
+  <form id="loginForm" class="login-card" autocomplete="on">
     <div class="ring"></div>
     <h1>我们的婚纱照</h1>
-    <p>相册正在建设中</p>
-    <div class="hint">这是临时占位页，相册上线后会被替换</div>
+    <p class="sub">只有我们俩能进</p>
+
+    <label class="field">
+      <span>你是谁</span>
+      <div class="seg" id="userSeg">
+        <button type="button" data-user="yuge" class="on">我</button>
+        <button type="button" data-user="meimei">老婆</button>
+      </div>
+    </label>
+
+    <label class="field">
+      <span>口令</span>
+      <input id="pass" type="password" inputmode="text" autocomplete="current-password"
+             placeholder="请输入口令" required>
+    </label>
+
+    <button id="loginBtn" type="submit" class="primary">进入</button>
+    <div id="loginError" class="err" role="alert"></div>
+  </form>
+</div>
+
+<!-- ============================ 主界面 ============================ -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="tb-main">
+      <h1><span class="dot"></span>我们的婚纱照</h1>
+      <div class="meta" id="meta">加载中…</div>
+    </div>
+    <button id="btnMenu" class="icon-btn" aria-label="更多">⋯</button>
+  </header>
+
+  <main id="timeline" class="timeline"></main>
+
+  <div id="loading" class="loading" hidden>
+    <div class="spinner"></div><span>加载中…</span>
   </div>
+  <div id="empty" class="empty" hidden>
+    <p>还没有照片</p>
+    <p class="dim">等上传功能做好，这里就会热闹起来</p>
+  </div>
+  <div id="sentinel" class="sentinel"></div>
+
+  <button id="btnTop" class="fab" hidden aria-label="回到顶部">↑</button>
+
+  <!-- 菜单 -->
+  <div id="menu" class="sheet" hidden>
+    <div class="sheet-mask" data-close></div>
+    <div class="sheet-body">
+      <div class="sheet-title">设置</div>
+      <button id="btnSlideshow" class="sheet-item">▶︎　幻灯片播放</button>
+      <button id="btnReload" class="sheet-item">↻　重新加载</button>
+      <button id="btnLogout" class="sheet-item danger">⎋　退出登录</button>
+      <button class="sheet-item" data-close>取消</button>
+      <div class="sheet-foot" id="sheetFoot"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ 大图 ============================ -->
+<div id="viewer" class="viewer" hidden>
+  <div class="viewer-stage" id="viewerStage">
+    <img id="viewerImg" alt="">
+    <div class="viewer-spinner" id="viewerSpinner"><div class="spinner"></div></div>
+  </div>
+  <div class="viewer-bar">
+    <span id="viewerPos" class="pos"></span>
+    <span id="viewerTime" class="dim"></span>
+    <button id="viewerClose" class="icon-btn light" aria-label="关闭">✕</button>
+  </div>
+  <button class="viewer-nav prev" id="viewerPrev" aria-label="上一张">‹</button>
+  <button class="viewer-nav next" id="viewerNext" aria-label="下一张">›</button>
+</div>
+
+<!-- ============================ 幻灯片 ============================ -->
+<div id="show" class="show" hidden>
+  <img id="showImg" alt="">
+  <div class="show-bar" id="showBar">
+    <button id="showToggle" class="icon-btn light">❚❚</button>
+    <span id="showPos" class="pos"></span>
+    <button id="showExit" class="icon-btn light">✕</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
 </body>
 </html>
