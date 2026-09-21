@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#1a1a1c">
+<title>相册 · 自由排版编辑器 原型</title>
+<style>
+  :root{
+    --bg:#141416;
+    --panel:#1e1e21;
+    --panel-2:#26262a;
+    --line:rgba(255,255,255,.10);
+    --ink:#f0eeec;
+    --ink-2:#9b9893;
+    --accent:#c79a6b;
+    --accent-2:#5b9bd5;
+    --guide:#ff4d6d;
+    --h:44px;                 /* 最小触摸目标 44pt */
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--ink);
+    display:flex;flex-direction:column;
+    height:100dvh;
+  }
+
+  /* ============ 顶部工具栏 ============ */
+  .bar{
+    flex:none;display:flex;align-items:center;gap:6px;
+    padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
+    background:var(--panel);border-bottom:1px solid var(--line);
+    overflow-x:auto;scrollbar-width:none;
+  }
+  .bar::-webkit-scrollbar{display:none}
+  .bar .brand{
+    font-size:12px;color:var(--ink-2);white-space:nowrap;
+    padding-right:6px;border-right:1px solid var(--line);margin-right:4px;
+  }
+  button{
+    flex:none;height:32px;min-width:32px;padding:0 10px;
+    background:var(--panel-2);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;
+    font-size:12.5px;font-family:inherit;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  }
+  button:active{background:#33333a}
+  button:disabled{opacity:.35;cursor:default}
+  button.on{background:var(--accent);color:#1a1a1c;border-color:var(--accent)}
+  .sep{flex:none;width:1px;height:20px;background:var(--line);margin:0 4px}
+  .save-state{
+    flex:none;font-size:11.5px;color:var(--ink-2);white-space:nowrap;
+    margin-left:auto;padding-left:10px;
+  }
+  .save-state.busy{color:var(--accent)}
+  .save-state.ok::before{content:"● ";color:#4caf7d}
+  .save-state.busy::before{content:"● ";color:var(--accent)}
+
+  /* ============ 舞台 ============ */
+  #stage{
+    flex:1;min-height:0;position:relative;
+    display:grid;place-items:center;padding:12px;
+    background:
+      radial-gradient(120% 90% at 50% 0%,#232327 0%,var(--bg) 70%);
+  }
+
+  #canvas{
+    position:relative;
+    background:var(--paper,#ffffff);
+    box-shadow:0 10px 40px -8px rgba(0,0,0,.7);
+    border-radius:2px;
+    overflow:hidden;
+    touch-action:none;                 /* 编辑态禁止页面滚动 / 缩放手势 */
+    user-select:none;
+  }
+
+  .item{
+    position:absolute;
+    transform-origin:center center;
+    will-change:left,top,width,height;
+    outline:1px solid transparent;
+  }
+  .item.sel{outline:1.5px solid var(--accent-2)}
+  .item .img{
+    position:absolute;inset:0;
+    background:var(--g);overflow:hidden;
+  }
+  .item .img::after{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(120% 80% at 25% 15%,rgba(255,255,255,.30),transparent 60%),
+      linear-gradient(180deg,rgba(0,0,0,0) 55%,rgba(0,0,0,.14));
+  }
+
+  /* ---- 手柄：视觉 12px，命中区 44x44 ---- */
+  .handle{
+    position:absolute;width:var(--h);height:var(--h);
+    display:grid;place-items:center;
+    cursor:pointer;z-index:5;
+  }
+  .handle::after{
+    content:"";width:12px;height:12px;border-radius:50%;
+    background:#fff;border:2px solid var(--accent-2);
+    box-shadow:0 1px 5px rgba(0,0,0,.45);
+  }
+  .handle.nw{left:calc(var(--h)/-2);top:calc(var(--h)/-2)}
+  .handle.ne{right:calc(var(--h)/-2);top:calc(var(--h)/-2)}
+  .handle.sw{left:calc(var(--h)/-2);bottom:calc(var(--h)/-2)}
+  .handle.se{right:calc(var(--h)/-2);bottom:calc(var(--h)/-2)}
+  .handle.rot{
+    left:50%;top:calc(var(--h)/-2 - 30px);transform:translateX(-50%);
+  }
+  .handle.rot::after{
+    border-radius:50%;background:var(--accent);border-color:#fff;
+    width:14px;height:14px;
+  }
+  .handle.rot::before{
+    content:"";position:absolute;left:50%;top:100%;
+    width:1.5px;height:30px;background:var(--accent-2);
+    transform:translateX(-50%);
+  }
+
+  /* ============ 桌面端：光标 / 悬停 / 键盘 ============ */
+  .item{cursor:grab}
+  .item:active{cursor:grabbing}
+  .handle.nw,.handle.se{cursor:nwse-resize}
+  .handle.ne,.handle.sw{cursor:nesw-resize}
+  .handle.rot{cursor:grab}
+  /* 只在真有悬停能力的设备上启用，避免触屏留下"粘住"的 hover 态 */
+  @media (hover:hover) and (pointer:fine){
+    .item:not(.sel):hover{outline:1.5px solid rgba(91,155,213,.5)}
+    .handle:hover::after{transform:scale(1.3)}
+    button:hover:not(:disabled){background:#33333a}
+    .thumb:hover{outline:2px solid var(--accent);outline-offset:1px}
+  }
+
+  /* ============ 吸附参考线 ============ */
+  #guides{position:absolute;inset:0;pointer-events:none;z-index:999}
+  #guides i{position:absolute;background:var(--guide);display:none}
+  #guides i.v{width:1px;top:0;bottom:0}
+  #guides i.h{height:1px;left:0;right:0}
+
+  /* ============ 素材托盘 ============ */
+  #tray{
+    flex:none;height:92px;
+    display:flex;gap:8px;align-items:center;
+    padding:0 10px calc(env(safe-area-inset-bottom) + 8px);
+    background:var(--panel);border-top:1px solid var(--line);
+    overflow-x:auto;scrollbar-width:none;
+  }
+  #tray::-webkit-scrollbar{display:none}
+  #tray .hint{
+    flex:none;font-size:11px;color:var(--ink-2);padding-right:8px;
+    border-right:1px solid var(--line);line-height:1.4;white-space:nowrap;
+  }
+  .thumb{
+    flex:none;height:64px;border-radius:6px;background:var(--g);
+    border:1px solid var(--line);cursor:pointer;
+  }
+  .thumb:active{transform:scale(.94)}
+
+  /* ============ 竖屏提示 ============ */
+  #rotateTip{
+    position:absolute;left:12px;right:12px;bottom:12px;z-index:40;
+    background:rgba(30,30,33,.94);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;
+    font-size:12.5px;color:var(--ink-2);line-height:1.5;
+    display:none;align-items:center;gap:10px;
+  }
+  #rotateTip.show{display:flex}
+  #rotateTip b{color:var(--ink)}
+  #rotateTip button{margin-left:auto;height:28px;padding:0 10px}
+
+  /* ============ 阅读态（翻页） ============ */
+  #reader{
+    position:fixed;inset:0;z-index:200;background:#0d0d0f;
+    display:none;flex-direction:column;
+  }
+  #reader.show{display:flex}
+  #readerBar{
+    flex:none;display:flex;align-items:center;gap:10px;
+    padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;
+    font-size:13px;color:var(--ink-2);
+  }
+  #readerBar .pg{margin:0 auto;font-variant-numeric:tabular-nums}
+  #slides{
+    flex:1;min-height:0;display:flex;overflow-x:auto;overflow-y:hidden;
+    scroll-snap-type:x mandatory;scrollbar-width:none;
+    overscroll-behavior-x:contain;
+  }
+  #slides::-webkit-scrollbar{display:none}
+  .slide{
+    flex:0 0 100%;height:100%;
+    display:grid;place-items:center;padding:10px;
+    scroll-snap-align:center;
+  }
+  .slide .paper{
+    position:relative;overflow:hidden;border-radius:2px;
+    box-shadow:0 8px 30px -6px rgba(0,0,0,.8);background:#fff;
+  }
+  .slide .paper .item{position:absolute}
+
+  /* ============ JSON 面板 ============ */
+  #jsonPanel{
+    position:fixed;inset:auto 0 0 0;max-height:52vh;z-index:210;
+    background:#101012;border-top:1px solid var(--line);
+    display:none;flex-direction:column;
+  }
+  #jsonPanel.show{display:flex}
+  #jsonPanel header{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 12px;font-size:12.5px;color:var(--ink-2);
+    border-bottom:1px solid var(--line);
+  }
+  #jsonPanel pre{
+    margin:0;padding:12px;overflow:auto;
+    font:11.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:#b9d4b0;white-space:pre;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 工具栏 ================= -->
+<div class="bar">
+  <span class="brand">排版编辑器</span>
+  <button id="btnUndo" title="撤销">↶</button>
+  <button id="btnRedo" title="重做">↷</button>
+  <span class="sep"></span>
+  <button id="btnPrevPage">‹</button>
+  <button id="btnPage" style="min-width:56px">1 / 3</button>
+  <button id="btnNextPage">›</button>
+  <button id="btnAddPage">＋页</button>
+  <span class="sep"></span>
+  <button id="btnRatio" style="min-width:52px">3:2</button>
+  <span class="sep"></span>
+  <button id="btnFront" title="置顶">⤒</button>
+  <button id="btnUp" title="上移">↑</button>
+  <button id="btnDown" title="下移">↓</button>
+  <button id="btnBack" title="置底">⤓</button>
+  <button id="btnDel" title="删除">🗑</button>
+  <span class="sep"></span>
+  <button id="btnJson">JSON</button>
+  <button id="btnRead">预览翻页</button>
+  <span class="save-state" id="saveState"></span>
+</div>
+
+<!-- ================= 舞台 ================= -->
+<div id="stage">
+  <div id="canvas">
+    <div id="itemLayer" style="position:absolute;inset:0"></div>
+    <div id="guides"><i class="v"></i><i class="h"></i></div>
+  </div>
+  <div id="rotateTip">
+    <span><b>横屏编辑更顺手</b> —— 画布是横向的，竖屏下可操作区域偏窄。</span>
+    <button id="tipClose">知道了</button>
+  </div>
+</div>
+
+<!-- ================= 素材托盘 ================= -->
+<div id="tray">
+  <div class="hint">点一下<br>加进画布</div>
+</div>
+
+<!-- ================= 阅读态 ================= -->
+<div id="reader">
+  <div id="readerBar">
+    <button id="readerClose">✕ 返回编辑</button>
+    <span class="pg" id="readerPg">1 / 3</span>
+    <span style="font-size:11.5px">左右滑动翻页</span>
+  </div>
+  <div id="slides"></div>
+</div>
+
+<!-- ================= JSON ================= -->
+<div id="jsonPanel">
+  <header>
+    <span>当前页排版数据（归一化坐标，与屏幕无关）</span>
+    <button id="jsonClose" style="margin-left:auto">关闭</button>
+  </header>
+  <pre id="jsonText"></pre>
+</div>
+
+<script>
+/* ================================================================
+   1. 数据
+   ================================================================ */
+
+/* 素材托盘：真实实现里这些来自 GET /api/photos（thumb 档） */
+const G = [
+  'linear-gradient(145deg,#c9a58a,#8d6a52)',
+  'linear-gradient(145deg,#b9c4c9,#7c8b93)',
+  'linear-gradient(145deg,#e0cdb6,#b39070)',
+  'linear-gradient(145deg,#d7b8b0,#9c7269)',
+  'linear-gradient(145deg,#cfc3b2,#94856f)',
+  'linear-gradient(145deg,#aebbc4,#6f8091)',
+  'linear-gradient(145deg,#e3d3bd,#b79976)',
+  'linear-gradient(145deg,#c2b0a4,#87705f)',
+  'linear-gradient(145deg,#dcc6c0,#a8807a)',
+  'linear-gradient(145deg,#bfc9bd,#7f8e7c)',
+  'linear-gradient(145deg,#d3bda8,#9b7f65)',
+  'linear-gradient(145deg,#bcc6cc,#7b8891)'
+];
+
+let idSeq = 0;
+const newId = () => 'it_' + (++idSeq).toString(36).padStart(3, '0');
+
+/* 归一化坐标：x/y/w/h 均为 0~1，相对画布宽高。
+   这样同一份 JSON 在编辑器与阅读态、在手机与桌面上等比渲染，所见即所得。 */
+const state = {
+  ratio: 1.5,                       /* 画布宽高比 */
+  pages: [
+    { items: [
+      mkItem(G[0], 0.06, 0.10, 0.34, 0.62, -3),
+      mkItem(G[2], 0.44, 0.06, 0.50, 0.40,  0),
+      mkItem(G[4], 0.44, 0.52, 0.50, 0.42,  2)
+    ]},
+    { items: [
+      mkItem(G[6], 0.10, 0.14, 0.80, 0.72, 0)
+    ]},
+    { items: [] }
+  ],
+  cur: 0,
+  sel: null,
+  undo: [],
+  redo: []
+};
+
+function mkItem(g, x, y, w, h, rot){
+  return { id:newId(), g, x, y, w, h, rot: rot||0 };
+}
+
+/* ================================================================
+   2. DOM 引用 & 画布尺寸
+   ================================================================ */
+const $ = id => document.getElementById(id);
+const stage    = $('stage');
+const canvas   = $('canvas');
+const itemLayer= $('itemLayer');
+const guides   = $('guides');
+const gV = guides.querySelector('.v');
+const gH = guides.querySelector('.h');
+
+/* 画布按比例适配舞台。用 JS 算而不是纯 CSS，
+   因为 aspect-ratio + max-height 在部分移动浏览器上会溢出。 */
+function fitCanvas(){
+  const pad = 24;
+  const aw = stage.clientWidth  - pad;
+  const ah = stage.clientHeight - pad;
+  let w = aw, h = w / state.ratio;
+  if (h > ah){ h = ah; w = h * state.ratio; }
+  canvas.style.width  = Math.max(80, w) + 'px';
+  canvas.style.height = Math.max(53, h) + 'px';
+}
+const CW = () => canvas.clientWidth;
+const CH = () => canvas.clientHeight;
+
+/* ================================================================
+   3. 渲染
+   ================================================================ */
+function render(){
+  const page = state.pages[state.cur];
+  itemLayer.innerHTML = '';
+
+  page.items.forEach((it, i) => {
+    const el = document.createElement('div');
+    el.className = 'item' + (state.sel === it.id ? ' sel' : '');
+    el.dataset.id = it.id;
+    el.style.cssText =
+      `left:${it.x*100}%;top:${it.y*100}%;width:${it.w*100}%;height:${it.h*100}%;` +
+      `transform:rotate(${it.rot}deg);z-index:${i+1}`;
+    el.innerHTML =
+      `<div class="img" style="--g:${it.g}"></div>` +
+      (state.sel === it.id
+        ? `<div class="handle rot" data-h="rot"></div>
+           <div class="handle nw" data-h="nw"></div>
+           <div class="handle ne" data-h="ne"></div>
+           <div class="handle sw" data-h="sw"></div>
+           <div class="handle se" data-h="se"></div>`
+        : '');
+    itemLayer.appendChild(el);
+  });
+
+  $('btnPage').textContent = `${state.cur+1} / ${state.pages.length}`;
+  $('btnRatio').textContent = ratioLabel(state.ratio);
+  $('btnUndo').disabled = state.undo.length === 0;
+  $('btnRedo').disabled = state.redo.length === 0;
+  const hasSel = !!state.sel;
+  ['btnFront','btnUp','btnDown','btnBack','btnDel'].forEach(id => $(id).disabled = !hasSel);
+  renderReader();
+}
+
+function ratioLabel(r){
+  const map = {1.5:'3:2', 1.3333:'4:3', 1:'1:1', 0.75:'3:4', 0.6667:'2:3'};
+  for (const k in map) if (Math.abs(parseFloat(k) - r) < 0.01) return map[k];
+  return r.toFixed(2);
+}
+
+/* ================================================================
+   4. 撤销 / 重做
+   ================================================================ */
+function snapshot(){
+  state.undo.push(JSON.stringify(state.pages));
+  if (state.undo.length > 20) state.undo.shift();   /* 至少 20 步 */
+  state.redo.length = 0;
+}
+function undo(){
+  if (!state.undo.length) return;
+  state.redo.push(JSON.stringify(state.pages));
+  state.pages = JSON.parse(state.undo.pop());
+  state.sel = null; render(); flashSave();
+}
+function redo(){
+  if (!state.redo.length) return;
+  state.undo.push(JSON.stringify(state.pages));
+  state.pages = JSON.parse(state.redo.pop());
+  state.sel = null; render(); flashSave();
+}
+
+/* ================================================================
+   5. 自动保存（模拟）
+   真实实现：debounce 1s → PUT /api/albums/:id/pages/:index
+   ================================================================ */
+let saveTimer = null;
+function flashSave(){
+  const el = $('saveState');
+  el.className = 'save-state busy';
+  el.textContent = '保存中…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    el.className = 'save-state ok';
+    el.textContent = '已保存 ' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+  }, 700);
+}
+
+/* ================================================================
+   6. 吸附对齐 —— 自由排版能出好效果的关键
+   没有吸附，纯手拖出来的相册一定歪七扭八。
+   ================================================================ */
+const SNAP_PX = 8;   /* 吸附阈值（像素） */
+
+function snapX(nx, w, W, others){
+  const lines = [0, W/2, W];
+  others.forEach(o => lines.push(o.x, o.x + o.w/2, o.x + o.w));
+  let best = null;
+  [nx, nx + w/2, nx + w].forEach(anchor => {
+    lines.forEach(L => {
+      const d = L - anchor;
+      if (Math.abs(d) <= SNAP_PX && (!best || Math.abs(d) < Math.abs(best.d))) best = {d, line:L};
+    });
+  });
+  return best;
+}
+function snapY(ny, h, H, others){
+  const lines = [0, H/2, H];
+  others.forEach(o => lines.push(o.y, o.y + o.h/2, o.y + o.h));
+  let best = null;
+  [ny, ny + h/2, ny + h].forEach(anchor => {
+    lines.forEach(L => {
+      const d = L - anchor;
+      if (Math.abs(d) <= SNAP_PX && (!best || Math.abs(d) < Math.abs(best.d))) best = {d, line:L};
+    });
+  });
+  return best;
+}
+function showGuides(vx, hy){
+  gV.style.display = vx == null ? 'none' : 'block';
+  gH.style.display = hy == null ? 'none' : 'block';
+  if (vx != null) gV.style.left = vx + 'px';
+  if (hy != null) gH.style.top  = hy + 'px';
+}
+
+/* ================================================================
+   7. 交互：移动 / 缩放 / 旋转
+   全部在「像素空间」里算，再换算回归一化坐标。
+   （归一化坐标不是等比的，直接在里面算旋转会角度失真）
+   ================================================================ */
+let drag = null;
+
+canvas.addEventListener('pointerdown', e => {
+  const handleEl = e.target.closest('.handle');
+  const itemEl   = e.target.closest('.item');
+  const page     = state.pages[state.cur];
+
+  /* --- 缩放 / 旋转 --- */
+  if (handleEl && itemEl){
+    const it = page.items.find(x => x.id === itemEl.dataset.id);
+    if (!it) return;
+    e.preventDefault();
+    snapshot();
+
+    const W = CW(), H = CH();
+    const px = toPx(it, W, H);
+    const rect = canvas.getBoundingClientRect();
+
+    if (handleEl.dataset.h === 'rot'){
+      const cx = px.x + px.w/2, cy = px.y + px.h/2;
+      const a0 = Math.atan2(e.clientY - rect.top - cy, e.clientX - rect.left - cx) * 180/Math.PI;
+      drag = { mode:'rot', it, px, cx, cy, offset: it.rot - a0 };
+    } else {
+      const sx = handleEl.dataset.h.includes('e') ? 1 : -1;
+      const sy = handleEl.dataset.h.includes('s') ? 1 : -1;
+      drag = { mode:'resize', corner:handleEl.dataset.h, it, px, sx, sy,
+               startX:e.clientX, startY:e.clientY, W, H };
+    }
+    addMove();
+    return;
+  }
+
+  /* --- 选中 + 移动 --- */
+  if (itemEl){
+    const it = page.items.find(x => x.id === itemEl.dataset.id);
+    if (!it) return;
+    e.preventDefault();
+    if (state.sel !== it.id){ state.sel = it.id; render(); }
+
+    const W = CW(), H = CH();
+    const px = toPx(it, W, H);
+    drag = { mode:'move', it, px, startX:e.clientX, startY:e.clientY, W, H, moved:false };
+    addMove();
+    return;
+  }
+
+  /* --- 点空白：取消选中 --- */
+  if (state.sel){ state.sel = null; render(); }
+});
+
+function addMove(){
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', onUp, { once:true });
+  document.addEventListener('pointercancel', onUp, { once:true });
+}
+
+function onMove(e){
+  if (!drag) return;
+  e.preventDefault();
+  const el = itemLayer.querySelector(`[data-id="${drag.it.id}"]`);
+  if (!el) return;
+
+  const { it, px, W, H } = drag;
+
+  /* ---------- 移动 ---------- */
+  if (drag.mode === 'move'){
+    /* 用「手指位移量」而不是「手指绝对位置」来驱动，
+       这样照片不会跳到手指中心 —— 手指不会挡住目标。 */
+    let nx = px.x + (e.clientX - drag.startX);
+    let ny = px.y + (e.clientY - drag.startY);
+    drag.moved = true;
+
+    const others = state.pages[state.cur].items
+      .filter(o => o.id !== it.id)
+      .map(o => toPx(o, W, H));
+
+    const sx = snapX(nx, px.w, W, others);
+    const sy = snapY(ny, px.h, H, others);
+    if (sx) nx += sx.d;
+    if (sy) ny += sy.d;
+    showGuides(sx ? sx.line : null, sy ? sy.line : null);
+
+    /* 夹在画布内，避免把照片拖丢 */
+    nx = clamp(nx, 0, Math.max(0, W - px.w));
+    ny = clamp(ny, 0, Math.max(0, H - px.h));
+
+    it.x = nx / W; it.y = ny / H;
+    el.style.left = (it.x*100) + '%';
+    el.style.top  = (it.y*100) + '%';
+    return;
+  }
+
+  /* ---------- 缩放（对角锚定，旋转下依然正确） ---------- */
+  if (drag.mode === 'resize'){
+    const rad = it.rot * Math.PI/180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+
+    /* 把屏幕位移投影到照片自身的局部坐标轴 */
+    const ldx =  dx*cos + dy*sin;
+    const ldy = -dx*sin + dy*cos;
+
+    const MIN = 36;
+    let nw = Math.max(MIN, px.w + drag.sx * ldx);
+    let nh = Math.max(MIN, px.h + drag.sy * ldy);
+
+    /* 对角点保持不动：先算它的屏幕坐标，缩放后反推新中心 */
+    const cx0 = px.x + px.w/2, cy0 = px.y + px.h/2;
+    const fx = -drag.sx * px.w/2, fy = -drag.sy * px.h/2;
+    const fsx = cx0 + fx*cos - fy*sin;
+    const fsy = cy0 + fx*sin + fy*cos;
+
+    const nfx = -drag.sx * nw/2, nfy = -drag.sy * nh/2;
+    const ncx = fsx - (nfx*cos - nfy*sin);
+    const ncy = fsy - (nfx*sin + nfy*cos);
+
+    let nx = ncx - nw/2, ny = ncy - nh/2;
+    nx = clamp(nx, 0, Math.max(0, W - nw));
+    ny = clamp(ny, 0, Math.max(0, H - nh));
+
+    it.x = nx/W; it.y = ny/H; it.w = nw/W; it.h = nh/H;
+    el.style.left=(it.x*100)+'%'; el.style.top=(it.y*100)+'%';
+    el.style.width=(it.w*100)+'%'; el.style.height=(it.h*100)+'%';
+    return;
+  }
+
+  /* ---------- 旋转（0/±90 自动回正） ---------- */
+  if (drag.mode === 'rot'){
+    const rect = canvas.getBoundingClientRect();
+    const a = Math.atan2(e.clientY - rect.top - drag.cy, e.clientX - rect.left - drag.cx) * 180/Math.PI;
+    let rot = a + drag.offset;
+    const snapped = Math.round(rot / 90) * 90;
+    if (Math.abs(rot - snapped) <= 5) rot = snapped;
+    rot = ((rot + 180) % 360 + 360) % 360 - 180;
+    it.rot = Math.round(rot * 10) / 10;
+    el.style.transform = `rotate(${it.rot}deg)`;
+  }
+}
+
+function onUp(){
+  document.removeEventListener('pointermove', onMove);
+  showGuides(null, null);
+  if (drag){
+    if (drag.mode === 'move' && !drag.moved){ drag = null; return; }
+    drag = null;
+    render();          /* 一次性重渲染（顺手修正 z-index 与手柄位置） */
+    flashSave();
+  }
+}
+
+const toPx = (it, W, H) => ({ x:it.x*W, y:it.y*H, w:it.w*W, h:it.h*H });
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ================================================================
+   8. 工具栏动作
+   ================================================================ */
+$('btnUndo').onclick = undo;
+$('btnRedo').onclick = redo;
+
+$('btnPrevPage').onclick = () => { if (state.cur>0){ state.cur--; state.sel=null; render(); } };
+$('btnNextPage').onclick = () => { if (state.cur<state.pages.length-1){ state.cur++; state.sel=null; render(); } };
+$('btnAddPage').onclick = () => { snapshot(); state.pages.push({items:[]}); state.cur = state.pages.length-1; state.sel=null; render(); flashSave(); };
+
+const RATIOS = [1.5, 1.3333, 1, 0.75, 0.6667];
+$('btnRatio').onclick = () => {
+  snapshot();
+  const i = RATIOS.findIndex(r => Math.abs(r - state.ratio) < 0.01);
+  state.ratio = RATIOS[(i+1) % RATIOS.length];
+  fitCanvas(); render(); flashSave();
+};
+
+function withSel(fn){
+  const page = state.pages[state.cur];
+  const i = page.items.findIndex(x => x.id === state.sel);
+  if (i < 0) return;
+  snapshot(); fn(page.items, i); render(); flashSave();
+}
+$('btnFront').onclick = () => withSel((a,i) => a.push(a.splice(i,1)[0]));
+$('btnUp').onclick    = () => withSel((a,i) => { if(i<a.length-1) [a[i],a[i+1]]=[a[i+1],a[i]]; });
+$('btnDown').onclick  = () => withSel((a,i) => { if(i>0) [a[i],a[i-1]]=[a[i-1],a[i]]; });
+$('btnBack').onclick  = () => withSel((a,i) => a.unshift(a.splice(i,1)[0]));
+$('btnDel').onclick   = () => withSel((a,i) => { a.splice(i,1); state.sel = null; });
+
+/* 键盘：撤销/重做、删除、方向键微调（桌面精确对齐全靠它） */
+const NUDGE = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] };
+const isTyping = () => /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+let lastNudge = 0;
+
+document.addEventListener('keydown', e => {
+  const mod = e.metaKey || e.ctrlKey;
+
+  if (mod && e.key.toLowerCase() === 'z'){
+    e.preventDefault();
+    e.shiftKey ? redo() : undo();
+    return;
+  }
+
+  if ((e.key === 'Delete' || e.key === 'Backspace') && state.sel && !isTyping()){
+    e.preventDefault(); $('btnDel').click(); return;
+  }
+
+  /* 方向键移动：1px；Shift + 方向键：10px。
+     连续按同一个方向键时合并成一步撤销，否则按住会塞满撤销栈。 */
+  if (NUDGE[e.key] && state.sel && !isTyping()){
+    e.preventDefault();
+    const page = state.pages[state.cur];
+    const i = page.items.findIndex(x => x.id === state.sel);
+    if (i < 0) return;
+
+    if (Date.now() - lastNudge > 600) snapshot();
+    lastNudge = Date.now();
+
+    const step = e.shiftKey ? 10 : 1;
+    const [dx, dy] = NUDGE[e.key];
+    const W = CW(), H = CH(), it = page.items[i];
+    it.x = clamp(it.x + dx*step/W, 0, Math.max(0, 1 - it.w));
+    it.y = clamp(it.y + dy*step/H, 0, Math.max(0, 1 - it.h));
+    render(); flashSave();
+  }
+});
+
+/* ================================================================
+   9. 素材托盘
+   ================================================================ */
+const tray = $('tray');
+G.forEach((g, i) => {
+  const d = document.createElement('div');
+  d.className = 'thumb';
+  d.style.cssText = `--g:${g};width:${Math.round(64 * [0.66,1,1.5,0.8,1.25,0.66,1.5,0.8,1,0.66,1.25,1.5][i])}px`;
+  d.onclick = () => addPhoto(g);
+  tray.appendChild(d);
+});
+
+function addPhoto(g){
+  const W = CW(), H = CH();
+  /* 默认居中放置，宽度占画布 40%，高度按 4:3 给个初始值（之后随用户缩放） */
+  const w = 0.40, h = (w * W) / (4/3) / H;
+  const it = mkItem(g, (1-w)/2, (1-h)/2, w, h, 0);
+  snapshot();
+  state.pages[state.cur].items.push(it);
+  state.sel = it.id;
+  render(); flashSave();
+}
+
+/* ================================================================
+   10. 阅读态（横滑翻页）—— 复用同一份 JSON，只是不可交互
+   ================================================================ */
+const slides = $('slides');
+
+function renderReader(){
+  slides.innerHTML = '';
+  state.pages.forEach(page => {
+    const slide = document.createElement('div');
+    slide.className = 'slide';
+
+    const paper = document.createElement('div');
+    paper.className = 'paper';
+
+    /* 按比例适配 slide */
+    const availW = window.innerWidth - 20;
+    const availH = slides.clientHeight - 20 || (window.innerHeight * 0.7);
+    let w = availW, h = w / state.ratio;
+    if (h > availH){ h = availH; w = h * state.ratio; }
+    paper.style.width = w + 'px';
+    paper.style.height = h + 'px';
+
+    page.items.forEach((it, i) => {
+      const el = document.createElement('div');
+      el.className = 'item';
+      el.style.cssText =
+        `left:${it.x*100}%;top:${it.y*100}%;width:${it.w*100}%;height:${it.h*100}%;` +
+        `transform:rotate(${it.rot}deg);z-index:${i+1}`;
+      el.innerHTML = `<div class="img" style="--g:${it.g}"></div>`;
+      paper.appendChild(el);
+    });
+
+    slide.appendChild(paper);
+    slides.appendChild(slide);
+  });
+  updateReaderPg();
+}
+
+function updateReaderPg(){
+  const i = Math.round(slides.scrollLeft / Math.max(1, slides.clientWidth));
+  $('readerPg').textContent = `${Math.min(i+1, state.pages.length)} / ${state.pages.length}`;
+}
+slides.addEventListener('scroll', () => requestAnimationFrame(updateReaderPg), { passive:true });
+
+$('btnRead').onclick = () => {
+  $('reader').classList.add('show');
+  renderReader();
+  slides.scrollLeft = state.cur * slides.clientWidth;
+};
+$('readerClose').onclick = () => $('reader').classList.remove('show');
+
+/* ================================================================
+   11. JSON 面板 —— 让数据模型可见
+   ================================================================ */
+$('btnJson').onclick = () => {
+  const p = $('jsonPanel');
+  p.classList.toggle('show');
+  if (p.classList.contains('show')){
+    $('jsonText').textContent = JSON.stringify({
+      canvas: { ratio: state.ratio, bg: '#ffffff' },
+      items: state.pages[state.cur].items.map((it,i) => ({
+        id: it.id, photo: 'ph_'+(i+1),
+        x: +it.x.toFixed(3), y: +it.y.toFixed(3),
+        w: +it.w.toFixed(3), h: +it.h.toFixed(3),
+        rot: it.rot, z: i+1
+      }))
+    }, null, 2);
+  }
+};
+$('jsonClose').onclick = () => $('jsonPanel').classList.remove('show');
+
+/* ================================================================
+   12. 启动
+   ================================================================ */
+$('tipClose').onclick = () => $('rotateTip').classList.remove('show');
+
+function checkOrientation(){
+  const portrait = window.innerHeight > window.innerWidth;
+  const small = Math.min(window.innerWidth, window.innerHeight) < 820;
+  $('rotateTip').classList.toggle('show', portrait && small);
+}
+
+function boot(){
+  fitCanvas();
+  render();
+  const el = $('saveState');
+  el.className = 'save-state ok';
+  el.textContent = '已保存';
+  checkOrientation();
+}
+
+addEventListener('resize', () => { fitCanvas(); render(); checkOrientation(); });
+addEventListener('orientationchange', () => setTimeout(() => { fitCanvas(); render(); checkOrientation(); }, 180));
+boot();
+</script>
+</body>
+</html>

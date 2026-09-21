@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#faf7f4">
+<title>我们的婚纱照 · 网格页 Mock</title>
+<style>
+  :root{
+    --bg:#faf7f4;
+    --surface:#ffffff;
+    --ink:#2b2320;
+    --ink-2:#7d726a;
+    --ink-3:#b3a89f;
+    --line:rgba(43,35,32,.08);
+    --accent:#b08d6a;
+    --gap:8px;
+    --row:8px;
+    --radius:10px;
+    --topbar-h:auto;
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+
+  html{-webkit-text-size-adjust:100%}
+
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+
+  /* ---------- 顶部栏 ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:30;
+    padding:calc(env(safe-area-inset-top) + 14px) 16px 12px;
+    background:rgba(250,247,244,.82);
+    -webkit-backdrop-filter:saturate(180%) blur(16px);
+    backdrop-filter:saturate(180%) blur(16px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar h1{
+    font-size:19px;font-weight:600;letter-spacing:.02em;
+    display:flex;align-items:baseline;gap:8px;
+  }
+  .topbar h1 .dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--accent);flex:none;
+    transform:translateY(-2px);
+  }
+  .topbar .meta{
+    margin-top:3px;font-size:12.5px;color:var(--ink-2);
+    display:flex;align-items:center;gap:8px;
+  }
+  .topbar .meta .sep{color:var(--ink-3)}
+
+  /* ---------- 时间线 ---------- */
+  main{padding:0 12px 48px}
+
+  .day{margin-top:20px}
+
+  .day-title{
+    position:sticky;top:0;z-index:20;
+    display:flex;align-items:center;gap:8px;
+    padding:9px 4px;
+    font-size:13.5px;font-weight:600;color:var(--ink);
+    letter-spacing:.01em;
+    background:linear-gradient(var(--bg) 72%,rgba(250,247,244,0));
+    /* 顶栏高度未知时用负 margin 会让吸顶打架，这里交给 JS 设 top */
+  }
+  .day-title .count{
+    font-weight:400;font-size:12px;color:var(--ink-3);
+    margin-left:auto;
+  }
+
+  /* ---------- 网格（行优先瀑布流） ---------- */
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    grid-auto-rows:var(--row);
+    gap:var(--gap);
+  }
+  @media(min-width:560px){ .grid{grid-template-columns:repeat(3,1fr)} }
+  @media(min-width:860px){ .grid{grid-template-columns:repeat(4,1fr)} }
+  @media(min-width:1180px){ .grid{grid-template-columns:repeat(5,1fr)} }
+
+  .cell{
+    position:relative;
+    border-radius:var(--radius);
+    overflow:hidden;
+    background:var(--surface);
+    box-shadow:0 1px 2px rgba(43,35,32,.06),0 6px 16px -8px rgba(43,35,32,.14);
+    grid-row-end:span 20;               /* JS 会覆盖 */
+    opacity:0;transform:scale(.985);
+    transition:opacity .45s ease,transform .45s ease;
+  }
+  .cell.ready{opacity:1;transform:none}
+  .cell:active{transform:scale(.975)}
+  .cell.ready:active{transition:transform .09s ease}
+
+  /* 占位骨架（撑住高度，避免 CLS） */
+  .cell .ph{
+    position:absolute;inset:0;
+    background:linear-gradient(100deg,#efe9e3 30%,#f6f1ec 50%,#efe9e3 70%);
+    background-size:220% 100%;
+    animation:shimmer 1.25s linear infinite;
+  }
+  .cell.ready .ph{display:none}
+  @keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+
+  /* 模拟照片本体 */
+  .cell .img{
+    position:absolute;inset:0;
+    background:var(--g);
+  }
+  .cell .img::after{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(120% 80% at 25% 15%,rgba(255,255,255,.34),transparent 60%),
+      linear-gradient(180deg,rgba(0,0,0,0) 55%,rgba(0,0,0,.16));
+  }
+
+  /* “展开当天全部” */
+  .more{
+    grid-column:1/-1;
+    display:flex;align-items:center;justify-content:center;
+    height:44px;margin-top:2px;
+    font-size:13px;color:var(--ink-2);
+    background:var(--surface);border-radius:var(--radius);
+    border:1px solid var(--line);
+  }
+
+  /* ---------- 页脚说明 ---------- */
+  .note{
+    margin:36px 4px 0;padding-top:16px;
+    border-top:1px solid var(--line);
+    font-size:11.5px;line-height:1.75;color:var(--ink-3);
+  }
+
+  @media(prefers-reduced-motion:reduce){
+    .cell{transition:none;opacity:1;transform:none}
+    .cell .ph{animation:none}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <h1><span class="dot"></span>我们的婚纱照</h1>
+  <div class="meta">
+    <span>1,248 张</span><span class="sep">·</span>
+    <span>更新于 2025-09-18</span>
+  </div>
+</header>
+
+<main id="timeline"></main>
+
+<script>
+/* ============================================================
+   Mock 数据：模拟 manifest.json 里的 photos[]
+   真实实现里这些来自 GET /api/photos（Worker 鉴权后返回）
+   ============================================================ */
+const DAYS = [
+  {
+    date:'2025-09-18', label:'2025年9月18日', weekday:'星期四', total:86,
+    shots:[
+      {ar:2/3,  g:'linear-gradient(145deg,#c9a58a,#8d6a52)'},
+      {ar:3/2,  g:'linear-gradient(145deg,#b9c4c9,#7c8b93)'},
+      {ar:3/2,  g:'linear-gradient(145deg,#e0cdb6,#b39070)'},
+      {ar:4/5,  g:'linear-gradient(145deg,#d7b8b0,#9c7269)'},
+      {ar:1,    g:'linear-gradient(145deg,#cfc3b2,#94856f)'},
+      {ar:2/3,  g:'linear-gradient(145deg,#aebbc4,#6f8091)'},
+      {ar:16/9, g:'linear-gradient(145deg,#e3d3bd,#b79976)'},
+      {ar:4/5,  g:'linear-gradient(145deg,#c2b0a4,#87705f)'},
+      {ar:3/2,  g:'linear-gradient(145deg,#dcc6c0,#a8807a)'},
+      {ar:2/3,  g:'linear-gradient(145deg,#bfc9bd,#7f8e7c)'}
+    ]
+  },
+  {
+    date:'2025-09-17', label:'2025年9月17日', weekday:'星期三', total:52,
+    shots:[
+      {ar:3/2,  g:'linear-gradient(145deg,#cdb9a3,#927c62)'},
+      {ar:4/5,  g:'linear-gradient(145deg,#b6c0c6,#74828b)'},
+      {ar:2/3,  g:'linear-gradient(145deg,#e2d2c4,#af9078)'},
+      {ar:3/2,  g:'linear-gradient(145deg,#c8b2ae,#8d6f6b)'},
+      {ar:1,    g:'linear-gradient(145deg,#cfc7b4,#938970)'},
+      {ar:2/3,  g:'linear-gradient(145deg,#adb9ae,#6f7d72)'}
+    ]
+  },
+  {
+    date:'2025-09-16', label:'2025年9月16日', weekday:'星期二', total:31,
+    shots:[
+      {ar:2/3,  g:'linear-gradient(145deg,#d3bda8,#9b7f65)'},
+      {ar:16/9, g:'linear-gradient(145deg,#bcc6cc,#7b8891)'},
+      {ar:4/5,  g:'linear-gradient(145deg,#dcc9bd,#a98b78)'},
+      {ar:3/2,  g:'linear-gradient(145deg,#c6bcc4,#877d88)'}
+    ]
+  }
+];
+
+/* ============================================================
+   渲染
+   ============================================================ */
+const rowH = 8, gap = 8;
+const timeline = document.getElementById('timeline');
+
+DAYS.forEach(day => {
+  const sec = document.createElement('section');
+  sec.className = 'day';
+
+  const h = document.createElement('h2');
+  h.className = 'day-title';
+  h.innerHTML = `${day.label} · ${day.weekday}<span class="count">${day.total} 张</span>`;
+
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+
+  day.shots.forEach((s, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.ar = s.ar;
+    cell.innerHTML = `<div class="ph"></div><div class="img" style="--g:${s.g}"></div>`;
+    grid.appendChild(cell);
+
+    /* 模拟渐进加载：骨架 -> 照片。
+       真实实现里由 <img> 的 decode/load 事件驱动，
+       且必须先把高度占住（这里靠 dataset.ar 预算），避免 CLS。 */
+    setTimeout(() => cell.classList.add('ready'), 180 + i * 70);
+  });
+
+  /* 超出阈值时折叠 */
+  if (day.total > 30) {
+    const more = document.createElement('div');
+    more.className = 'more';
+    more.textContent = `展开当天全部（${day.total} 张）`;
+    grid.appendChild(more);
+  }
+
+  sec.append(h, grid);
+  timeline.appendChild(sec);
+});
+
+/* ============================================================
+   行优先瀑布流：按已知宽高比计算每格跨多少行
+   关键：用 Grid + span 而不是 CSS columns，
+   否则顺序会变成「列优先」，时间线会错乱。
+   ============================================================ */
+function layout() {
+  const topbarH = document.getElementById('topbar').offsetHeight;
+  document.querySelectorAll('.day-title').forEach(t => { t.style.top = topbarH + 'px'; });
+
+  document.querySelectorAll('.grid').forEach(grid => {
+    const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
+    const colW = (grid.clientWidth - (cols - 1) * gap) / cols;
+    grid.querySelectorAll('.cell').forEach(cell => {
+      const ar = parseFloat(cell.dataset.ar);
+      const h = colW / ar;
+      const span = Math.max(1, Math.round((h + gap) / (rowH + gap)));
+      cell.style.gridRowEnd = `span ${span}`;
+    });
+  });
+}
+
+layout();
+addEventListener('resize', () => requestAnimationFrame(layout));
+addEventListener('orientationchange', () => setTimeout(layout, 120));
+</script>
+
+<div class="note" style="margin-left:16px;margin-right:16px">
+  <strong>这是设计稿 Mock，不是成品。</strong><br>
+  假数据显示的是 F2「照片网格（时间线）」的布局方向：按拍摄日期分组 → 组内行优先瀑布流 → 保持原始宽高比。<br>
+  未包含：大图查看（F3）、幻灯片（F4）、登录（F1）—— 按 3C 的先只做网格页。<br>
+  真实实现中图片来自 <code>/api/img/thumb/&lt;key&gt;</code>，需登录态才能取到。
+</div>
+
+</body>
+</html>
