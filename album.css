@@ -111,10 +111,16 @@
   will-change:left,top,width,height;
   outline:1px solid transparent;cursor:grab;
 }
+/* 命中区向外扩 10px —— 手机上手指比元素还宽，小元素很难点中。
+   ::before 压在 .img 之下（z-index 0 vs 1），所以只在元素外的
+   「一圈」上生效，不会把元素本身的点击吞掉。 */
+.item::before{
+  content:"";position:absolute;inset:-10px;z-index:0;
+}
 .item.sel{outline:1.5px solid var(--accent2)}
 .item:active{cursor:grabbing}
 .item .img{
-  position:absolute;inset:0;overflow:hidden;
+  position:absolute;inset:0;overflow:hidden;z-index:1;
   background-size:cover;background-position:center;
 }
 /* 内层做 object-fit：用 <img> 以便浏览器缩放和缓存 */
@@ -193,12 +199,31 @@
 }
 .tray-scroll::-webkit-scrollbar{display:none}
 .tray-thumb{
+  position:relative;
   flex:none;height:64px;border-radius:6px;overflow:hidden;
   border:1px solid var(--eline);cursor:pointer;background:#2a2a2e;
 }
 .tray-thumb img{height:100%;width:auto;display:block}
 .tray-thumb:active{transform:scale(.94)}
-.tray-thumb.used{opacity:.32}
+/* 当前选中的元素在托盘里高亮 —— 点不中画布上的元素时，
+   从托盘点选是最稳的方式 */
+.tray-thumb.on{
+  outline:2px solid var(--accent);outline-offset:1px;
+}
+.tray-thumb .idx{
+  position:absolute;left:3px;top:3px;
+  min-width:15px;height:15px;padding:0 3px;
+  display:grid;place-items:center;
+  font-size:9.5px;font-weight:600;line-height:1;
+  color:#141416;background:rgba(255,255,255,.86);
+  border-radius:4px;pointer-events:none;
+}
+.tray-thumb.on .idx{background:var(--accent);color:#fff}
+
+.tray-hint{
+  flex:none;font-size:11px;line-height:1.5;color:#9b9893;
+  padding-left:4px;white-space:nowrap;
+}
 
 /* ============================ 阅读器 ============================ */
 .read-view{background:#0d0d0f;height:100dvh;overflow:hidden}
@@ -218,7 +243,9 @@
   position:relative;overflow:hidden;background:#fff;
   border-radius:2px;box-shadow:0 8px 30px -6px rgba(0,0,0,.8);
 }
-.read-paper .item{position:absolute}
+.read-paper .item{position:absolute;cursor:default}
+/* 阅读器里没有编辑交互，去掉扩大的命中区，避免干扰翻页手势 */
+.read-paper .item::before{display:none}
 .read-paper .cap{
   position:absolute;left:6px;right:6px;bottom:5px;
   font-size:10.5px;line-height:1.35;color:#fff;

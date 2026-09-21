@@ -169,6 +169,7 @@
     for (const id of ['btnFront','btnUp','btnDown','btnBack2','btnDelItem','btnSetCover']) {
       el(id).disabled = !hasSel;
     }
+    el('btnNextItem').disabled = p.layout.items.length === 0;
     // 选中的这张是不是当前生效的封面
     const selItem = hasSel ? p.layout.items.find(x => x.id === S.sel) : null;
     const isCover = !!(selItem && S.album.coverKey === selItem.photo);
@@ -730,23 +731,56 @@
   function renderTray() {
     const box = el('trayScroll');
     box.innerHTML = '';
-    const used = new Set(curLayout().items.map(i => i.photo));
-    // 托盘只放本页用到的，点一下选中它
-    const mine = curLayout().items.slice().reverse();
-    for (const it of mine) {
+
+    // 本页元素按「视觉层级从高到低」列在托盘里（与画布上叠放顺序一致），
+    // 带序号、当前选中的高亮、并自动滚到可见 ——
+    // 画布上的小元素或旋转过的元素不好精确点中时，从这里选最稳。
+    const items = curLayout().items;
+    if (!items.length) {
+      box.innerHTML = '<span class="tray-hint">点左侧「加照片」开始排版</span>';
+      return;
+    }
+
+    items.slice().reverse().forEach((it, revIdx) => {
+      const order = items.length - revIdx;          // 显示用的层号（从高到低）
+
       const d = document.createElement('div');
-      d.className = 'tray-thumb';
+      d.className = 'tray-thumb' + (S.sel === it.id ? ' on' : '');
+      d.dataset.id = it.id;
+      d.title = `第 ${order} 层`;
+
       const img = document.createElement('img');
       img.src = A.thumbUrl(it.photo);
       img.alt = '';
-      d.appendChild(img);
-      d.addEventListener('click', () => { S.sel = it.id; renderEditor(); });
+      img.draggable = false;
+
+      const idx = document.createElement('span');
+      idx.className = 'idx';
+      idx.textContent = order;
+
+      d.append(img, idx);
+      d.addEventListener('click', () => {
+        S.sel = (S.sel === it.id) ? null : it.id;
+        renderEditor();
+      });
       box.appendChild(d);
-    }
-    if (!mine.length) {
-      box.innerHTML = '<span class="dim" style="font-size:11.5px;color:#9b9893">点左侧「加照片」开始排版</span>';
-    }
+
+      if (S.sel === it.id) {
+        requestAnimationFrame(() => {
+          d.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        });
+      }
+    });
   }
+
+  /* 依次切换选中 —— 完全不依赖在画布上点中 */
+  el('btnNextItem').addEventListener('click', () => {
+    const items = curLayout().items;
+    if (!items.length) return;
+    const i = items.findIndex(x => x.id === S.sel);
+    S.sel = items[(i + 1) % items.length].id;
+    renderEditor();
+  });
   function relayoutTray() { /* 占位，托盘是弹性布局，无需重算 */ }
 
   /* ================================================================
