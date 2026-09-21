@@ -73,7 +73,13 @@
   border-radius:9px;cursor:pointer;
   transition:background .12s,opacity .12s;
 }
-.edit-view .icon-btn.wide{min-width:56px;padding:0 9px;font-size:12.5px}
+/* ⚠️ wide 必须把 width 也改掉。基础类定了 width:34px，
+   只覆盖 min-width 的话文字放不下会折成两行
+   （「自动排版」曾显示成「自动排 / 版」）。 */
+.edit-view .icon-btn.wide{
+  width:auto;min-width:56px;padding:0 10px;
+  font-size:12.5px;white-space:nowrap;
+}
 .edit-view .icon-btn:disabled{opacity:.3;cursor:default}
 .edit-view .icon-btn:active:not(:disabled){background:#34343b}
 
