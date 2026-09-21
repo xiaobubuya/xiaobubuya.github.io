@@ -166,9 +166,18 @@
     el('btnRedo').disabled = S.redo.length === 0;
     el('btnDelPage').disabled = S.pages.length <= 1;
     const hasSel = !!S.sel;
-    for (const id of ['btnFront','btnUp','btnDown','btnBack2','btnDelItem']) {
+    for (const id of ['btnFront','btnUp','btnDown','btnBack2','btnDelItem','btnSetCover']) {
       el(id).disabled = !hasSel;
     }
+    // 选中的这张是不是当前生效的封面
+    const selItem = hasSel ? p.layout.items.find(x => x.id === S.sel) : null;
+    const isCover = !!(selItem && S.album.coverKey === selItem.photo);
+    const btnCover = el('btnSetCover');
+    btnCover.textContent = isCover ? '★' : '☆';
+    btnCover.style.color = isCover ? 'var(--accent)' : '';
+    btnCover.title = isCover
+      ? (S.album.coverAuto ? '当前封面（自动取第一页第一张）' : '已手动设为封面，再点一次恢复自动')
+      : '设为封面';
 
     const layer = el('itemLayer');
     layer.innerHTML = '';
@@ -600,6 +609,35 @@
   el('btnDown').addEventListener('click', () => withSel((a, i) => { if (i > 0) [a[i], a[i - 1]] = [a[i - 1], a[i]]; }));
   el('btnBack2').addEventListener('click', () => withSel((a, i) => a.unshift(a.splice(i, 1)[0])));
   el('btnDelItem').addEventListener('click', () => withSel((a, i) => { a.splice(i, 1); S.sel = null; }));
+
+  /* ---- 设为封面 ---- */
+  // 后端默认会取「第一页第一个元素」当封面，所以这个按钮是可选的覆盖。
+  // 再点一次清掉显式封面，回到自动。
+  el('btnSetCover').addEventListener('click', async () => {
+    const it = curLayout().items.find(x => x.id === S.sel);
+    if (!it) return;
+
+    const isCover = S.album.coverKey === it.photo;
+    const explicit = isCover && !S.album.coverAuto;
+    const res = await A.api('/api/albums/' + S.album.id, {
+      method: 'PATCH',
+      body: JSON.stringify({ coverKey: explicit ? null : it.photo })
+    });
+    if (!res.ok) { A.toast('设置封面失败'); return; }
+
+    if (explicit) {
+      // 取消显式封面 → 回到「自动取第一页第一张」，重新拉一次拿准确值
+      S.album.coverKey = null;
+      S.album.coverAuto = true;
+      const d = await (await A.api('/api/albums/' + S.album.id + '/pages')).json();
+      S.album = d.album;
+    } else {
+      S.album.coverKey = it.photo;
+      S.album.coverAuto = false;
+    }
+    renderEditor();
+    A.toast(explicit ? '已恢复自动封面' : '已设为封面');
+  });
 
   el('tipClose').addEventListener('click', () => el('rotateTip').classList.remove('show'));
 
