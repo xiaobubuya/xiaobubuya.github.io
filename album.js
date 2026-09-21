@@ -500,6 +500,40 @@
   }
 
   /* ================================================================
+     自动排版
+     ----------------------------------------------------------------
+     连点会在「当前张数可用的几套版式」之间循环，
+     所以点一下不满意就再点一下，不用进任何面板。
+     ================================================================ */
+  let tplIndex = 0;
+
+  el('btnAutoLayout').addEventListener('click', async () => {
+    const layout = curLayout();
+    const items = layout.items;
+    if (!items.length) { A.toast('这一页还没有照片'); return; }
+
+    // 引擎需要知道每张照片的原始宽高比，才能尽量少裁切
+    await ensurePhotos();
+    const dims = {};
+    for (const it of items) {
+      const p = S.photos.find(x => x.k === it.photo);
+      if (p) dims[it.photo] = { w: p.w, h: p.h };
+    }
+
+    pushUndo();
+    const out = window.AutoLayout.layout(items, dims, layout.canvas.ratio, tplIndex);
+    layout.items = out.items;
+    tplIndex = (out.index + 1) % out.count;
+
+    S.sel = null;
+    renderEditor();
+    scheduleSave();
+    A.toast(out.count > 1
+      ? `版式：${out.templateName}（${out.index + 1}/${out.count}，再点换一个）`
+      : `已排版：${out.templateName}`);
+  });
+
+  /* ================================================================
      撤销 / 重做
      ================================================================ */
   function snapshot() {

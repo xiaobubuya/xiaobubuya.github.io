@@ -17,6 +17,7 @@ const ASSETS = [
   '/common.js',
   '/app.js',
   '/album.js',
+  '/autolayout.js',
   '/icon.svg',
   '/manifest.webmanifest'
 ];
