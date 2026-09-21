@@ -7,7 +7,7 @@
    外壳（HTML/CSS/JS/图标）不含任何隐私数据，可安全缓存。
    ================================================================ */
 
-const SHELL = 'shell-v2';
+const SHELL = 'shell-v3';
 const ASSETS = [
   '/',
   '/index.html',
@@ -46,24 +46,10 @@ self.addEventListener('fetch', e => {
   // 跨域（API、图片）一律直连，不拦截、不缓存
   if (url.origin !== location.origin) return;
 
-  // 导航请求：网络优先，离线时回退到缓存的外壳
-  if (request.mode === 'navigate') {
-    e.respondWith(
-      fetch(request).catch(() =>
-        caches.match('/index.html').then(r => r || new Response(
-          '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-          '<body style="font:15px/1.7 -apple-system,sans-serif;padding:15vh 24px;text-align:center;color:#2b2320;background:#faf7f4">' +
-          '<h2 style="font-size:17px;font-weight:600">当前无网络</h2>' +
-          '<p style="color:#7d726a;font-size:13.5px;margin-top:8px">连上网络后再打开就能看到照片</p></body>',
-          { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-        ))
-      )
-    );
-    return;
-  }
+  const path = url.pathname;
 
-  // 同源静态资源：缓存优先
-  if (/\.(css|js|svg|png|webmanifest)$/.test(url.pathname) || url.pathname === '/') {
+  /* ---------- 图标 / manifest：缓存优先（几乎不变）---------- */
+  if (/\.(svg|png|webmanifest)$/.test(path)) {
     e.respondWith(
       caches.match(request).then(hit => hit || fetch(request).then(res => {
         if (res.ok) {
@@ -73,5 +59,37 @@ self.addEventListener('fetch', e => {
         return res;
       }))
     );
+    return;
+  }
+
+  /* ---------- 页面 / JS / CSS：网络优先 ----------
+     为什么不用缓存优先：那样改了前端文件浏览器会一直吃旧缓存，
+     除非每次改都手动升 SHELL 版本号 —— 太容易漏。
+     网络优先在离线时仍会回退到缓存，离线可用性不受影响。 */
+  if (request.mode === 'navigate' || /\.(html|js|css)$/.test(path) || path === '/') {
+    e.respondWith(
+      fetch(request).then(res => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(SHELL).then(c => c.put(request, copy)).catch(() => {});
+        }
+        return res;
+      }).catch(() =>
+        caches.match(request).then(hit => hit || offlinePage())
+      )
+    );
   }
 });
+
+/** 离线且没缓存时的兜底页 */
+function offlinePage() {
+  return new Response(
+    '<!doctype html><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<body style="font:15px/1.7 -apple-system,sans-serif;padding:15vh 24px;text-align:center;' +
+    'color:#2b2320;background:#faf7f4">' +
+    '<h2 style="font-size:17px;font-weight:600">当前无网络</h2>' +
+    '<p style="color:#7d726a;font-size:13.5px;margin-top:8px">连上网络后再打开就能看到照片</p></body>',
+    { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
+}
