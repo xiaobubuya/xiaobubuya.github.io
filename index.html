@@ -48,6 +48,7 @@
       <h1><span class="dot"></span>我们的婚纱照</h1>
       <div class="meta" id="meta">加载中…</div>
     </div>
+    <button id="btnUpload" class="icon-btn" aria-label="上传照片">＋</button>
     <button id="btnMenu" class="icon-btn" aria-label="更多">⋯</button>
   </header>
 
@@ -105,6 +106,20 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<!-- ============================ 上传 ============================ -->
+<input id="fileInput" type="file" accept="image/*" multiple hidden>
+
+<div id="uploadPanel" class="upload-panel" hidden>
+  <div class="up-head">
+    <span class="up-title" id="upTitle">准备中…</span>
+    <span class="up-count" id="upCount"></span>
+    <button id="upClose" class="icon-btn" aria-label="关闭">✕</button>
+  </div>
+  <div class="up-bar"><i id="upFill"></i></div>
+  <div class="up-list" id="upList"></div>
+</div>
+
+<script src="upload.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

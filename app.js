@@ -33,7 +33,7 @@ const el = {
 
   app: $('app'), meta: $('meta'), timeline: $('timeline'),
   loading: $('loading'), empty: $('empty'), sentinel: $('sentinel'),
-  btnMenu: $('btnMenu'), btnTop: $('btnTop'),
+  btnMenu: $('btnMenu'), btnTop: $('btnTop'), btnUpload: $('btnUpload'),
 
   menu: $('menu'), btnSlideshow: $('btnSlideshow'), btnReload: $('btnReload'),
   btnLogout: $('btnLogout'), sheetFoot: $('sheetFoot'),
@@ -61,6 +61,9 @@ const state = {
   slideIndex: 0,
   paused: false
 };
+
+/** 已见过的照片 key —— 上传时用来跳过重复（内容寻址，key 相同即同一张） */
+const knownKeys = new Set();
 
 /* ================================================================
    工具
@@ -290,7 +293,10 @@ function renderNew(list) {
     }
 
     const grid = sec.querySelector('.grid');
-    for (const p of g.items) grid.appendChild(makeCell(p));
+    for (const p of g.items) {
+      knownKeys.add(p.k);
+      grid.appendChild(makeCell(p));
+    }
   }
 
   relayout();
@@ -514,6 +520,32 @@ el.menu.addEventListener('click', e => { if (e.target.closest('[data-close]')) c
 el.btnReload.addEventListener('click', () => location.reload());
 el.btnLogout.addEventListener('click', logout);
 el.btnTop.addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
+
+/* ================================================================
+   上传
+   ================================================================ */
+if (window.AlbumUpload) {
+  AlbumUpload.install({
+    API,
+    toast,
+    knownKeys,
+
+    // 新照片可能插在时间线的任何位置（EXIF 日期可能很旧），
+    // 增量插入要处理分组边界，直接重载最稳。
+    onDone: async () => {
+      state.photos = [];
+      state.cursor = null;
+      state.done = false;
+      state.viewerIndex = -1;
+      el.timeline.innerHTML = '';
+      await loadDays();
+      await loadMore();
+      scrollTo({ top: 0 });
+    }
+  });
+
+  el.btnUpload.addEventListener('click', () => AlbumUpload.pick());
+}
 
 /* ================================================================
    启动

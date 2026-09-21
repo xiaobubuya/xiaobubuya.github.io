@@ -333,6 +333,58 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 }
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
 
+/* ============================ 上传面板 ============================ */
+.upload-panel{
+  position:fixed;left:0;right:0;
+  bottom:calc(env(safe-area-inset-bottom) + 10px);
+  z-index:70;
+  margin:0 10px;
+  background:var(--surface);
+  border-radius:14px;
+  box-shadow:0 10px 34px -10px rgba(43,35,32,.4),0 0 0 1px var(--line);
+  overflow:hidden;
+  animation:up .22s cubic-bezier(.22,1,.36,1);
+}
+.up-head{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 8px 10px 14px;
+}
+.up-title{font-size:13.5px;font-weight:500}
+.up-count{font-size:12px;color:var(--ink-3);margin-left:auto;font-variant-numeric:tabular-nums}
+.up-head .icon-btn{width:30px;height:30px;font-size:14px}
+
+.up-bar{height:2.5px;background:rgba(43,35,32,.07)}
+.up-bar > i{
+  display:block;height:100%;width:0;
+  background:var(--accent);
+  transition:width .25s ease;
+}
+
+.up-list{
+  max-height:34vh;overflow-y:auto;
+  padding:6px 6px 8px;
+  -webkit-overflow-scrolling:touch;
+}
+.up-item{
+  display:flex;align-items:center;gap:9px;
+  padding:7px 8px;border-radius:8px;
+  font-size:12.5px;
+}
+.up-item + .up-item{border-top:1px solid var(--line)}
+.up-item .nm{
+  flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--ink-2);
+}
+.up-item .st{flex:none;font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.up-item.done .st{color:#4caf7d}
+.up-item.fail .st{color:var(--danger)}
+.up-item.fail .nm{color:var(--danger)}
+.up-item .retry{
+  flex:none;font-size:11.5px;color:var(--accent);
+  padding:2px 7px;border-radius:6px;background:rgba(176,141,106,.1);
+}
+
 /* ============================ 无障碍 ============================ */
 @media(prefers-reduced-motion:reduce){
   *{animation-duration:.01ms !important;transition-duration:.01ms !important}
