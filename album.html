@@ -112,15 +112,32 @@
   </div>
 </div>
 
-<!-- ============================ 阅读器 ============================ -->
+<!-- ============================ 阅读器（书本式跨页）============================ -->
 <div id="readView" class="view read-view" hidden>
-  <div class="read-slides" id="readSlides"></div>
+  <div class="read-stage" id="readStage">
+    <div class="book" id="book">
+      <div class="book-side left" id="bookLeft"></div>
+      <div class="book-side right" id="bookRight"></div>
+      <div class="book-spine"></div>
+      <div class="book-flip" id="bookFlip" hidden>
+        <div class="face front" id="flipFront"></div>
+        <div class="face back" id="flipBack"></div>
+      </div>
+    </div>
+
+    <!-- 左右点击区 -->
+    <button class="read-zone prev" id="readPrev" aria-label="上一页"></button>
+    <button class="read-zone next" id="readNext" aria-label="下一页"></button>
+
+    <div class="read-hint" id="readHint">点右侧翻页 · 也可以左右滑</div>
+  </div>
+
   <div class="read-bar" id="readBar">
     <button id="readExit" class="icon-btn light">✕</button>
     <span class="read-title" id="readTitle"></span>
     <span class="read-pos" id="readPos"></span>
+    <button id="readMode" class="icon-btn light" title="跨页 / 单页">▥</button>
   </div>
-  <div class="read-hint" id="readHint">左右滑动翻页</div>
 </div>
 
 <!-- ============================ 选照片 ============================ -->

@@ -711,13 +711,38 @@
     renderEditor();
   });
 
-  el('btnRatio').addEventListener('click', () => {
+  /* 画布比例是「开本」—— 改就改整本，否则跨页会一边大一边小 */
+  el('btnRatio').addEventListener('click', async () => {
+    const i = RATIOS.findIndex(r => Math.abs(r - curRatio()) < 0.01);
+    const next = RATIOS[(i + 1) % RATIOS.length];
+
     pushUndo();
-    const layout = curLayout();
-    const i = RATIOS.findIndex(r => Math.abs(r - layout.canvas.ratio) < 0.01);
-    layout.canvas.ratio = RATIOS[(i + 1) % RATIOS.length];
+    S.pages.forEach(p => { p.layout.canvas.ratio = next; });
     renderEditor();
-    scheduleSave();
+    setSaveState('busy', '保存中…');
+
+    try {
+      for (const [idx, p] of S.pages.entries()) {
+        const res = await A.api(`/api/albums/${S.album.id}/pages/${idx}`, {
+          method: 'PUT',
+          body: JSON.stringify({ baseVersion: p.version, layout: p.layout })
+        });
+        if (res.status === 409) {
+          S.conflict = (await res.json()).server;
+          S.cur = idx;
+          showConflict();
+          return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        p.version = (await res.json()).page.version;
+      }
+      S.dirty = false;
+      setSaveState('ok', '已保存');
+      A.toast(`已把 ${S.pages.length} 页都改为 ${ratioLabel(next)}`);
+    } catch (e) {
+      setSaveState('err', '保存失败');
+      A.toast('改比例失败：' + e.message);
+    }
   });
 
   el('btnFront').addEventListener('click', () => withSel((a, i) => a.push(a.splice(i, 1)[0])));
@@ -901,83 +926,306 @@
   function relayoutTray() { /* 占位，托盘是弹性布局，无需重算 */ }
 
   /* ================================================================
-     阅读器（横滑翻页）
+     阅读器：书本式跨页 + 翻页动画
+     ----------------------------------------------------------------
+     跨页显示（左一页 + 右一页），中间有书脊阴影，翻页时真做 3D 翻转。
+
+     翻页的原理（以「向前翻」为例）：
+       底层：  左 = 旧左页      右 = 新右页   ← 翻的过程中逐渐露出来
+       翻页层：正面 = 旧右页    背面 = 新左页
+       把翻页层绕书脊从 0° 转到 -180°，它就盖到左边去了。
+     向后翻是对称的，绕右侧边缘反向转。
      ================================================================ */
-  el('btnRead').addEventListener('click', async () => {
-    if (S.dirty) await doSave();
-    renderReader();
-    show('read');
-    el('readTitle').textContent = S.album.title;
-    setTimeout(() => { el('readHint').style.opacity = '0'; }, 2600);
-  });
+  const R = { spread: 0, single: false, flipping: false };
 
-  function renderReader() {
-    const box = el('readSlides');
+  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const totalSpreads = () => Math.max(1, Math.ceil(S.pages.length / 2));
+
+  /** 之后翻页用的是相册第一页的比例（改比例时会同步所有页） */
+  const bookRatio = () => (S.pages[0] && S.pages[0].layout.canvas.ratio) || 1.5;
+
+  const slideCount = () => (R.single ? S.pages.length : totalSpreads());
+  const canPrev = () => R.spread > 0;
+  const canNext = () => R.spread < slideCount() - 1;
+
+  /* ---------------- 尺寸 ---------------- */
+  function layoutBook() {
+    const stage = el('readStage');
+    const cols = R.single ? 1 : 2;
+    const ratio = bookRatio();
+
+    const availW = Math.max(120, stage.clientWidth - 34);
+    const availH = Math.max(90, stage.clientHeight - 96);
+
+    let w = availW;
+    let h = w / (cols * ratio);
+    if (h > availH) { h = availH; w = h * cols * ratio; }
+
+    const sideW = Math.max(60, w / cols);
+    const book = el('book');
+    book.style.width = (sideW * cols) + 'px';
+    book.style.height = h + 'px';
+
+    const L = el('bookLeft'), Rt = el('bookRight');
+    L.style.width = sideW + 'px'; L.style.height = h + 'px';
+    Rt.style.width = sideW + 'px'; Rt.style.height = h + 'px';
+    return h;
+  }
+
+  /* ---------------- 渲染单页 ---------------- */
+  /**
+   * 把一个书页渲染进容器
+   * @param {HTMLElement} box   容器（书页 或 翻页层的一面）
+   * @param {number} idx        页码，越界则渲染空白页
+   * @param {'left'|'right'|null} align 页码靠哪边；null 不显示页码
+   */
+  function renderSide(box, idx, align) {
     box.innerHTML = '';
+    const p = S.pages[idx];
 
-    const availW = window.innerWidth - 32;
-    const availH = window.innerHeight - 120;
+    if (!p) {
+      // 跨页另一半没有内容 —— 留一张空白纸，像书的最后一页
+      box.style.background = '#fdfcfa';
+      return;
+    }
 
-    S.pages.forEach((p, idx) => {
-      const slide = document.createElement('div');
-      slide.className = 'read-slide';
+    box.style.background = (p.layout.canvas && p.layout.canvas.bg) || '#ffffff';
 
-      const ratio = (p.layout.canvas && p.layout.canvas.ratio) || 1.5;
-      let w = availW, h = w / ratio;
-      if (h > availH) { h = availH; w = h * ratio; }
+    p.layout.items.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'item';
+      d.style.cssText =
+        `left:${it.x * 100}%;top:${it.y * 100}%;` +
+        `width:${it.w * 100}%;height:${it.h * 100}%;` +
+        `transform:rotate(${it.rot}deg);z-index:${i + 1};cursor:default`;
 
-      const paper = document.createElement('div');
-      paper.className = 'read-paper';
-      paper.style.width = w + 'px';
-      paper.style.height = h + 'px';
-      paper.style.background = (p.layout.canvas && p.layout.canvas.bg) || '#fff';
+      const wrap = document.createElement('div');
+      wrap.className = 'img';
+      const img = document.createElement('img');
+      img.src = A.previewUrl(it.photo);
+      img.alt = '';
+      img.draggable = false;
+      if (it.fit === 'contain') img.style.objectFit = 'contain';
+      wrap.appendChild(img);
+      d.appendChild(wrap);
 
-      p.layout.items.forEach((it, i) => {
-        const d = document.createElement('div');
-        d.className = 'item';
-        d.style.cssText =
-          `left:${it.x * 100}%;top:${it.y * 100}%;` +
-          `width:${it.w * 100}%;height:${it.h * 100}%;` +
-          `transform:rotate(${it.rot}deg);z-index:${i + 1};cursor:default`;
-        const wrap = document.createElement('div');
-        wrap.className = 'img';
-        const img = document.createElement('img');
-        img.src = A.previewUrl(it.photo);
-        img.alt = '';
-        img.loading = idx === S.cur ? 'eager' : 'lazy';
-        if (it.fit === 'contain') img.style.objectFit = 'contain';
-        wrap.appendChild(img);
-        d.appendChild(wrap);
-        if (it.caption) {
-          const cap = document.createElement('div');
-          cap.className = 'cap';
-          cap.textContent = it.caption;
-          d.appendChild(cap);
-        }
-        paper.appendChild(d);
-      });
-
-      slide.appendChild(paper);
-      box.appendChild(slide);
+      if (it.caption) {
+        const cap = document.createElement('div');
+        cap.className = 'cap';
+        cap.textContent = it.caption;
+        d.appendChild(cap);
+      }
+      box.appendChild(d);
     });
 
-    updateReadPos();
-    requestAnimationFrame(() => { box.scrollLeft = S.cur * box.clientWidth; });
+    if (align) {
+      const n = document.createElement('div');
+      n.className = 'pgno ' + align;
+      n.textContent = String(idx + 1);
+      box.appendChild(n);
+    }
   }
 
-  function updateReadPos() {
-    const box = el('readSlides');
-    const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
-    el('readPos').textContent = `${Math.min(i + 1, S.pages.length)} / ${S.pages.length}`;
-    S.cur = Math.min(i, S.pages.length - 1);
+  /* ---------------- 渲染当前跨页 ---------------- */
+  function renderSpread() {
+    el('book').classList.toggle('single', R.single);
+    layoutBook();
+
+    if (R.single) {
+      renderSide(el('bookRight'), R.spread, 'right');
+    } else {
+      const l = R.spread * 2;
+      renderSide(el('bookLeft'), l, 'left');
+      renderSide(el('bookRight'), l + 1, 'right');
+    }
+
+    updateReadBar();
+    preloadAround();
   }
 
-  el('readSlides').addEventListener('scroll', () => requestAnimationFrame(updateReadPos), { passive: true });
+  function updateReadBar() {
+    const n = S.pages.length;
+    el('readPos').textContent = R.single
+      ? `${Math.min(R.spread + 1, n)} / ${n}`
+      : (() => {
+          const l = R.spread * 2 + 1;
+          const r = Math.min(l + 1, n);
+          return l === r ? `${l} / ${n}` : `${l}-${r} / ${n}`;
+        })();
+
+    el('readPrev').disabled = !canPrev();
+    el('readNext').disabled = !canNext();
+    el('readMode').textContent = R.single ? '▯' : '▥';
+    el('readMode').title = R.single ? '切到跨页（像翻书）' : '切到单页（窄屏更好看）';
+  }
+
+  /** 预加载相邻跨页的图，翻过去时不白屏 */
+  function preloadAround() {
+    const from = R.single ? R.spread : R.spread * 2;
+    const idxs = R.single
+      ? [R.spread - 1, R.spread + 1]
+      : [from - 2, from - 1, from + 2, from + 3];
+    for (const i of idxs) {
+      const p = S.pages[i];
+      if (p) for (const it of p.layout.items) new Image().src = A.previewUrl(it.photo);
+    }
+  }
+
+  /* ---------------- 翻页 ---------------- */
+  async function flipForward() {
+    if (R.flipping || !canNext()) return;
+    R.flipping = true;
+
+    if (R.single) {
+      await softSwap(1);
+      R.flipping = false;
+      return;
+    }
+
+    const cur = R.spread, nxt = cur + 1;
+    renderSide(el('bookLeft'), cur * 2, 'left');          // 旧左页
+    renderSide(el('bookRight'), nxt * 2 + 1, 'right');    // 新右页
+    renderSide(el('flipFront'), cur * 2 + 1, 'right');    // 正面：旧右页
+    renderSide(el('flipBack'), nxt * 2, 'left');          // 背面：新左页
+
+    await runFlip('fwd', -180);
+
+    R.spread = nxt;
+    renderSpread();
+    R.flipping = false;
+  }
+
+  async function flipBackward() {
+    if (R.flipping || !canPrev()) return;
+    R.flipping = true;
+
+    if (R.single) {
+      await softSwap(-1);
+      R.flipping = false;
+      return;
+    }
+
+    const cur = R.spread, prv = cur - 1;
+    renderSide(el('bookLeft'), prv * 2, 'left');          // 新左页
+    renderSide(el('bookRight'), cur * 2 + 1, 'right');    // 旧右页
+    renderSide(el('flipFront'), cur * 2, 'left');         // 正面：旧左页
+    renderSide(el('flipBack'), prv * 2 + 1, 'right');     // 背面：新右页
+
+    await runFlip('bwd', 180);
+
+    R.spread = prv;
+    renderSpread();
+    R.flipping = false;
+  }
+
+  /** 执行 3D 翻转动画 */
+  async function runFlip(dir, deg) {
+    const flip = el('bookFlip');
+    flip.hidden = false;
+    flip.className = 'book-flip ' + dir;
+
+    flip.style.transition = 'none';
+    flip.style.transform = 'rotateY(0deg)';
+    void flip.offsetWidth;                 // 强制回流，让起始态生效
+    flip.style.transition = '';
+
+    await twoFrames();
+    flip.style.transform = `rotateY(${deg}deg)`;
+    await wait(690);
+
+    flip.hidden = true;
+    flip.style.transition = 'none';
+    flip.style.transform = '';
+    void flip.offsetWidth;
+    flip.style.transition = '';
+  }
+
+  /** 单页模式：没有「翻」的对象，用淡出淡入 */
+  async function softSwap(dir) {
+    const side = el('bookRight');
+    side.style.transition = 'opacity .16s';
+    side.style.opacity = '0';
+    await wait(165);
+    R.spread += dir;
+    renderSpread();
+    side.style.opacity = '1';
+    await wait(165);
+    side.style.transition = '';
+  }
+
+  /* ---------------- 进入 / 退出 ---------------- */
+  async function enterReader() {
+    if (S.dirty) await doSave();
+
+    // 屏幕够宽才用跨页；竖屏手机用单页，否则每页只剩指尖大小
+    R.single = (window.innerWidth / window.innerHeight) < 1.15;
+    R.spread = R.single ? Math.min(S.cur, S.pages.length - 1) : Math.floor(S.cur / 2);
+
+    S.sel = null;
+    renderEditor();
+    show('read');
+    renderSpread();
+
+    el('readTitle').textContent = S.album.title;
+    el('readHint').textContent = R.single
+      ? '点右侧翻页 · 横屏可看跨页'
+      : '点右侧翻页 · 也可以左右滑';
+    el('readHint').style.opacity = '1';
+    clearTimeout(R.exitTimer);
+    R.exitTimer = setTimeout(() => { el('readHint').style.opacity = '0'; }, 2800);
+  }
+
+  el('btnRead').addEventListener('click', enterReader);
 
   el('readExit').addEventListener('click', () => {
+    // 回到编辑器时定位到刚才看的那一页
+    S.cur = R.single ? R.spread : R.spread * 2;
+    S.cur = Math.min(S.cur, S.pages.length - 1);
+    S.sel = null;
     show('edit');
     renderEditor();
   });
+
+  el('readPrev').addEventListener('click', () => { flipBackward(); });
+  el('readNext').addEventListener('click', () => { flipForward(); });
+
+  el('readMode').addEventListener('click', () => {
+    const page = R.single ? R.spread : R.spread * 2;
+    R.single = !R.single;
+    R.spread = R.single ? Math.min(page, S.pages.length - 1) : Math.floor(page / 2);
+    renderSpread();
+    A.toast(R.single ? '单页模式' : '跨页模式');
+  });
+
+  /* 键盘 */
+  document.addEventListener('keydown', e => {
+    if (S.view !== 'read') return;
+    if (e.key === 'Escape') el('readExit').click();
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); flipForward(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); flipBackward(); }
+  });
+
+  /* 滑动手势（翻页动画期间忽略，避免连翻） */
+  {
+    let t = null;
+    const stage = el('readStage');
+    stage.addEventListener('touchstart', e => {
+      const c = e.changedTouches[0];
+      t = { x: c.clientX, y: c.clientY, ms: Date.now() };
+    }, { passive: true });
+    stage.addEventListener('touchend', e => {
+      if (!t || R.flipping) return;
+      const c = e.changedTouches[0];
+      const dx = c.clientX - t.x, dy = c.clientY - t.y;
+      const fast = Date.now() - t.ms < 900;
+      t = null;
+      if (!fast) return;
+      if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy)) {
+        dx < 0 ? flipForward() : flipBackward();
+      }
+    }, { passive: true });
+  }
 
   /* ================================================================
      新建相册
