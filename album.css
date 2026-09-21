@@ -57,41 +57,75 @@
   height:100dvh;overflow:hidden;
 }
 
+/* ---- 顶栏：只放返回 / 标题 / 保存状态 / 工具开关，永不滚动 ---- */
 .edit-bar{
-  flex:none;display:flex;align-items:center;gap:5px;
-  padding:calc(env(safe-area-inset-top) + 7px) 8px 7px;
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
   background:var(--epanel);border-bottom:1px solid var(--eline);
-  overflow-x:auto;scrollbar-width:none;
 }
-.edit-bar::-webkit-scrollbar{display:none}
-.edit-bar .icon-btn{
-  flex:none;width:34px;height:32px;min-width:34px;
+
+/* 编辑器内的按钮统一深色样式（顶栏与工具面板共用） */
+.edit-view .icon-btn{
+  flex:none;width:34px;height:34px;min-width:34px;
   display:grid;place-items:center;
-  font-size:14px;color:var(--eink);
+  font-size:14px;line-height:1;color:var(--eink);
   background:var(--epanel2);border:1px solid var(--eline);
-  border-radius:8px;cursor:pointer;
+  border-radius:9px;cursor:pointer;
+  transition:background .12s,opacity .12s;
 }
-.edit-bar .icon-btn.wide{min-width:52px;padding:0 8px}
-.edit-bar .icon-btn:disabled{opacity:.32;cursor:default}
-.edit-bar .icon-btn:active:not(:disabled){background:#33333a}
-.bar-sep{flex:none;width:1px;height:20px;background:var(--eline);margin:0 3px}
+.edit-view .icon-btn.wide{min-width:56px;padding:0 9px;font-size:12.5px}
+.edit-view .icon-btn:disabled{opacity:.3;cursor:default}
+.edit-view .icon-btn:active:not(:disabled){background:#34343b}
+
+.tools-toggle{font-size:12px}
+.tools-toggle[aria-expanded="true"]{
+  background:var(--accent);border-color:var(--accent);color:#141416;
+}
 
 .title-input{
-  flex:none;width:120px;height:32px;padding:0 10px;
-  font-size:13px;font-family:inherit;
+  flex:1;min-width:0;height:34px;padding:0 11px;
+  font-size:14px;font-family:inherit;
   color:var(--eink);background:var(--epanel2);
-  border:1px solid var(--eline);border-radius:8px;outline:none;
+  border:1px solid var(--eline);border-radius:9px;outline:none;
+  transition:border-color .15s;
 }
-.title-input:focus{border-color:var(--accent)}
+.title-input:focus{border-color:var(--accent);background:#2b2b30}
+.title-input::placeholder{color:var(--eink2)}
 
 .save-state{
-  flex:none;margin-left:auto;padding-left:10px;
-  font-size:11px;color:var(--eink2);white-space:nowrap;
+  flex:none;font-size:10.5px;color:var(--eink2);
+  white-space:nowrap;letter-spacing:.02em;
 }
+.save-state:empty{display:none}
 .save-state.busy{color:var(--accent)}
 .save-state.ok::before{content:"● ";color:#4caf7d}
 .save-state.busy::before{content:"● ";color:var(--accent)}
 .save-state.err::before{content:"● ";color:var(--guide)}
+
+/* ---- 可下拉的工具面板：分组换行，不做横向滚动 ---- */
+.tool-panel{
+  flex:none;
+  display:flex;flex-wrap:wrap;gap:9px 16px;
+  padding:11px 12px 13px;
+  background:var(--epanel);border-bottom:1px solid var(--eline);
+  max-height:46dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  animation:panelDown .2s cubic-bezier(.22,1,.36,1);
+}
+@keyframes panelDown{
+  from{opacity:0;transform:translateY(-10px)}
+  to{opacity:1;transform:none}
+}
+
+.tool-group{display:flex;align-items:center;gap:5px}
+.tool-label{
+  flex:none;font-size:10.5px;letter-spacing:.06em;
+  color:var(--eink2);padding-right:3px;white-space:nowrap;
+}
+.page-ind{
+  flex:none;min-width:46px;text-align:center;
+  font-size:12.5px;font-variant-numeric:tabular-nums;
+  color:var(--eink);padding:0 3px;
+}
 
 /* ---- 舞台 ---- */
 .stage{

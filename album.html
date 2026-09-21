@@ -40,36 +40,56 @@
 
 <!-- ============================ 编辑器 ============================ -->
 <div id="editView" class="view edit-view" hidden>
+  <!-- 顶栏：只留最常用的，永远不滚动 -->
   <div class="edit-bar">
     <button id="btnBack" class="icon-btn" aria-label="返回">‹</button>
     <input id="albumTitle" class="title-input" maxlength="60" placeholder="相册名">
-
-    <span class="bar-sep"></span>
-    <button id="btnUndo" class="icon-btn" title="撤销">↶</button>
-    <button id="btnRedo" class="icon-btn" title="重做">↷</button>
-
-    <span class="bar-sep"></span>
-    <button id="btnPrevPage" class="icon-btn">‹</button>
-    <button id="btnPage" class="icon-btn wide">1/1</button>
-    <button id="btnNextPage" class="icon-btn">›</button>
-    <button id="btnAddPage" class="icon-btn" title="加一页">＋页</button>
-    <button id="btnDelPage" class="icon-btn" title="删除本页">🗑页</button>
-
-    <span class="bar-sep"></span>
-    <button id="btnRatio" class="icon-btn wide">3:2</button>
-
-    <span class="bar-sep"></span>
-    <button id="btnFront" class="icon-btn" title="置顶">⤒</button>
-    <button id="btnUp" class="icon-btn" title="上移">↑</button>
-    <button id="btnDown" class="icon-btn" title="下移">↓</button>
-    <button id="btnBack2" class="icon-btn" title="置底">⤓</button>
-    <button id="btnDelItem" class="icon-btn" title="删除选中">✕</button>
-    <button id="btnSetCover" class="icon-btn" title="设为封面（再点一次恢复自动）">☆</button>
-    <button id="btnNextItem" class="icon-btn" title="选中下一个元素">⇄</button>
-
-    <span class="bar-sep"></span>
-    <button id="btnRead" class="icon-btn" title="预览翻页">▶</button>
     <span id="saveState" class="save-state"></span>
+    <button id="btnToggleTools" class="icon-btn tools-toggle"
+            aria-label="工具面板" aria-expanded="false">▾</button>
+  </div>
+
+  <!-- 可下拉的工具面板：分组换行排列，不做横向滚动 -->
+  <div id="toolPanel" class="tool-panel" hidden>
+    <div class="tool-group">
+      <span class="tool-label">历史</span>
+      <button id="btnUndo" class="icon-btn" title="撤销">↶</button>
+      <button id="btnRedo" class="icon-btn" title="重做">↷</button>
+    </div>
+
+    <div class="tool-group">
+      <span class="tool-label">页面</span>
+      <button id="btnPrevPage" class="icon-btn" title="上一页">‹</button>
+      <span id="btnPage" class="page-ind">1/1</span>
+      <button id="btnNextPage" class="icon-btn" title="下一页">›</button>
+      <button id="btnAddPage" class="icon-btn wide" title="加一页">＋页</button>
+      <button id="btnDelPage" class="icon-btn wide" title="删除本页">删页</button>
+    </div>
+
+    <div class="tool-group">
+      <span class="tool-label">画布</span>
+      <button id="btnRatio" class="icon-btn wide" title="切换画布比例">3:2</button>
+    </div>
+
+    <div class="tool-group">
+      <span class="tool-label">图层</span>
+      <button id="btnFront" class="icon-btn" title="置顶">⤒</button>
+      <button id="btnUp" class="icon-btn" title="上移">↑</button>
+      <button id="btnDown" class="icon-btn" title="下移">↓</button>
+      <button id="btnBack2" class="icon-btn" title="置底">⤓</button>
+    </div>
+
+    <div class="tool-group">
+      <span class="tool-label">元素</span>
+      <button id="btnNextItem" class="icon-btn" title="依次选中元素">⇄</button>
+      <button id="btnSetCover" class="icon-btn" title="设为封面">☆</button>
+      <button id="btnDelItem" class="icon-btn" title="删除选中元素">✕</button>
+    </div>
+
+    <div class="tool-group">
+      <span class="tool-label">预览</span>
+      <button id="btnRead" class="icon-btn wide" title="翻页预览">▶ 翻页</button>
+    </div>
   </div>
 
   <div id="stage" class="stage">

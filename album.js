@@ -491,7 +491,7 @@
       const d = await res.json();
       p.version = d.page.version;
       S.dirty = false;
-      setSaveState('ok', '已保存 ' + A.timeLabel(new Date().toISOString()));
+      setSaveState('ok', '已保存');
     } catch (e) {
       setSaveState('err', '网络错误');
     } finally {
@@ -543,6 +543,28 @@
     if (S.dirty) { await doSave(); }
     await loadAlbums();
     show('list');
+  });
+
+  /* ================================================================
+     工具面板开合
+     ----------------------------------------------------------------
+     顶栏只放返回/标题/保存状态，工具收进可下拉的面板里，
+     免得在手机上横向滚动。面板占垂直空间，开合后要重新适配画布。
+     ================================================================ */
+  const TOOLS_KEY = 'album_tools_open';
+
+  function setToolsOpen(open) {
+    el('toolPanel').hidden = !open;
+    const btn = el('btnToggleTools');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.textContent = open ? '▴' : '▾';
+    btn.title = open ? '收起工具' : '展开工具';
+    try { localStorage.setItem(TOOLS_KEY, open ? '1' : '0'); } catch { /* 隐私模式 */ }
+    requestAnimationFrame(() => fitCanvas());
+  }
+
+  el('btnToggleTools').addEventListener('click', () => {
+    setToolsOpen(el('toolPanel').hidden);
   });
 
   el('btnUndo').addEventListener('click', undo);
@@ -924,6 +946,11 @@
     const user = await A.requireAuth();
     if (!user) return;
     el('boot').hidden = true;
+
+    // 恢复工具面板开合状态。首次默认展开 —— 否则新用户根本不知道有哪些工具
+    let toolsOpen = true;
+    try { toolsOpen = localStorage.getItem(TOOLS_KEY) !== '0'; } catch { /* 隐私模式 */ }
+    setToolsOpen(toolsOpen);
 
     // 带 ?id=xxx 直接进编辑器
     const id = new URLSearchParams(location.search).get('id');
