@@ -280,7 +280,11 @@
   background:radial-gradient(140% 100% at 50% -10%, #4a3f39 0%, #241d1a 55%, #15110f 100%);
   perspective:2600px;
   overflow:hidden;
+  /* 横向拖动交给我们的翻页手势，页面本身不滚动 */
+  touch-action:none;
+  cursor:grab;
 }
+.read-stage.dragging{cursor:grabbing}
 .read-stage::after{
   content:"";position:absolute;inset:0;pointer-events:none;
   background:repeating-linear-gradient(92deg,
@@ -359,18 +363,6 @@
   position:absolute;left:6px;right:6px;bottom:5px;
   font-size:10.5px;line-height:1.35;color:#fff;
   text-shadow:0 1px 3px rgba(0,0,0,.6);
-}
-
-/* ---- 左右点击区 ---- */
-.read-zone{
-  position:absolute;top:0;bottom:56px;width:22%;
-  background:none;border:none;cursor:pointer;z-index:20;
-}
-.read-zone.prev{left:0}
-.read-zone.next{right:0}
-.read-zone:disabled{cursor:default}
-@media(hover:hover) and (pointer:fine){
-  .read-zone:not(:disabled):hover{background:rgba(255,255,255,.03)}
 }
 
 /* ---- 底栏 ---- */

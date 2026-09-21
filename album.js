@@ -1054,8 +1054,6 @@
           return l === r ? `${l} / ${n}` : `${l}-${r} / ${n}`;
         })();
 
-    el('readPrev').disabled = !canPrev();
-    el('readNext').disabled = !canNext();
     el('readMode').textContent = R.single ? '▯' : '▥';
     el('readMode').title = R.single ? '切到跨页（像翻书）' : '切到单页（窄屏更好看）';
   }
@@ -1072,87 +1070,180 @@
     }
   }
 
-  /* ---------------- 翻页 ---------------- */
-  async function flipForward() {
-    if (R.flipping || !canNext()) return;
-    R.flipping = true;
+  /* ---------------- 翻页：跟手拖动 + 3D 翻转 ----------------
+     为什么不用左右两侧的隐形点击区：没有视觉提示，用户根本不知道
+     那里能点，而且点完的内容和手指位置对不上。改成拖动 ——
+     手指往左拖，书页跟着手指转；松手时超过 35% 或甩得够快就翻过去，
+     否则弹回。既是「滑动」，又保留了翻书的手感。
+     ---------------------------------------------------------- */
 
-    if (R.single) {
-      await softSwap(1);
-      R.flipping = false;
-      return;
+  /** 起手：铺好底层与翻页层（不做动画） */
+  function beginFlip(dir) {
+    if (dir === 1 && !canNext()) return false;
+    if (dir === -1 && !canPrev()) return false;
+    if (R.single) return true;              // 单页模式没有「纸」可翻
+
+    const cur = R.spread;
+    if (dir === 1) {
+      const nxt = cur + 1;
+      renderSide(el('bookLeft'), cur * 2, 'left');          // 旧左页
+      renderSide(el('bookRight'), nxt * 2 + 1, 'right');    // 新右页
+      renderSide(el('flipFront'), cur * 2 + 1, 'right');    // 正面：旧右页
+      renderSide(el('flipBack'), nxt * 2, 'left');          // 背面：新左页
+      el('bookFlip').className = 'book-flip fwd';
+    } else {
+      const prv = cur - 1;
+      renderSide(el('bookLeft'), prv * 2, 'left');          // 新左页
+      renderSide(el('bookRight'), cur * 2 + 1, 'right');    // 旧右页
+      renderSide(el('flipFront'), cur * 2, 'left');         // 正面：旧左页
+      renderSide(el('flipBack'), prv * 2 + 1, 'right');     // 背面：新右页
+      el('bookFlip').className = 'book-flip bwd';
     }
 
-    const cur = R.spread, nxt = cur + 1;
-    renderSide(el('bookLeft'), cur * 2, 'left');          // 旧左页
-    renderSide(el('bookRight'), nxt * 2 + 1, 'right');    // 新右页
-    renderSide(el('flipFront'), cur * 2 + 1, 'right');    // 正面：旧右页
-    renderSide(el('flipBack'), nxt * 2, 'left');          // 背面：新左页
-
-    await runFlip('fwd', -180);
-
-    R.spread = nxt;
-    renderSpread();
-    R.flipping = false;
-  }
-
-  async function flipBackward() {
-    if (R.flipping || !canPrev()) return;
-    R.flipping = true;
-
-    if (R.single) {
-      await softSwap(-1);
-      R.flipping = false;
-      return;
-    }
-
-    const cur = R.spread, prv = cur - 1;
-    renderSide(el('bookLeft'), prv * 2, 'left');          // 新左页
-    renderSide(el('bookRight'), cur * 2 + 1, 'right');    // 旧右页
-    renderSide(el('flipFront'), cur * 2, 'left');         // 正面：旧左页
-    renderSide(el('flipBack'), prv * 2 + 1, 'right');     // 背面：新右页
-
-    await runFlip('bwd', 180);
-
-    R.spread = prv;
-    renderSpread();
-    R.flipping = false;
-  }
-
-  /** 执行 3D 翻转动画 */
-  async function runFlip(dir, deg) {
     const flip = el('bookFlip');
     flip.hidden = false;
-    flip.className = 'book-flip ' + dir;
-
     flip.style.transition = 'none';
     flip.style.transform = 'rotateY(0deg)';
-    void flip.offsetWidth;                 // 强制回流，让起始态生效
+    return true;
+  }
+
+  /** 拖动进度 0~1 直接映射到旋转角度 —— 完全跟手 */
+  function applyFlipProgress(dir, p) {
+    if (R.single) return;
+    const deg = dir === 1 ? -180 * p : 180 * p;
+    el('bookFlip').style.transform = `rotateY(${deg}deg)`;
+  }
+
+  /** 松手：target = 1 翻过去，0 弹回 */
+  function animateFlip(dir, target) {
+    if (R.single) return wait(150);
+    const flip = el('bookFlip');
     flip.style.transition = '';
+    void flip.offsetWidth;
+    flip.style.transform = `rotateY(${dir === 1 ? -180 * target : 180 * target}deg)`;
+    return wait(target === 1 ? 620 : 360);
+  }
 
-    await twoFrames();
-    flip.style.transform = `rotateY(${deg}deg)`;
-    await wait(690);
-
+  /** 收尾：藏起翻页层，用真实状态重渲染 */
+  function finishFlip(dir, landed) {
+    const flip = el('bookFlip');
     flip.hidden = true;
     flip.style.transition = 'none';
     flip.style.transform = '';
     void flip.offsetWidth;
     flip.style.transition = '';
+    if (landed) R.spread += dir;
+    renderSpread();
   }
 
-  /** 单页模式：没有「翻」的对象，用淡出淡入 */
-  async function softSwap(dir) {
-    const side = el('bookRight');
-    side.style.transition = 'opacity .16s';
-    side.style.opacity = '0';
-    await wait(165);
-    R.spread += dir;
-    renderSpread();
-    side.style.opacity = '1';
-    await wait(165);
-    side.style.transition = '';
+  /** 键盘 / 程序触发的整页翻动（没有拖动过程） */
+  async function turnPage(dir) {
+    if (R.flipping) return;
+    if (dir === 1 && !canNext()) return;
+    if (dir === -1 && !canPrev()) return;
+    R.flipping = true;
+
+    if (R.single) {
+      const side = el('bookRight');
+      side.style.transition = 'opacity .16s';
+      side.style.opacity = '0';
+      await wait(165);
+      R.spread += dir;
+      renderSpread();
+      side.style.opacity = '1';
+      await wait(165);
+      side.style.transition = '';
+    } else if (beginFlip(dir)) {
+      await twoFrames();
+      await animateFlip(dir, 1);
+      finishFlip(dir, true);
+    }
+    R.flipping = false;
   }
+
+  /* ---- 拖动交互 ---- */
+  let dragFlip = null;
+
+  el('readStage').addEventListener('pointerdown', e => {
+    if (R.flipping) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    dragFlip = {
+      x0: e.clientX, y0: e.clientY,
+      t0: performance.now(),
+      id: e.pointerId,
+      dir: 0, progress: 0, armed: false
+    };
+  });
+
+  el('readStage').addEventListener('pointermove', e => {
+    const d = dragFlip;
+    if (!d || e.pointerId !== d.id) return;
+
+    const dx = e.clientX - d.x0;
+    const dy = e.clientY - d.y0;
+
+    if (!d.armed) {
+      // 先确认是横向意图，避免和纵向手势打架
+      if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      const dir = dx < 0 ? 1 : -1;
+      if ((dir === 1 && !canNext()) || (dir === -1 && !canPrev())) return;
+      if (!beginFlip(dir)) return;
+
+      d.armed = true;
+      d.dir = dir;
+      el('readStage').classList.add('dragging');
+      try { el('readStage').setPointerCapture(e.pointerId); } catch { /* 忽略 */ }
+    }
+
+    // 拖过屏宽 70% 算翻满
+    const span = Math.max(160, el('readStage').clientWidth * 0.70);
+    d.progress = Math.min(1, Math.max(0, Math.abs(dx) / span));
+
+    if (R.single) {
+      // 单页模式没有可翻的纸，给一点横向位移当反馈
+      el('book').style.transform = `translateX(${-dx * 0.22}px)`;
+    } else {
+      applyFlipProgress(d.dir, d.progress);
+      e.preventDefault();
+    }
+  });
+
+  function endDragFlip(e) {
+    const d = dragFlip;
+    dragFlip = null;
+    el('readStage').classList.remove('dragging');
+    if (!d || !d.armed) return;
+    if (e && e.pointerId !== undefined && e.pointerId !== d.id) return;
+
+    const dt = Math.max(1, performance.now() - d.t0);
+    const moved = Math.abs((e && e.clientX != null ? e.clientX : d.x0) - d.x0);
+    const speed = moved / dt;                      // px/ms
+    const land = d.progress >= 0.35 || speed > 0.5;
+
+    R.flipping = true;
+
+    (async () => {
+      if (R.single) {
+        const side = el('bookRight');
+        side.style.transition = 'opacity .15s';
+        side.style.opacity = '0';
+        await wait(155);
+        if (land) R.spread += d.dir;
+        el('book').style.transform = '';
+        renderSpread();
+        side.style.opacity = '1';
+        await wait(155);
+        side.style.transition = '';
+      } else {
+        await animateFlip(d.dir, land ? 1 : 0);
+        finishFlip(d.dir, land);
+      }
+      R.flipping = false;
+    })();
+  }
+
+  el('readStage').addEventListener('pointerup', endDragFlip);
+  el('readStage').addEventListener('pointercancel', endDragFlip);
 
   /* ---------------- 进入 / 退出 ---------------- */
   async function enterReader() {
@@ -1169,11 +1260,11 @@
 
     el('readTitle').textContent = S.album.title;
     el('readHint').textContent = R.single
-      ? '点右侧翻页 · 横屏可看跨页'
-      : '点右侧翻页 · 也可以左右滑';
+      ? '左右滑动翻页 · 横屏可看跨页'
+      : '左右滑动翻页';
     el('readHint').style.opacity = '1';
     clearTimeout(R.exitTimer);
-    R.exitTimer = setTimeout(() => { el('readHint').style.opacity = '0'; }, 2800);
+    R.exitTimer = setTimeout(() => { el('readHint').style.opacity = '0'; }, 3200);
   }
 
   el('btnRead').addEventListener('click', enterReader);
@@ -1187,9 +1278,6 @@
     renderEditor();
   });
 
-  el('readPrev').addEventListener('click', () => { flipBackward(); });
-  el('readNext').addEventListener('click', () => { flipForward(); });
-
   el('readMode').addEventListener('click', () => {
     const page = R.single ? R.spread : R.spread * 2;
     R.single = !R.single;
@@ -1198,34 +1286,13 @@
     A.toast(R.single ? '单页模式' : '跨页模式');
   });
 
-  /* 键盘 */
+  /* 键盘（桌面端） */
   document.addEventListener('keydown', e => {
     if (S.view !== 'read') return;
-    if (e.key === 'Escape') el('readExit').click();
-    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); flipForward(); }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); flipBackward(); }
+    if (e.key === 'Escape') { el('readExit').click(); return; }
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); turnPage(1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); turnPage(-1); }
   });
-
-  /* 滑动手势（翻页动画期间忽略，避免连翻） */
-  {
-    let t = null;
-    const stage = el('readStage');
-    stage.addEventListener('touchstart', e => {
-      const c = e.changedTouches[0];
-      t = { x: c.clientX, y: c.clientY, ms: Date.now() };
-    }, { passive: true });
-    stage.addEventListener('touchend', e => {
-      if (!t || R.flipping) return;
-      const c = e.changedTouches[0];
-      const dx = c.clientX - t.x, dy = c.clientY - t.y;
-      const fast = Date.now() - t.ms < 900;
-      t = null;
-      if (!fast) return;
-      if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy)) {
-        dx < 0 ? flipForward() : flipBackward();
-      }
-    }, { passive: true });
-  }
 
   /* ================================================================
      新建相册
