@@ -35,6 +35,12 @@
   const RATIOS = [1.5, 1.3333, 1, 0.75, 0.6667];
   const GAP_PX = 8, SNAP_PX = 8, MIN_ITEM_PX = 36;
 
+  /* 画布缩放档位。竖屏手机上 3:2 横版画布只能占屏幕一小条，
+     元素显得很小、不好点，放大后编辑会舒服很多。 */
+  const ZOOMS = [1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  let zoomIdx = 0;
+  const zoomFactor = () => ZOOMS[zoomIdx];
+
   const page = () => S.pages[S.cur];
   const curLayout = () => page() && page().layout;
   const curRatio = () => (curLayout() && curLayout().canvas.ratio) || 1.5;
@@ -135,20 +141,54 @@
   }
 
   /* ================================================================
-     画布尺寸
+     画布尺寸与缩放
      ================================================================ */
+  let baseW = 0, baseH = 0;   // 适应屏幕时的尺寸（缩放前的基准）
+
   function fitCanvas() {
     const stage = el('stage');
     const c = el('canvas');
     if (!stage || !c) return;
     const pad = 24;
-    const aw = stage.clientWidth - pad;
-    const ah = stage.clientHeight - pad;
+    const aw = Math.max(60, stage.clientWidth - pad);
+    const ah = Math.max(40, stage.clientHeight - pad);
+
     let w = aw, h = w / curRatio();
     if (h > ah) { h = ah; w = h * curRatio(); }
-    c.style.width = Math.max(60, w) + 'px';
-    c.style.height = Math.max(40, h) + 'px';
+    baseW = w; baseH = h;
+
+    const z = zoomFactor();
+    c.style.width = (w * z) + 'px';
+    c.style.height = (h * z) + 'px';
+    updateZoomLabel();
   }
+
+  function updateZoomLabel() {
+    el('btnZoom').textContent = Math.round(zoomFactor() * 100) + '%';
+    el('btnZoomOut').disabled = zoomIdx === 0;
+    el('btnZoomIn').disabled = zoomIdx === ZOOMS.length - 1;
+  }
+
+  /** 切档位；keepCenter=true 时尽量把可视中心留在原处 */
+  function setZoom(i, keepCenter) {
+    const stage = el('stage');
+    const oldZ = zoomFactor();
+    const cx = baseW ? (stage.scrollLeft + stage.clientWidth / 2) / (baseW * oldZ) : 0.5;
+    const cy = baseH ? (stage.scrollTop + stage.clientHeight / 2) / (baseH * oldZ) : 0.5;
+
+    zoomIdx = Math.max(0, Math.min(ZOOMS.length - 1, i));
+    fitCanvas();
+
+    if (keepCenter && baseW && baseH) {
+      const z = zoomFactor();
+      stage.scrollLeft = cx * baseW * z - stage.clientWidth / 2;
+      stage.scrollTop = cy * baseH * z - stage.clientHeight / 2;
+    }
+  }
+
+  el('btnZoomIn').addEventListener('click', () => setZoom(zoomIdx + 1, true));
+  el('btnZoomOut').addEventListener('click', () => setZoom(zoomIdx - 1, true));
+  el('btnZoom').addEventListener('click', () => setZoom(0, false));
 
   const CW = () => el('canvas').clientWidth;
   const CH = () => el('canvas').clientHeight;
@@ -233,6 +273,10 @@
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
   function snapAxis(nx, size, total, others, vertical) {
+    // 阈值换算成画布坐标：希望「屏幕上 8px 内吸附」，
+    // 放大后画布坐标被拉大，阈值要相应缩小，否则吸附会变得过黏
+    const tol = SNAP_PX / zoomFactor();
+
     const lines = [0, total / 2, total];
     for (const o of others) {
       if (vertical) lines.push(o.x, o.x + o.w / 2, o.x + o.w);
@@ -242,12 +286,22 @@
     for (const anchor of [nx, nx + size / 2, nx + size]) {
       for (const L of lines) {
         const d = L - anchor;
-        if (Math.abs(d) <= SNAP_PX && (!best || Math.abs(d) < Math.abs(best.d))) {
+        if (Math.abs(d) <= tol && (!best || Math.abs(d) < Math.abs(best.d))) {
           best = { d, line: L };
         }
       }
     }
     return best;
+  }
+
+  /** 放大后把选中的元素滚进视野 —— 从托盘或 ⇄ 选中时用 */
+  function revealSelected() {
+    if (zoomFactor() <= 1) return;
+    const node = el('itemLayer').querySelector('.item.sel');
+    if (!node) return;
+    try {
+      node.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    } catch { /* 老浏览器忽略 */ }
   }
 
   function showGuides(vx, hy) {
@@ -784,6 +838,7 @@
       d.addEventListener('click', () => {
         S.sel = (S.sel === it.id) ? null : it.id;
         renderEditor();
+        revealSelected();
       });
       box.appendChild(d);
 
@@ -802,6 +857,7 @@
     const i = items.findIndex(x => x.id === S.sel);
     S.sel = items[(i + 1) % items.length].id;
     renderEditor();
+    revealSelected();
   });
   function relayoutTray() { /* 占位，托盘是弹性布局，无需重算 */ }
 

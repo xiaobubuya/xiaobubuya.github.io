@@ -127,16 +127,24 @@
   color:var(--eink);padding:0 3px;
 }
 
-/* ---- 舞台 ---- */
+/* ---- 舞台 ----
+   用 flex + 子元素 margin:auto 做居中（而不是 place-items:center）——
+   放大后画布会超出舞台，place-items:center 会把左上角裁掉且滚不到。 */
 .stage{
   flex:1;min-height:0;position:relative;
-  display:grid;place-items:center;padding:12px;
+  display:flex;overflow:auto;
+  padding:12px;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
   background:radial-gradient(120% 90% at 50% 0%,#232327 0%,var(--ebg) 70%);
 }
 .canvas{
-  position:relative;background:#fff;overflow:hidden;
+  position:relative;flex:none;margin:auto;
+  background:#fff;overflow:hidden;
   box-shadow:0 10px 40px -8px rgba(0,0,0,.7);border-radius:2px;
-  touch-action:none;user-select:none;
+  /* 空白处可以拖动来平移放大的画布；元素自己禁掉滚动，见 .item */
+  touch-action:pan-x pan-y;
+  user-select:none;
 }
 .item-layer{position:absolute;inset:0}
 
@@ -144,6 +152,8 @@
   position:absolute;transform-origin:center center;
   will-change:left,top,width,height;
   outline:1px solid transparent;cursor:grab;
+  /* 元素上的手势不冒泡给舞台 —— 否则拖照片会连带滚动画面 */
+  touch-action:none;
 }
 /* 命中区向外扩 10px —— 手机上手指比元素还宽，小元素很难点中。
    ::before 压在 .img 之下（z-index 0 vs 1），所以只在元素外的
