@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#15110f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="相册">
+<meta name="robots" content="noindex, nofollow">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="album.css">
+<title>相册</title>
+<style>
+  /* 分享页专用：加载态与失效提示 */
+  .share-error{
+    position:fixed;inset:0;display:grid;place-items:center;
+    padding:24px;background:radial-gradient(140% 100% at 50% -10%,
+      #4a3f39 0%, #241d1a 55%, #15110f 100%);
+    color:#f0eeec;text-align:center;
+  }
+  .share-error-box{max-width:320px}
+  .share-error h1{font-size:17px;font-weight:600;margin:0 0 10px}
+  .share-error p{font-size:13.5px;line-height:1.7;color:#9b9893;margin:0 0 22px}
+  .share-error a{
+    display:inline-block;padding:10px 22px;border-radius:9px;
+    font-size:13.5px;color:#141416;background:#e8e3de;text-decoration:none;
+  }
+</style>
+</head>
+<body class="album-page share-page">
+
+<div id="boot" class="boot"><div class="spinner"></div></div>
+
+<!-- 阅读器内部结构由 reader.js 生成 -->
+<div id="shareView" class="view read-view" hidden></div>
+
+<div id="shareError" class="share-error" hidden>
+  <div class="share-error-box">
+    <h1 id="errTitle">链接无效</h1>
+    <p id="errMsg">这个分享链接不存在，或者已经被撤销了。</p>
+    <a href="/">回首页</a>
+  </div>
+</div>
+
+<script src="reader.js"></script>
+<script src="share.js"></script>
+</body>
+</html>

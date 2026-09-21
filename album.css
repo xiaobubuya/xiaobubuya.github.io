@@ -415,6 +415,27 @@
 .sheet-note{
   padding:0 14px 12px;font-size:12.5px;line-height:1.6;color:var(--ink-2);
 }
+.sheet-note b{color:var(--ink);font-weight:600}
+.sheet-note.dim{color:var(--ink-3);font-size:12px}
+
+/* 分享链接：输入框 + 复制按钮 */
+.share-url{
+  display:flex;gap:8px;align-items:center;
+  margin:0 14px 10px;
+}
+.share-url input{
+  flex:1;min-width:0;height:38px;padding:0 11px;
+  font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--ink);background:#f6f1ec;
+  border:1px solid var(--line);border-radius:9px;outline:none;
+}
+.share-url input:focus{border-color:var(--accent)}
+.share-url .mini-btn{
+  flex:none;height:38px;padding:0 14px;font-size:12.5px;
+  color:var(--ink);background:#f2ece7;border:1px solid var(--line);
+  border-radius:9px;cursor:pointer;
+}
+.share-url .mini-btn:active{background:#e9e1da}
 
 .picker-grid{
   flex:1;min-height:0;overflow-y:auto;

@@ -960,372 +960,96 @@
   function relayoutTray() { /* 占位，托盘是弹性布局，无需重算 */ }
 
   /* ================================================================
-     阅读器：书本式跨页 + 翻页动画
+     阅读器
      ----------------------------------------------------------------
-     跨页显示（左一页 + 右一页），中间有书脊阴影，翻页时真做 3D 翻转。
-
-     翻页的原理（以「向前翻」为例）：
-       底层：  左 = 旧左页      右 = 新右页   ← 翻的过程中逐渐露出来
-       翻页层：正面 = 旧右页    背面 = 新左页
-       把翻页层绕书脊从 0° 转到 -180°，它就盖到左边去了。
-     向后翻是对称的，绕右侧边缘反向转。
+     书本渲染、翻页动画、单页/跨页切换都在 reader.js 里
+     （分享页用的同一套），这里只负责喂数据、退出时把页码同步回编辑器。
      ================================================================ */
-  const R = { spread: 0, single: false, flipping: false };
+  let reader = null;
 
-  const twoFrames = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  const wait = ms => new Promise(r => setTimeout(r, ms));
-  const totalSpreads = () => Math.max(1, Math.ceil(S.pages.length / 2));
+  el('btnRead').addEventListener('click', async () => {
+    if (S.dirty) await doSave();
+    S.sel = null;
 
-  /** 之后翻页用的是相册第一页的比例（改比例时会同步所有页） */
-  const bookRatio = () => (S.pages[0] && S.pages[0].layout.canvas.ratio) || 1.5;
-
-  const slideCount = () => (R.single ? S.pages.length : totalSpreads());
-  const canPrev = () => R.spread > 0;
-  const canNext = () => R.spread < slideCount() - 1;
-
-  /* ---------------- 尺寸 ---------------- */
-  function layoutBook() {
-    const stage = el('readStage');
-    const cols = R.single ? 1 : 2;
-    const ratio = bookRatio();
-
-    const availW = Math.max(120, stage.clientWidth - 34);
-    const availH = Math.max(90, stage.clientHeight - 96);
-
-    let w = availW;
-    let h = w / (cols * ratio);
-    if (h > availH) { h = availH; w = h * cols * ratio; }
-
-    const sideW = Math.max(60, w / cols);
-    const book = el('book');
-    book.style.width = (sideW * cols) + 'px';
-    book.style.height = h + 'px';
-
-    const L = el('bookLeft'), Rt = el('bookRight');
-    L.style.width = sideW + 'px'; L.style.height = h + 'px';
-    Rt.style.width = sideW + 'px'; Rt.style.height = h + 'px';
-    return h;
-  }
-
-  /* ---------------- 渲染单页 ---------------- */
-  /**
-   * 把一个书页渲染进容器
-   * @param {HTMLElement} box   容器（书页 或 翻页层的一面）
-   * @param {number} idx        页码，越界则渲染空白页
-   * @param {'left'|'right'|null} align 页码靠哪边；null 不显示页码
-   */
-  function renderSide(box, idx, align) {
-    box.innerHTML = '';
-    const p = S.pages[idx];
-
-    if (!p) {
-      // 跨页另一半没有内容 —— 留一张空白纸，像书的最后一页
-      box.style.background = '#fdfcfa';
-      return;
-    }
-
-    box.style.background = (p.layout.canvas && p.layout.canvas.bg) || '#ffffff';
-
-    p.layout.items.forEach((it, i) => {
-      const d = document.createElement('div');
-      d.className = 'item';
-      d.style.cssText =
-        `left:${it.x * 100}%;top:${it.y * 100}%;` +
-        `width:${it.w * 100}%;height:${it.h * 100}%;` +
-        `transform:rotate(${it.rot}deg);z-index:${i + 1};cursor:default`;
-
-      const wrap = document.createElement('div');
-      wrap.className = 'img';
-      const img = document.createElement('img');
-      img.src = A.previewUrl(it.photo);
-      img.alt = '';
-      img.draggable = false;
-      if (it.fit === 'contain') img.style.objectFit = 'contain';
-      wrap.appendChild(img);
-      d.appendChild(wrap);
-
-      if (it.caption) {
-        const cap = document.createElement('div');
-        cap.className = 'cap';
-        cap.textContent = it.caption;
-        d.appendChild(cap);
+    if (reader) reader.destroy();
+    reader = window.BookReader.create(el('readView'), {
+      pages: S.pages,
+      title: S.album.title,
+      imageUrl: key => A.previewUrl(key),
+      startPage: S.cur,
+      toast: A.toast,
+      onExit: () => {
+        // 回到编辑器时定位到刚才看的那一页
+        S.cur = Math.min(reader.currentPage(), S.pages.length - 1);
+        S.sel = null;
+        show('edit');
+        renderEditor();
       }
-      box.appendChild(d);
     });
 
-    if (align) {
-      const n = document.createElement('div');
-      n.className = 'pgno ' + align;
-      n.textContent = String(idx + 1);
-      box.appendChild(n);
-    }
-  }
-
-  /* ---------------- 渲染当前跨页 ---------------- */
-  function renderSpread() {
-    el('book').classList.toggle('single', R.single);
-    layoutBook();
-
-    if (R.single) {
-      renderSide(el('bookRight'), R.spread, 'right');
-    } else {
-      const l = R.spread * 2;
-      renderSide(el('bookLeft'), l, 'left');
-      renderSide(el('bookRight'), l + 1, 'right');
-    }
-
-    updateReadBar();
-    preloadAround();
-  }
-
-  function updateReadBar() {
-    const n = S.pages.length;
-    el('readPos').textContent = R.single
-      ? `${Math.min(R.spread + 1, n)} / ${n}`
-      : (() => {
-          const l = R.spread * 2 + 1;
-          const r = Math.min(l + 1, n);
-          return l === r ? `${l} / ${n}` : `${l}-${r} / ${n}`;
-        })();
-
-    el('readMode').textContent = R.single ? '▯' : '▥';
-    el('readMode').title = R.single ? '切到跨页（像翻书）' : '切到单页（窄屏更好看）';
-  }
-
-  /** 预加载相邻跨页的图，翻过去时不白屏 */
-  function preloadAround() {
-    const from = R.single ? R.spread : R.spread * 2;
-    const idxs = R.single
-      ? [R.spread - 1, R.spread + 1]
-      : [from - 2, from - 1, from + 2, from + 3];
-    for (const i of idxs) {
-      const p = S.pages[i];
-      if (p) for (const it of p.layout.items) new Image().src = A.previewUrl(it.photo);
-    }
-  }
-
-  /* ---------------- 翻页：跟手拖动 + 3D 翻转 ----------------
-     为什么不用左右两侧的隐形点击区：没有视觉提示，用户根本不知道
-     那里能点，而且点完的内容和手指位置对不上。改成拖动 ——
-     手指往左拖，书页跟着手指转；松手时超过 35% 或甩得够快就翻过去，
-     否则弹回。既是「滑动」，又保留了翻书的手感。
-     ---------------------------------------------------------- */
-
-  /** 起手：铺好底层与翻页层（不做动画） */
-  function beginFlip(dir) {
-    if (dir === 1 && !canNext()) return false;
-    if (dir === -1 && !canPrev()) return false;
-    if (R.single) return true;              // 单页模式没有「纸」可翻
-
-    const cur = R.spread;
-    if (dir === 1) {
-      const nxt = cur + 1;
-      renderSide(el('bookLeft'), cur * 2, 'left');          // 旧左页
-      renderSide(el('bookRight'), nxt * 2 + 1, 'right');    // 新右页
-      renderSide(el('flipFront'), cur * 2 + 1, 'right');    // 正面：旧右页
-      renderSide(el('flipBack'), nxt * 2, 'left');          // 背面：新左页
-      el('bookFlip').className = 'book-flip fwd';
-    } else {
-      const prv = cur - 1;
-      renderSide(el('bookLeft'), prv * 2, 'left');          // 新左页
-      renderSide(el('bookRight'), cur * 2 + 1, 'right');    // 旧右页
-      renderSide(el('flipFront'), cur * 2, 'left');         // 正面：旧左页
-      renderSide(el('flipBack'), prv * 2 + 1, 'right');     // 背面：新右页
-      el('bookFlip').className = 'book-flip bwd';
-    }
-
-    const flip = el('bookFlip');
-    flip.hidden = false;
-    flip.style.transition = 'none';
-    flip.style.transform = 'rotateY(0deg)';
-    return true;
-  }
-
-  /** 拖动进度 0~1 直接映射到旋转角度 —— 完全跟手 */
-  function applyFlipProgress(dir, p) {
-    if (R.single) return;
-    const deg = dir === 1 ? -180 * p : 180 * p;
-    el('bookFlip').style.transform = `rotateY(${deg}deg)`;
-  }
-
-  /** 松手：target = 1 翻过去，0 弹回 */
-  function animateFlip(dir, target) {
-    if (R.single) return wait(150);
-    const flip = el('bookFlip');
-    flip.style.transition = '';
-    void flip.offsetWidth;
-    flip.style.transform = `rotateY(${dir === 1 ? -180 * target : 180 * target}deg)`;
-    return wait(target === 1 ? 620 : 360);
-  }
-
-  /** 收尾：藏起翻页层，用真实状态重渲染 */
-  function finishFlip(dir, landed) {
-    const flip = el('bookFlip');
-    flip.hidden = true;
-    flip.style.transition = 'none';
-    flip.style.transform = '';
-    void flip.offsetWidth;
-    flip.style.transition = '';
-    if (landed) R.spread += dir;
-    renderSpread();
-  }
-
-  /** 键盘 / 程序触发的整页翻动（没有拖动过程） */
-  async function turnPage(dir) {
-    if (R.flipping) return;
-    if (dir === 1 && !canNext()) return;
-    if (dir === -1 && !canPrev()) return;
-    R.flipping = true;
-
-    if (R.single) {
-      const side = el('bookRight');
-      side.style.transition = 'opacity .16s';
-      side.style.opacity = '0';
-      await wait(165);
-      R.spread += dir;
-      renderSpread();
-      side.style.opacity = '1';
-      await wait(165);
-      side.style.transition = '';
-    } else if (beginFlip(dir)) {
-      await twoFrames();
-      await animateFlip(dir, 1);
-      finishFlip(dir, true);
-    }
-    R.flipping = false;
-  }
-
-  /* ---- 拖动交互 ---- */
-  let dragFlip = null;
-
-  el('readStage').addEventListener('pointerdown', e => {
-    if (R.flipping) return;
-    if (e.button !== undefined && e.button !== 0) return;
-    dragFlip = {
-      x0: e.clientX, y0: e.clientY,
-      t0: performance.now(),
-      id: e.pointerId,
-      dir: 0, progress: 0, armed: false
-    };
+    show('read');            // 必须先显示，容器才有尺寸
+    reader.open(S.cur);
   });
 
-  el('readStage').addEventListener('pointermove', e => {
-    const d = dragFlip;
-    if (!d || e.pointerId !== d.id) return;
+  /* ================================================================
+     分享
+     ----------------------------------------------------------------
+     一本相册同时只有一条活跃链接：重复点「生成」不会换 token
+     （换了的话已经发出去的链接就突然失效了），想换只能先撤销。
+     ================================================================ */
+  el('btnShare').addEventListener('click', async () => {
+    el('shareSheet').hidden = false;
+    await refreshShare();
+  });
 
-    const dx = e.clientX - d.x0;
-    const dy = e.clientY - d.y0;
-
-    if (!d.armed) {
-      // 先确认是横向意图，避免和纵向手势打架
-      if (Math.abs(dx) < 14 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
-      const dir = dx < 0 ? 1 : -1;
-      if ((dir === 1 && !canNext()) || (dir === -1 && !canPrev())) return;
-      if (!beginFlip(dir)) return;
-
-      d.armed = true;
-      d.dir = dir;
-      el('readStage').classList.add('dragging');
-      try { el('readStage').setPointerCapture(e.pointerId); } catch { /* 忽略 */ }
+  async function refreshShare() {
+    try {
+      const d = await (await A.api('/api/albums/' + S.album.id + '/share')).json();
+      const s = d.share;
+      el('shareOff').hidden = !!s;
+      el('shareOn').hidden = !s;
+      if (s) el('shareUrl').value = s.url;
+    } catch {
+      A.toast('读取分享状态失败');
     }
+  }
 
-    // 拖过屏宽 70% 算翻满
-    const span = Math.max(160, el('readStage').clientWidth * 0.70);
-    d.progress = Math.min(1, Math.max(0, Math.abs(dx) / span));
+  el('btnMakeShare').addEventListener('click', async () => {
+    const res = await A.api('/api/albums/' + S.album.id + '/share', { method: 'POST' });
+    if (!res.ok) { A.toast('生成失败'); return; }
+    const s = (await res.json()).share;
+    el('shareOff').hidden = true;
+    el('shareOn').hidden = false;
+    el('shareUrl').value = s.url;
+    A.toast('分享链接已生成，永久有效');
+  });
 
-    if (R.single) {
-      // 单页模式没有可翻的纸，给一点横向位移当反馈
-      el('book').style.transform = `translateX(${-dx * 0.22}px)`;
-    } else {
-      applyFlipProgress(d.dir, d.progress);
-      e.preventDefault();
+  el('btnCopyShare').addEventListener('click', async () => {
+    const input = el('shareUrl');
+    try {
+      await navigator.clipboard.writeText(input.value);
+      A.toast('已复制到剪贴板');
+    } catch {
+      // 非 https 或没有剪贴板权限时回退到选中，让用户手动复制
+      input.removeAttribute('readonly');
+      input.select();
+      input.setSelectionRange(0, 999);
+      const okCopy = document.execCommand && document.execCommand('copy');
+      input.setAttribute('readonly', '');
+      A.toast(okCopy ? '已复制到剪贴板' : '请手动长按复制');
     }
   });
 
-  function endDragFlip(e) {
-    const d = dragFlip;
-    dragFlip = null;
-    el('readStage').classList.remove('dragging');
-    if (!d || !d.armed) return;
-    if (e && e.pointerId !== undefined && e.pointerId !== d.id) return;
-
-    const dt = Math.max(1, performance.now() - d.t0);
-    const moved = Math.abs((e && e.clientX != null ? e.clientX : d.x0) - d.x0);
-    const speed = moved / dt;                      // px/ms
-    const land = d.progress >= 0.35 || speed > 0.5;
-
-    R.flipping = true;
-
-    (async () => {
-      if (R.single) {
-        const side = el('bookRight');
-        side.style.transition = 'opacity .15s';
-        side.style.opacity = '0';
-        await wait(155);
-        if (land) R.spread += d.dir;
-        el('book').style.transform = '';
-        renderSpread();
-        side.style.opacity = '1';
-        await wait(155);
-        side.style.transition = '';
-      } else {
-        await animateFlip(d.dir, land ? 1 : 0);
-        finishFlip(d.dir, land);
-      }
-      R.flipping = false;
-    })();
-  }
-
-  el('readStage').addEventListener('pointerup', endDragFlip);
-  el('readStage').addEventListener('pointercancel', endDragFlip);
-
-  /* ---------------- 进入 / 退出 ---------------- */
-  async function enterReader() {
-    if (S.dirty) await doSave();
-
-    // 屏幕够宽才用跨页；竖屏手机用单页，否则每页只剩指尖大小
-    R.single = (window.innerWidth / window.innerHeight) < 1.15;
-    R.spread = R.single ? Math.min(S.cur, S.pages.length - 1) : Math.floor(S.cur / 2);
-
-    S.sel = null;
-    renderEditor();
-    show('read');
-    renderSpread();
-
-    el('readTitle').textContent = S.album.title;
-    el('readHint').textContent = R.single
-      ? '左右滑动翻页 · 横屏可看跨页'
-      : '左右滑动翻页';
-    el('readHint').style.opacity = '1';
-    clearTimeout(R.exitTimer);
-    R.exitTimer = setTimeout(() => { el('readHint').style.opacity = '0'; }, 3200);
-  }
-
-  el('btnRead').addEventListener('click', enterReader);
-
-  el('readExit').addEventListener('click', () => {
-    // 回到编辑器时定位到刚才看的那一页
-    S.cur = R.single ? R.spread : R.spread * 2;
-    S.cur = Math.min(S.cur, S.pages.length - 1);
-    S.sel = null;
-    show('edit');
-    renderEditor();
+  el('btnRevokeShare').addEventListener('click', async () => {
+    if (!confirm('撤销后这个链接立刻失效，别人就打不开了。\n（可以之后再生成一个新的）')) return;
+    const res = await A.api('/api/albums/' + S.album.id + '/share', { method: 'DELETE' });
+    if (!res.ok) { A.toast('撤销失败'); return; }
+    await refreshShare();
+    A.toast('已撤销，链接已失效');
   });
 
-  el('readMode').addEventListener('click', () => {
-    const page = R.single ? R.spread : R.spread * 2;
-    R.single = !R.single;
-    R.spread = R.single ? Math.min(page, S.pages.length - 1) : Math.floor(page / 2);
-    renderSpread();
-    A.toast(R.single ? '单页模式' : '跨页模式');
-  });
-
-  /* 键盘（桌面端） */
-  document.addEventListener('keydown', e => {
-    if (S.view !== 'read') return;
-    if (e.key === 'Escape') { el('readExit').click(); return; }
-    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); turnPage(1); }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); turnPage(-1); }
+  document.addEventListener('click', e => {
+    if (e.target.closest('#shareSheet [data-close]')) el('shareSheet').hidden = true;
   });
 
   /* ================================================================

@@ -98,6 +98,7 @@
     <div class="tool-group">
       <span class="tool-label">预览</span>
       <button id="btnRead" class="icon-btn wide" title="翻页预览">▶ 翻页</button>
+      <button id="btnShare" class="icon-btn wide" title="分享这本相册（只读）">⇪ 分享</button>
     </div>
   </div>
 
@@ -118,29 +119,8 @@
   </div>
 </div>
 
-<!-- ============================ 阅读器（书本式跨页）============================ -->
-<div id="readView" class="view read-view" hidden>
-  <div class="read-stage" id="readStage">
-    <div class="book" id="book">
-      <div class="book-side left" id="bookLeft"></div>
-      <div class="book-side right" id="bookRight"></div>
-      <div class="book-spine"></div>
-      <div class="book-flip" id="bookFlip" hidden>
-        <div class="face front" id="flipFront"></div>
-        <div class="face back" id="flipBack"></div>
-      </div>
-    </div>
-
-    <div class="read-hint" id="readHint">左右滑动翻页</div>
-  </div>
-
-  <div class="read-bar" id="readBar">
-    <button id="readExit" class="icon-btn light">✕</button>
-    <span class="read-title" id="readTitle"></span>
-    <span class="read-pos" id="readPos"></span>
-    <button id="readMode" class="icon-btn light" title="跨页 / 单页">▥</button>
-  </div>
-</div>
+<!-- ============================ 阅读器（内部结构由 reader.js 生成）============================ -->
+<div id="readView" class="view read-view" hidden></div>
 
 <!-- ============================ 选照片 ============================ -->
 <div id="picker" class="sheet" hidden>
@@ -189,10 +169,42 @@
   </div>
 </div>
 
+<!-- ============================ 分享 ============================ -->
+<div id="shareSheet" class="sheet" hidden>
+  <div class="sheet-mask" data-close></div>
+  <div class="sheet-body">
+    <div class="sheet-head"><span>分享这本相册</span></div>
+
+    <div id="shareOff">
+      <p class="sheet-note">
+        生成一个<b>永久有效</b>的链接。拿到链接的人<b>只能看、不能改</b>，
+        也不需要登录 —— 就像把一本印好的相册递出去。
+      </p>
+      <button id="btnMakeShare" class="primary">生成分享链接</button>
+    </div>
+
+    <div id="shareOn" hidden>
+      <p class="sheet-note">任何拿到这个链接的人都能翻看这本相册（只读，不用登录）。</p>
+      <div class="share-url">
+        <input id="shareUrl" readonly spellcheck="false">
+        <button id="btnCopyShare" class="mini-btn">复制</button>
+      </div>
+      <p class="sheet-note dim">
+        相册内容改了，分享出去的效果会立刻跟着变 ——
+        链接不过期，但内容不是冻结的快照。
+      </p>
+      <button id="btnRevokeShare" class="sheet-item danger">撤销分享（链接立即失效）</button>
+    </div>
+
+    <button class="sheet-item" data-close>关闭</button>
+  </div>
+</div>
+
 <div id="toast" class="toast" hidden></div>
 
 <script src="common.js"></script>
 <script src="autolayout.js"></script>
+<script src="reader.js"></script>
 <script src="album.js"></script>
 </body>
 </html>
