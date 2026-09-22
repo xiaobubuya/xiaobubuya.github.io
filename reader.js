@@ -37,6 +37,8 @@
 
     /* ---------------- 状态 ---------------- */
     const R = { spread: 0, single: false, flipping: false };
+    // 用户手动切过单页/跨页就不再自动跟随屏幕比例
+    let manualMode = false;
 
     const pages = () => opts.pages;
     const totalSpreads = () => Math.max(1, Math.ceil(pages().length / 2));
@@ -63,6 +65,7 @@
         ${opts.onExit ? '<button class="icon-btn light br-exit" title="退出">✕</button>' : ''}
         <span class="read-title"></span>
         <span class="read-pos"></span>
+        <button class="icon-btn light br-rotate" title="横屏查看">⟳</button>
         <button class="icon-btn light br-mode" title="跨页 / 单页">▥</button>
       </div>`;
 
@@ -346,9 +349,21 @@
     }
     document.addEventListener('keydown', onKey);
 
-    /* ---- 单页/跨页开关 ---- */
+    /* ---- 单页 / 跨页 ---- */
+    /** 竖屏（宽高比不够）用单页，否则跨页。手动切过就不再自动跟随 */
+    function applyAutoMode() {
+      if (manualMode) return false;
+      const next = opts.autoSingle
+        ? (window.innerWidth / window.innerHeight) < 1.15
+        : false;
+      const changed = next !== R.single;
+      R.single = next;
+      return changed;
+    }
+
     $('.br-mode').addEventListener('click', () => {
       const page = R.single ? R.spread : R.spread * 2;
+      manualMode = true;
       R.single = !R.single;
       R.spread = R.single
         ? Math.min(page, pages().length - 1)
@@ -357,15 +372,56 @@
       opts.toast(R.single ? '单页模式' : '跨页模式');
     });
 
-    const onResize = () => layoutBook();
+    /* ---- 横屏 ---- */
+    $('.br-rotate').addEventListener('click', async () => {
+      const O = root.Orient;
+      if (!O) { opts.toast('请把手机横过来'); return; }
+
+      if (O.isLocked()) {
+        await O.unlock();
+        opts.toast('已恢复竖屏');
+        // 交回自动判断
+        manualMode = false;
+        setTimeout(() => { applyAutoMode(); render(); }, 250);
+        return;
+      }
+
+      try {
+        const how = await O.lockLandscape();
+        manualMode = false;          // 横屏后让跨页自动生效
+        opts.toast(how === 'fullscreen' ? '已切横屏（全屏中）' : '已切横屏');
+        setTimeout(() => { applyAutoMode(); render(); }, 350);
+      } catch {
+        // iOS Safari 没有这个能力，如实告诉用户，不要假装切了
+        opts.toast('这个浏览器不能自动转屏，请把手机横过来', 3800);
+      }
+    });
+
+    const onResize = () => {
+      const wasSingle = R.single;
+      const changed = applyAutoMode();
+      if (changed) {
+        // 方向变了导致单页↔跨页切换 —— 按当前页重新定位，别跳页
+        const page = wasSingle ? R.spread : R.spread * 2;
+        R.spread = R.single ? page : Math.floor(page / 2);
+        R.spread = Math.max(0, Math.min(R.spread, slideCount() - 1));
+        render();
+      } else {
+        layoutBook();
+      }
+    };
     window.addEventListener('resize', onResize);
+    if (root.Orient) {
+      root.Orient.onChange(() => {
+        const b = $('.br-rotate');
+        if (b) b.style.color = root.Orient.isLocked() ? '#5b9bd5' : '';
+      });
+    }
 
     /* ---- 与调用方的接口 ---- */
     function open(startPage) {
       const start = Math.max(0, startPage || 0);
-      R.single = opts.autoSingle
-        ? (window.innerWidth / window.innerHeight) < 1.15
-        : false;
+      applyAutoMode();
       R.spread = R.single
         ? Math.min(start, Math.max(0, pages().length - 1))
         : Math.floor(start / 2);

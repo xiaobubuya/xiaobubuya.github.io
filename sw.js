@@ -18,6 +18,7 @@ const ASSETS = [
   '/app.js',
   '/album.js',
   '/autolayout.js',
+  '/orient.js',
   '/reader.js',
   '/share.html',
   '/share.js',

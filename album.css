@@ -238,6 +238,12 @@
   border:1px solid var(--eline);border-radius:7px;cursor:pointer;
 }
 .mini-btn:active{background:#33333a}
+/* 提示条里的主按钮 */
+.mini-btn.primary-mini{
+  color:#141416;background:var(--accent);border-color:var(--accent);
+  font-weight:500;
+}
+.mini-btn.primary-mini:active{background:#4a8ac4}
 
 /* ---- 素材托盘 ---- */
 .tray{
@@ -458,3 +464,10 @@
 
 /* 桌面端：编辑器引导横屏的提示不显示 */
 @media(min-width:820px){ .rotate-tip{display:none !important} }
+
+/* 桌面端不需要横屏按钮：窗口本来就是横的，
+   而且那里的 screen.orientation.lock 基本都不可用，
+   点了只会进全屏再失败。只给触摸设备（手机/平板）显示。 */
+@media (pointer: fine){
+  #btnRotate, #btnRotateFromTip, .br-rotate{ display:none !important }
+}

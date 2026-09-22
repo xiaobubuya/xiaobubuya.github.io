@@ -814,7 +814,51 @@
     A.toast(explicit ? '已恢复自动封面' : '已设为封面');
   });
 
+  /* ================================================================
+     横屏编辑
+     ----------------------------------------------------------------
+     相册画布是横版，竖屏下只能占屏幕中间一小条。这里让用户主动切横屏。
+
+     能真正做到的前提是浏览器支持 Screen Orientation API：
+       · Android Chrome / 已装到桌面的 PWA → 可以，视口真的转过去
+       · iOS Safari                        → 不支持，只能如实提示手动转手机
+     绝不假装切了然后让用户歪着头看 —— 那种「实现」比不做还糟。
+     ================================================================ */
+  async function toggleLandscape() {
+    const O = window.Orient;
+    if (!O) { A.toast('请把手机横过来'); return; }
+
+    if (O.isLocked()) {
+      await O.unlock();
+      A.toast('已恢复竖屏');
+      return;
+    }
+
+    try {
+      const how = await O.lockLandscape();
+      el('rotateTip').classList.remove('show');
+      A.toast(how === 'fullscreen'
+        ? '已切横屏（全屏中，再点一次退出）'
+        : '已切横屏');
+      // 视口变化后画布要重新适配，等一下让方向真正生效
+      setTimeout(() => { fitCanvas(); }, 350);
+    } catch {
+      A.toast('这个浏览器不能自动转屏，请把手机横过来', 3800);
+    }
+  }
+
+  el('btnRotate').addEventListener('click', toggleLandscape);
+  el('btnRotateFromTip').addEventListener('click', toggleLandscape);
   el('tipClose').addEventListener('click', () => el('rotateTip').classList.remove('show'));
+
+  if (window.Orient) {
+    window.Orient.onChange(({ locked }) => {
+      const b = el('btnRotate');
+      b.style.color = locked ? 'var(--accent2)' : '';
+      b.title = locked ? '恢复竖屏' : '横屏编辑';
+      if (S.view === 'edit') requestAnimationFrame(() => fitCanvas());
+    });
+  }
 
   document.addEventListener('keydown', e => {
     if (S.view !== 'edit') return;
