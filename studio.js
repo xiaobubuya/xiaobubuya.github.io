@@ -46,6 +46,21 @@
   ADJUSTMENTS.forEach(a => { values[a.key] = a.def; });
 
   /* ================================================================
+     蒙版状态
+     ----------------------------------------------------------------
+     全局调整和局部调整共用同一组滑块 —— 差别只在「作用范围」。
+     这个设计是刻意的：用户学会了一次滑块，就同时会了局部调整，
+     不需要再去学一套独立的局部工具。
+
+     useMask 在涂了东西之后自动打开（见 setMaskActive），
+     因为涂了半天发现调整没变化，是最容易让人以为「坏了」的情况。
+     ================================================================ */
+  const mask = new window.Mask();
+  let useMask = false;
+  let showMask = false;
+  let brushMode = false;      // 画笔工具是否激活（激活时画布上拖动是画画不是平移）
+
+  /* ================================================================
      shader
      ================================================================ */
   const VERT = `
@@ -61,8 +76,11 @@
     precision highp float;
     varying vec2 vUv;
     uniform sampler2D uImage;
+    uniform sampler2D uMask;
     uniform float uExposure, uContrast, uHighlights, uShadows, uSaturation, uTemp;
     uniform float uOriginal;   // 1 = 显示原图（对比用）
+    uniform float uUseMask;    // 1 = 调整只作用在蒙版内
+    uniform float uMaskOverlay; // 1 = 显示蒙版本身（红色叠加）
 
     // sRGB <-> 线性。这两个函数是「正确调色」的地基：
     // 曝光/高光/阴影必须在线性空间里做，否则会发灰发闷
@@ -74,14 +92,8 @@
     }
     float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
-    void main() {
-      vec3 c = texture2D(uImage, vUv).rgb;
-
-      if (uOriginal > 0.5) {
-        gl_FragColor = vec4(c, 1.0);
-        return;
-      }
-
+    /** 这一趟调色的全部逻辑，抽出来是为了局部调整时能调两次 */
+    vec3 grade(vec3 c) {
       c = toLinear(c);
 
       // 曝光：线性空间下乘 2^EV
@@ -118,9 +130,41 @@
 
       // 饱和度：朝灰度插值
       float g = luma(c);
-      c = mix(vec3(g), c, 1.0 + uSaturation);
+      return mix(vec3(g), c, 1.0 + uSaturation);
+    }
 
-      gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+    void main() {
+      vec3 src = texture2D(uImage, vUv).rgb;
+
+      if (uOriginal > 0.5) {
+        gl_FragColor = vec4(src, 1.0);
+        return;
+      }
+
+      vec3 c = grade(src);
+
+      // 局部调整：按蒙版权重把「调过的」和「原图」混合回来。
+      //
+      // 关键点是**在线性空间里混**。第一版在最后（sRGB 空间）混，
+      // 结果蒙版边缘出现一圈发灰的过渡带 —— 因为 sRGB 是非线性的，
+      // 两个颜色的中间值不等于中间亮度。线性空间里混才是物理正确的。
+      if (uUseMask > 0.5) {
+        float m = texture2D(uMask, vUv).r;
+        c = mix(toLinear(src), toLinear(c), m);
+        c = toSrgb(c);
+      }
+
+      c = clamp(c, 0.0, 1.0);
+
+      // 蒙版可视化：涂过的地方罩一层红。
+      // 用 0.45 的不透明度而不是纯色，是为了还能看清底下照片的细节 ——
+      // 涂眼睛的时候需要看见眼睛在哪。
+      if (uMaskOverlay > 0.5) {
+        float m = texture2D(uMask, vUv).r;
+        c = mix(c, vec3(1.0, 0.15, 0.15), m * 0.45);
+      }
+
+      gl_FragColor = vec4(c, 1.0);
     }
   `;
 
@@ -135,7 +179,7 @@
     alpha: false
   });
 
-  let program = null, uniforms = {}, imageTex = null;
+  let program = null, uniforms = {}, imageTex = null, maskTex = null;
 
   function compile(type, src) {
     const s = gl.createShader(type);
@@ -172,7 +216,10 @@
 
     for (const a of ADJUSTMENTS) uniforms[a.key] = gl.getUniformLocation(program, a.key);
     uniforms.uImage = gl.getUniformLocation(program, 'uImage');
+    uniforms.uMask = gl.getUniformLocation(program, 'uMask');
     uniforms.uOriginal = gl.getUniformLocation(program, 'uOriginal');
+    uniforms.uUseMask = gl.getUniformLocation(program, 'uUseMask');
+    uniforms.uMaskOverlay = gl.getUniformLocation(program, 'uMaskOverlay');
 
     // 纹理：非 2 的幂也要能重复/夹取
     imageTex = gl.createTexture();
@@ -182,6 +229,41 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
+    // 蒙版纹理。⚠️ 同样要 FLIP_Y —— 蒙版的归一化坐标和图片共用同一套
+    // vUv，翻转设置不一致的话蒙版会上下颠倒，而且这种错位很难一眼看出来
+    // （涂上半张脸，下半张变亮）。
+    maskTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, maskTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  }
+
+  /**
+   * 把蒙版位图推上 GPU。
+   *
+   * ⚠️ 判断依据是「位图版本号」而不是 mask.dirty。
+   * 一开始用的是 dirty，结果第一笔永远不显示：paintRect → draw()
+   * 会先调 render()，而 render() 结尾把 dirty 清成了 false，
+   * 等 uploadMask() 再看时已经是「干净」的，于是跳过上传 ——
+   * 表现就是「涂了半天画面没反应」，但覆盖率又是对的，极难排查。
+   *
+   * 现在改成：mask 每次内容变化就 ++mask.version，
+   * 这里只比较版本号，和渲染时机彻底解耦。
+   */
+  function uploadMask() {
+    if (!mask.canvas) return;
+    if (mask._uploadedVersion === mask.version) return;
+    const data = mask.toTextureData();
+    if (!data) return;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, maskTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    mask._uploadedVersion = mask.version;
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   /* ================================================================
@@ -197,9 +279,23 @@
   function draw() {
     if (!img) return;
     gl.useProgram(program);
+
+    uploadMask();
+
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, imageTex);
     gl.uniform1i(uniforms.uImage, 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, maskTex);
+    gl.uniform1i(uniforms.uMask, 1);
+    gl.activeTexture(gl.TEXTURE0);
+
     gl.uniform1f(uniforms.uOriginal, showingOriginal ? 1 : 0);
+    // 蒙版是空的却开着「只看局部」，画面会完全没反应 —— 那看起来就是坏了。
+    // 所以空蒙版一律按全局处理，不管开关状态。
+    gl.uniform1f(uniforms.uUseMask, (useMask && !mask.isEmpty) ? 1 : 0);
+    gl.uniform1f(uniforms.uMaskOverlay, (showMask && !mask.isEmpty) ? 1 : 0);
     for (const a of ADJUSTMENTS) gl.uniform1f(uniforms[a.key], values[a.key]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -258,8 +354,20 @@
       img = bmp;
       fileName = file.name;
 
+      // 蒙版跟着图片尺寸重建。⚠️ 必须在 enableUI/draw 之前 ——
+      // 蒙版位图没建好时 begin() 会直接 return，表现是「画笔涂不上」。
+      // clear() 也要调：只 resize 的话旧图的笔画会被重放到新图上
+      // （归一化坐标是通用的，长宽比一变选区就跑到别的地方去了）。
+      mask.clear();
+      mask.resize(img.width, img.height);
+      setMaskActive(false);
+      setBrushMode(false);
+      showMaskTool(false);
+
       gl.bindTexture(gl.TEXTURE_2D, imageTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+
+      // 蒙版纹理也要立刻清空，否则会残留上一张图的选区
 
       $('stDrop').classList.add('hidden');
       canvas.classList.remove('hidden');
@@ -268,6 +376,7 @@
 
       enableUI(true);
       resetAll(false);
+      syncMaskUI();
       render();
     } catch (e) {
       toast('打不开这个文件：' + (e && e.message ? e.message : e));
@@ -280,6 +389,13 @@
     $('stExport').disabled = !on;
     $('stReset').disabled = !on;
     $('stCompare').disabled = !on;
+    const b = $('stBrush');
+    if (b) b.disabled = !on;
+    const s = $('stSeg');
+    if (s) s.disabled = !on;
+    const u = $('stUseMask');
+    if (u) u.disabled = !on || mask.isEmpty;
+    if (!on && typeof syncMaskUI === 'function') syncMaskUI();
   }
 
   /* ================================================================
@@ -361,6 +477,137 @@
   }
 
   /* ================================================================
+     画笔
+     ================================================================ */
+
+  /** 屏幕坐标 → 图片归一化坐标（0~1）。蒙版和 shader 共享这套坐标 */
+  function toImageCoord(e) {
+    const r = canvas.getBoundingClientRect();
+    return [
+      (e.clientX - r.left) / r.width,
+      1 - (e.clientY - r.top) / r.height   // Y 翻转：屏幕向下，纹理向上
+    ];
+  }
+
+  function setBrushMode(on) {
+    brushMode = on && !!img;
+    canvas.classList.toggle('brushing', brushMode);
+    const b = $('stBrush');
+    if (b) b.classList.toggle('on', brushMode);
+    syncMaskUI();
+  }
+
+  function initBrush() {
+    let drawing = false;
+
+    canvas.addEventListener('pointerdown', e => {
+      if (!brushMode || !img) return;
+      e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+      drawing = true;
+      mask.begin(...toImageCoord(e));
+      draw();
+    });
+
+    canvas.addEventListener('pointermove', e => {
+      if (!drawing) return;
+      e.preventDefault();
+      // getCoalescedEvents 能拿到两次 rAF 之间被浏览器合并掉的中间点。
+      // 不用它的话快速画圈会变成多边形，边缘全是直线段。
+      //
+      // ⚠️ 但它可能是空的 —— 合成事件（自动化测试）就是空数组，
+      // 某些浏览器在特定情况下也会返回空。直接遍历空数组的话
+      // 整条线都画不出来，只留下落笔那一个点，而且不报任何错。
+      // 所以空的时候必须退回用事件本身。
+      let evs = null;
+      try { evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null; } catch {}
+      if (!evs || !evs.length) evs = [e];
+
+      let moved = false;
+      for (const ev of evs) {
+        if (mask.extend(...toImageCoord(ev))) moved = true;
+      }
+      if (moved) draw();
+    });
+
+    const finish = e => {
+      if (!drawing) return;
+      drawing = false;
+      if (canvas.hasPointerCapture && canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+      if (mask.end()) {
+          setMaskActive(true);
+        draw();
+      }
+      syncMaskUI();
+    };
+
+    canvas.addEventListener('pointerup', finish);
+    canvas.addEventListener('pointercancel', e => {
+      if (!drawing) return;
+      drawing = false;
+      mask.abort();
+      draw();
+    });
+
+    // 自定义光标：画一个和笔刷等大的圈。
+    // 用 CSS 光标做不到跟随笔刷大小，所以用一个绝对定位的 div。
+    const cur = document.createElement('div');
+    cur.className = 'st-cursor';
+    cur.hidden = true;
+    $('stStage').appendChild(cur);
+    canvas.addEventListener('pointerenter', () => { if (brushMode) cur.hidden = false; });
+    canvas.addEventListener('pointerleave', () => { cur.hidden = true; });
+    canvas.addEventListener('pointermove', e => {
+      if (!brushMode) { cur.hidden = true; return; }
+      cur.hidden = false;
+      const r = canvas.getBoundingClientRect();
+      const d = mask.radius * Math.min(r.width, r.height) * 2;
+      cur.style.width = cur.style.height = Math.round(d) + 'px';
+      const sr = $('stStage').getBoundingClientRect();
+      cur.style.left = (e.clientX - sr.left - d / 2) + 'px';
+      cur.style.top = (e.clientY - sr.top - d / 2) + 'px';
+      cur.classList.toggle('erase', mask.mode === 'erase');
+    });
+  }
+
+  /** 涂了东西就自动打开局部模式，否则用户会以为调整坏了 */
+  function setMaskActive(on) {
+    useMask = on;
+    const c = $('stUseMask');
+    if (c) c.checked = on;
+    syncMaskUI();
+  }
+
+  function syncMaskUI() {
+    const cov = mask.isEmpty ? 0 : mask.coverage();
+    const info = $('stMaskInfo');
+    if (info) {
+      info.textContent = mask.isEmpty
+        ? '没涂任何区域'
+        : `已选 ${(cov * 100).toFixed(1)}% · ${mask.strokes.length} 笔`;
+    }
+    const uc = $('stUseMask');
+    if (uc) {
+      uc.disabled = mask.isEmpty;
+      uc.checked = useMask;
+    }
+    const clear = $('stMaskClear');
+    if (clear) clear.disabled = mask.isEmpty;
+    const undo = $('stMaskUndo');
+    if (undo) undo.disabled = !mask.strokes.length;
+    const inv = $('stMaskInvert');
+    if (inv) inv.disabled = mask.isEmpty;
+    const seg = $('stSeg');
+    if (seg) seg.disabled = !img;
+    ['stBrushAdd', 'stBrushErase'].forEach(id => {
+      const el = $(id);
+      if (el) el.classList.toggle('on', (id === 'stBrushAdd') === (mask.mode === 'add'));
+    });
+  }
+
+  /* ================================================================
      对比原图
      ================================================================ */
   function setOriginal(on) {
@@ -417,6 +664,83 @@
   }
 
   /* ================================================================
+     AI 抠人像（百度人体分析）
+     ----------------------------------------------------------------
+     只在桌面版里可用：浏览器直接调百度会被 CORS 挡住（实测三家都挡），
+     所以走 Electron 主进程转发。网页版就把按钮禁掉并说明原因。
+     ================================================================ */
+  function hasDesktop() {
+    return !!(window.albumStudio && window.albumStudio.baiduBodySeg);
+  }
+
+  async function segmentPerson() {
+    if (!img) return;
+    if (!hasDesktop()) {
+      toast('AI 抠人需要桌面版的「修图 App」\n浏览器里调不通（跨域限制）', 3600);
+      return;
+    }
+
+    busy(true, '正在识别…');
+    try {
+      // 先把当前图缩到长边 1024 再传 —— 百度接口对分辨率没那么敏感，
+      // 但传原图(4000px)会让请求体变成好几 MB，白等好几秒。
+      const long = Math.max(img.width, img.height);
+      const s = Math.min(1, 1024 / long);
+      const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
+
+      const off = document.createElement('canvas');
+      off.width = cw; off.height = ch;
+      off.getContext('2d').drawImage(img, 0, 0, cw, ch);
+
+      // 百度只认 JPEG / PNG。统一转 JPEG，避免 WebP 被拒
+      // （相册里的 preview 就是 WebP 存成 .jpg 的，踩过这个坑）
+      const b64 = off.toDataURL('image/jpeg', 0.9).split(',')[1];
+
+      const res = await window.albumStudio.baiduBodySeg(b64);
+      if (!res || !res.ok) throw new Error((res && res.error) || '识别失败');
+
+      if (!res.persons) {
+        toast(res.message || '没有检测到人像');
+        return;
+      }
+
+      // 把返回的蒙版贴进来。
+      // ⚠️ 百度回的 labelmap 是**裸 base64**，不带 data: 前缀，
+      // 直接塞给 Image.src 是加载不出来的（而且不报错，只是一直不触发
+      // onload，表现成「点了没反应」）。这里补一道防御，
+      // 不管上游给的是裸 base64 还是完整 data URL 都能work。
+      const src = /^data:/.test(res.mask) ? res.mask : 'data:image/png;base64,' + res.mask;
+      const m = await loadImage(src);
+      mask.setFromCanvas(m);
+      setMaskActive(true);
+      setBrushMode(true);
+      showMaskTool(true);
+      draw();
+      toast(`抠出 ${res.persons} 个人，可以直接调亮度或换背景`, 3200);
+    } catch (e) {
+      toast('识别失败：' + (e && e.message ? e.message : e));
+    } finally {
+      busy(false);
+    }
+  }
+
+  function loadImage(src) {
+    return new Promise((ok, no) => {
+      const im = new Image();
+      im.onload = () => ok(im);
+      im.onerror = () => no(new Error('蒙版图解码失败'));
+      im.src = src;
+    });
+  }
+
+  function showMaskTool(on) {
+    const opts = $('stBrushOpts');
+    const opts2 = $('stBrushOpts2');
+    if (opts) opts.hidden = !on;
+    if (opts2) opts2.hidden = !on;
+  }
+
+  /* ================================================================
      界面小工具
      ================================================================ */
   let toastTimer = null;
@@ -436,9 +760,10 @@
   function updateInfo() {
     if (!img) { $('stInfo').textContent = '—'; return; }
     const changed = ADJUSTMENTS.filter(a => Math.abs(values[a.key] - a.def) > 1e-6).length;
+    const scope = (useMask && !mask.isEmpty) ? '局部' : '';
     $('stInfo').textContent =
       `${img.width}×${img.height} · ${(img.width * img.height / 1e6).toFixed(1)}MP`
-      + (changed ? ` · 已调整 ${changed} 项` : ' · 未调整');
+      + (changed ? ` · ${scope}已调整 ${changed} 项` : ' · 未调整');
   }
 
   /* ================================================================
@@ -494,6 +819,40 @@
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') { e.preventDefault(); pick(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); exportImage(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'r') { e.preventDefault(); resetAll(); toast('已重置'); }
+
+      // 画笔相关。⌘Z 在有笔画时优先撤销笔画，没笔画才轮到「重置调整」——
+      // 这个优先级是修图软件的通用约定，用户按 ⌘Z 想撤的多半是刚画的那一笔
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        if (mask.strokes.length) {
+          e.preventDefault();
+          if (mask.undo()) { syncMaskUI(); draw(); }
+          return;
+        }
+      }
+      if (e.key.toLowerCase() === 'b' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setBrushMode(!brushMode);
+        showMaskTool(brushMode);
+      }
+      if (e.key.toLowerCase() === 'e' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        mask.mode = mask.mode === 'erase' ? 'add' : 'erase';
+        syncMaskUI();
+        toast(mask.mode === 'erase' ? '画笔：擦除' : '画笔：涂抹', 1600);
+      }
+      if (e.key === '[' || e.key === ']') {
+        e.preventDefault();
+        const d = e.key === '[' ? -0.005 : 0.005;
+        mask.radius = Math.min(0.25, Math.max(0.01, mask.radius + d));
+        const r = $('stRadius');
+        if (r) r.value = mask.radius;
+      }
+      // 空格按住看选区
+      if (e.key === 'm' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        const c = $('stShowMask');
+        if (c) { c.checked = !c.checked; showMask = c.checked; draw(); }
+      }
     });
 
     // 面板收起（窄屏）
@@ -504,6 +863,15 @@
       setTimeout(render, 60);
     });
 
+    initMaskEvents();
+    initBrush();
+
+    // 网页版禁用 AI 抠人并说明原因，而不是让用户点了没反应
+    if (!hasDesktop()) {
+      const seg = $('stSeg');
+      if (seg) seg.title = '需要在桌面版「修图 App」里使用（浏览器有跨域限制）';
+    }
+
     let rt = null;
     window.addEventListener('resize', () => {
       clearTimeout(rt);
@@ -511,11 +879,72 @@
     });
   }
 
+  function initMaskEvents() {
+    // 画笔开关
+    $('stBrush').addEventListener('click', () => {
+      const on = !brushMode;
+      setBrushMode(on);
+      showMaskTool(on);
+      if (on) toast('拖动鼠标涂抹要调整的区域', 2600);
+    });
+
+    // 涂 / 擦
+    $('stBrushAdd').addEventListener('click', () => { mask.mode = 'add'; syncMaskUI(); });
+    $('stBrushErase').addEventListener('click', () => { mask.mode = 'erase'; syncMaskUI(); });
+
+    // 笔刷大小 / 硬度
+    $('stRadius').addEventListener('input', e => {
+      mask.radius = parseFloat(e.target.value);
+    });
+    $('stHardness').addEventListener('input', e => {
+      mask.hardness = parseFloat(e.target.value);
+    });
+
+    // 显示选区
+    $('stShowMask').addEventListener('change', e => {
+      showMask = e.target.checked;
+      draw();
+    });
+
+    // 局部调整总开关
+    $('stUseMask').addEventListener('change', e => {
+      useMask = e.target.checked;
+      draw();
+      toast(useMask ? '调整只作用于涂过的区域' : '调整作用于全图', 2000);
+    });
+
+    $('stMaskUndo').addEventListener('click', () => {
+      if (mask.undo()) { syncMaskUI(); draw(); }
+    });
+
+    $('stMaskClear').addEventListener('click', () => {
+      if (!mask.clear()) return;
+      setMaskActive(false);
+      syncMaskUI();
+      draw();
+      toast('已清空选区');
+    });
+
+    $('stMaskInvert').addEventListener('click', () => {
+      mask.invert();
+      setMaskActive(true);
+      syncMaskUI();
+      draw();
+      toast('已反选');
+    });
+
+    $('stSeg').addEventListener('click', segmentPerson);
+  }
+
   /* ================================================================
      启动
      ================================================================ */
   (function boot() {
     try {
+      // 蒙版内容一变就刷新按钮状态。
+      // 这样「涂了一笔 → 撤销按钮变可点」不用在每个调用点手写，
+      // 漏掉一处就会出现「按钮灰着但明明能撤销」这种别扭状态。
+      mask.onchange = () => { syncMaskUI(); };
       initGL();
       buildSliders();
       initEvents();
@@ -552,6 +981,61 @@
       draw();
     },
     isChanged,
-    _draw: draw
+    _draw: draw,
+
+    // —— 蒙版 ——
+    // 测试要能像用户一样涂一笔。直接给归一化坐标，内部走
+    // begin/extend/end 这条和鼠标完全相同的路径，
+    // 这样测出来的行为才等于用户看到的行为。
+    mask,
+    get useMask() { return useMask; },
+    setUseMask: setMaskActive,
+    setShowMask(on) { showMask = on; const c = $('stShowMask'); if (c) c.checked = on; draw(); },
+    setBrushMode,
+    /** 涂一笔：points 是 [[x,y],...] 归一化坐标 */
+    paint(points, opts = {}) {
+      if (!mask.canvas) return false;
+      const save = { r: mask.radius, h: mask.hardness, m: mask.mode };
+      if (opts.radius != null) mask.radius = opts.radius;
+      if (opts.hardness != null) mask.hardness = opts.hardness;
+      if (opts.mode) mask.mode = opts.mode;
+
+      mask.begin(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) mask.extend(points[i][0], points[i][1]);
+      mask.end();
+
+      mask.radius = save.r; mask.hardness = save.h; mask.mode = save.m;
+      setMaskActive(true);
+      showMaskTool(true);
+      syncMaskUI();
+      draw();
+      return true;
+    },
+    maskCoverage() { return mask.coverage(); },
+    /**
+     * 用一个矩形区域当选区（测局部调整时比涂一笔更可控）。
+     *
+     * ⚠️ 必须画成「之」字形的来回扫，不能只沿矩形轮廓走一圈 ——
+     * 描边是路径不是填充，只描边的话中间是空的。
+     * （第一版就是这么写的：测试里量到中心像素是 0，
+     *   一度以为是纹理上传坏了，查了半天才发现是测试自己的问题。）
+     */
+    paintRect(x0, y0, x1, y1) {
+      const lines = 14;
+      const pts = [];
+      for (let i = 0; i <= lines; i++) {
+        const y = y0 + (y1 - y0) * i / lines;
+        // 一行从左到右，下一行从右到左，省掉回程的空走
+        if (i % 2 === 0) { pts.push([x0, y], [x1, y]); }
+        else { pts.push([x1, y], [x0, y]); }
+      }
+      return this.paint(pts, { radius: 0.045, hardness: 0.9 });
+    },
+    segmentPerson,
+    hasDesktop,
+    _syncMaskUI: syncMaskUI,
+    /** 给测试读像素用（导出和预览共用同一块画布） */
+    _canvas() { return canvas; },
+    _mask() { return mask; }
   };
 })();

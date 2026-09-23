@@ -56,7 +56,56 @@
       <span>调整</span>
       <button id="stPanelToggle" class="st-mini" title="收起/展开">▸</button>
     </div>
+
+    <!-- 范围：全局 / 局部（蒙版）。放在滑块上面，因为「这次调整作用于哪」
+         是比「调多少」更前置的决定 -->
+    <div class="st-scope" id="stScope">
+      <label class="st-switch" title="打开后，下面的调整只作用于涂过的区域">
+        <input type="checkbox" id="stUseMask" disabled>
+        <span>只作用于涂过的区域</span>
+      </label>
+    </div>
+
     <div class="st-sliders" id="stSliders"></div>
+
+    <!-- ===================== 蒙版工具 ===================== -->
+    <div class="st-mask">
+      <div class="st-mask-head">
+        <button id="stBrush" class="st-btn wide" title="画笔（B）" disabled>✎ 画笔</button>
+        <button id="stSeg" class="st-btn" title="AI 自动抠出人像（百度）" disabled>AI 抠人</button>
+      </div>
+
+      <div class="st-mask-row" id="stBrushOpts" hidden>
+        <div class="st-seg" role="group">
+          <button id="stBrushAdd" class="on" title="涂上（加选区）">＋ 涂</button>
+          <button id="stBrushErase" title="擦掉">－ 擦</button>
+        </div>
+        <button id="stMaskInvert" class="st-mini wide" title="反选">反选</button>
+      </div>
+
+      <div class="st-mask-row" id="stBrushOpts2" hidden>
+        <label class="st-mini-sl">
+          <span>笔刷</span>
+          <input type="range" id="stRadius" min="0.01" max="0.25" step="0.005" value="0.04">
+        </label>
+        <label class="st-mini-sl">
+          <span>硬度</span>
+          <input type="range" id="stHardness" min="0" max="1" step="0.01" value="0.5">
+        </label>
+      </div>
+
+      <div class="st-mask-row">
+        <label class="st-switch small" title="用红色罩住选区，方便看涂在哪">
+          <input type="checkbox" id="stShowMask">
+          <span>显示选区</span>
+        </label>
+        <button id="stMaskUndo" class="st-mini" title="撤销上一笔（Cmd+Z）" disabled>↶</button>
+        <button id="stMaskClear" class="st-mini" title="清空选区" disabled>✕</button>
+      </div>
+
+      <div class="st-mask-info" id="stMaskInfo">没涂任何区域</div>
+    </div>
+
     <div class="st-panel-foot" id="stInfo">—</div>
   </aside>
 
@@ -65,6 +114,7 @@
 <input type="file" id="stFile" accept="image/*" hidden>
 <div id="stToast" class="toast" hidden></div>
 
+<script src="mask.js"></script>
 <script src="studio.js"></script>
 </body>
 </html>

@@ -7,7 +7,10 @@
    外壳（HTML/CSS/JS/图标）不含任何隐私数据，可安全缓存。
    ================================================================ */
 
-const SHELL = 'shell-v3';
+// 版本号改了才会重新拉取整个 shell。
+// 加文件进来（比如 mask.js）也必须升版本，否则老客户端永远拿不到它 ——
+// 表现是「本地测好的功能，线上用起来没反应」。
+const SHELL = 'shell-v4';
 const ASSETS = [
   '/',
   '/index.html',
@@ -25,6 +28,7 @@ const ASSETS = [
   '/studio.html',
   '/studio.css',
   '/studio.js',
+  '/mask.js',
   '/icon.svg',
   '/manifest.webmanifest'
 ];
