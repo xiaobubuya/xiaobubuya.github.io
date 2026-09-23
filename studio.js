@@ -202,6 +202,11 @@
     gl.uniform1f(uniforms.uOriginal, showingOriginal ? 1 : 0);
     for (const a of ADJUSTMENTS) gl.uniform1f(uniforms[a.key], values[a.key]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // 顺手刷新底部信息。
+    // 放在这里而不是各调用点，是因为「拖动滑杆时计数不更新」就是这么漏的 ——
+    // 有几个入口忘了加，而 draw() 是所有入口的必经之路。
+    updateInfo();
   }
 
   /** 按容器尺寸和图片比例算出画布该多大（考虑 DPR 保证清晰） */
@@ -527,7 +532,12 @@
     }
   })();
 
-  // 给自动化测试留的口子
+  // 给自动化测试留的口子。
+  //
+  // ⚠️ setValue 必须走「改值 + 刷新界面 + 重画」这条完整路径，
+  // 不能只改 values 再 _draw() —— 那样滑杆显示和「已调整 N 项」
+  // 不会跟着变，测试看到的状态和用户看到的就不是一回事。
+  // （一开始就是这么写的，结果测试里设了参数但界面显示 0，白测一轮。）
   window.Studio = {
     get image() { return img; },
     values,
@@ -535,6 +545,13 @@
     openFile,
     resetAll,
     setOriginal,
+    setValue(key, v) {
+      values[key] = v;
+      const a = ADJUSTMENTS.find(x => x.key === key);
+      if (a && a._show) a._show();
+      draw();
+    },
+    isChanged,
     _draw: draw
   };
 })();
