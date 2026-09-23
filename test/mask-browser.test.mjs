@@ -97,6 +97,46 @@ const HELPERS = `
 `;
 
 // 先给 Studio 暴露画布，方便读像素
+await t('⭐ 图片朝向正确（上半不能跑到下面去）', `
+  ${HELPERS}
+  // 造一张上下明显不同的图：上半蓝、下半红。
+  // 之前一直没发现整张预览是上下颠倒的，因为测试图都是纯色/对称的 ——
+  // 症状只在真实照片上才看得出来，而且很容易被当成"照片本来就那样"。
+  const c = document.createElement('canvas');
+  c.width = 400; c.height = 200;
+  const x = c.getContext('2d');
+  x.fillStyle = '#0000ff'; x.fillRect(0, 0, 400, 100);
+  x.fillStyle = '#ff0000'; x.fillRect(0, 100, 400, 100);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  await S.openFile(new File([blob], 'half.png', { type: 'image/png' }));
+  await sleep(450);
+
+  return { top: pixelAt(0.5, 0.8), bottom: pixelAt(0.5, 0.2) };
+`, r => {
+  assert.ok(r.top[2] > 200 && r.top[0] < 60,
+    `上部应该是蓝色，实际 rgb(${r.top})`);
+  assert.ok(r.bottom[0] > 200 && r.bottom[2] < 60,
+    `下部应该是红色，实际 rgb(${r.bottom})`);
+});
+
+await t('⭐ 蒙版位置和照片对齐（涂上方红在上方）', `
+  ${HELPERS}
+  await loadTestImage();
+  const base = pixelAt(0.5, 0.85);
+  S.paintRect(0.3, 0.75, 0.7, 0.9);        // 画面上方
+  await sleep(250);
+  S.setShowMask(true);
+  await sleep(500);
+  const up = pixelAt(0.5, 0.85);
+  const lo = pixelAt(0.5, 0.15);
+  S.setShowMask(false);
+  return { base, up, lo };
+`, r => {
+  assert.ok(r.up[0] > r.up[1] + 20, `上方应该罩红，实际 rgb(${r.up})`);
+  assert.ok(Math.abs(r.lo[0] - r.base[0]) < 20,
+    `下方不该有红色，实际 rgb(${r.lo}) vs 底色 rgb(${r.base})`);
+});
+
 await t('测试 API 可用', `
   const S = window.Studio;
   return { hasMask: !!S.mask, hasPaint: typeof S.paint === 'function',

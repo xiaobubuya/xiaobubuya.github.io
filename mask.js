@@ -211,7 +211,7 @@
       ctx.save();
       this._brushStyle(s, ctx, p);
       ctx.beginPath();
-      ctx.arc(p[0] * this.canvas.width, p[1] * this.canvas.height, r, 0, Math.PI * 2);
+      ctx.arc(p[0] * this.canvas.width, (1 - p[1]) * this.canvas.height, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -219,8 +219,11 @@
     _paintSegment(s, a, b, ctx) {
       ctx = ctx || this.canvas.getContext('2d');
       const r = this._px(s.radius);
-      const ax = a[0] * this.canvas.width, ay = a[1] * this.canvas.height;
-      const bx = b[0] * this.canvas.width, by = b[1] * this.canvas.height;
+      // ⚠️ Y 翻转：笔画点用的是「图片坐标」（y 向上，和 toImageCoord 一致），
+      // 而 canvas 是 y 向下的。这里翻这一次，且**只翻这一次**。
+      // 漏了或者多翻，画面就整个上下颠倒。
+      const ax = a[0] * this.canvas.width, ay = (1 - a[1]) * this.canvas.height;
+      const bx = b[0] * this.canvas.width, by = (1 - b[1]) * this.canvas.height;
 
       ctx.save();
       // 用「沿路径连续盖章」而不是画粗线：
@@ -238,7 +241,8 @@
         // 其余章都落在渐变半径之外 —— 全是透明的。
         // 表现是：一条线只留下两个端点的小圆点，中间完全空。
         // （这个 bug 让「局部调整」看起来像纹理没上传，查了很久。）
-        this._brushStyle(s, ctx, [x / this.canvas.width, y / this.canvas.height]);
+        // 传回「图片坐标」（y 向上），_brushStyle 内部再翻一次
+        this._brushStyle(s, ctx, [x / this.canvas.width, 1 - y / this.canvas.height]);
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -264,7 +268,7 @@
         return;
       }
       // 实心区占 hardness 的比例，剩下的是羽化过渡
-      const x = p[0] * this.canvas.width, y = p[1] * this.canvas.height;
+      const x = p[0] * this.canvas.width, y = (1 - p[1]) * this.canvas.height;
       const g = ctx.createRadialGradient(x, y, r * h, x, y, r);
       g.addColorStop(0, 'rgba(255,255,255,1)');
       g.addColorStop(1, 'rgba(255,255,255,0)');

@@ -67,7 +67,15 @@
     attribute vec2 aPos;
     varying vec2 vUv;
     void main() {
-      vUv = aPos * 0.5 + 0.5;
+      // ⚠️ Y 翻转放在这里，**不要**用 UNPACK_FLIP_Y_WEBGL。
+      //
+      // 原因（实测确认）：图片是 ImageBitmap，而这个 Chrome/SwiftShader
+      // 组合在 texImage2D 收到 ImageBitmap 时会**忽略** UNPACK_FLIP_Y_WEBGL ——
+      // 不管设 true 还是 false，纹理都是倒的。
+      //
+      // 在着色器里翻是唯一可靠的做法，而且不花额外开销。
+      // 症状是整张预览图上下颠倒（一开始没发现，是因为测试图是对称的）。
+      vUv = vec2(aPos.x * 0.5 + 0.5, 0.5 - aPos.y * 0.5);
       gl_Position = vec4(aPos, 0.0, 1.0);
     }
   `;
@@ -228,18 +236,24 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    // 图片源是 ImageBitmap，这个标志对它无效（见 VERT 说明）。
+    // 仍然设成 false 是为了语义清楚：我们不依赖它，翻转在着色器里做。
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
 
-    // 蒙版纹理。⚠️ 同样要 FLIP_Y —— 蒙版的归一化坐标和图片共用同一套
-    // vUv，翻转设置不一致的话蒙版会上下颠倒，而且这种错位很难一眼看出来
-    // （涂上半张脸，下半张变亮）。
+    // 蒙版纹理。
+    //
+    // ⚠️ 这里**不能**翻 Y，因为翻的动作已经统一挪到顶点着色器里了
+    // （见 VERT 的说明）。蒙版位图本身是按「图片坐标」写的
+    // （mask.js 里已经翻过一次），和 vUv 同一套朝上语义，
+    // 直接传就行。这里要是再翻，蒙版就和照片对不上了 ——
+    // 表现是「涂上半张脸，下半张变亮」。
     maskTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, maskTex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
   }
 
   /**
@@ -393,6 +407,8 @@
     if (b) b.disabled = !on;
     const s = $('stSeg');
     if (s) s.disabled = !on;
+    const ip = $('stInpaint');
+    if (ip) ip.disabled = !on || mask.isEmpty;
     const u = $('stUseMask');
     if (u) u.disabled = !on || mask.isEmpty;
     if (!on && typeof syncMaskUI === 'function') syncMaskUI();
@@ -601,6 +617,16 @@
     if (inv) inv.disabled = mask.isEmpty;
     const seg = $('stSeg');
     if (seg) seg.disabled = !img;
+    // 抹掉选区：没有选区时不能点（不然不知道抹哪儿）。
+    // 桌面版才真的能跑，网页版点下去会给提示说明原因。
+    const inp = $('stInpaint');
+    if (inp) {
+      inp.disabled = !img || mask.isEmpty;
+      inp.classList.toggle('dim', !hasInpaint());
+      inp.title = hasInpaint()
+        ? '抹掉选区里的东西（火山即梦）'
+        : '需要在桌面版「修图 App」里使用（浏览器有跨域限制）';
+    }
     ['stBrushAdd', 'stBrushErase'].forEach(id => {
       const el = $(id);
       if (el) el.classList.toggle('on', (id === 'stBrushAdd') === (mask.mode === 'add'));
@@ -738,6 +764,286 @@
     const opts2 = $('stBrushOpts2');
     if (opts) opts.hidden = !on;
     if (opts2) opts2.hidden = !on;
+  }
+
+  /* ================================================================
+     去物（火山即梦）
+     ----------------------------------------------------------------
+     为什么上传在网页这边做、生成在 App 那边做：
+
+       上传要带登录 Cookie，而 Cookie 是 httpOnly 的，
+       Electron 主进程拿不到 —— 只有页面能发这个请求。
+       火山不给 CORS 头，网页里 fetch 会被浏览器拦掉 ——
+       只有主进程能发那个请求。
+
+     所以是「谁能干谁干」，中间用公网 URL 交接。
+     ================================================================ */
+  const API_BASE = 'https://api.muyaya.world';
+
+  /** 把当前图传到临时上传，换一个火山能抓的公网 URL */
+  async function uploadForAI(blob) {
+    // ① 申请通行证
+    const c = await fetch(API_BASE + '/api/tmp', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!c.ok) throw new Error('申请上传通行证失败 HTTP ' + c.status);
+    const { token, publicUrl } = await c.json();
+
+    // ② 传字节。火山只吃 JPEG / PNG，所以这里统一转 JPEG
+    const up = await fetch(API_BASE + '/api/tmp/' + token, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: blob
+    });
+    if (!up.ok) {
+      // 失败就把通行证删掉，别留垃圾
+      fetch(API_BASE + '/api/tmp/' + token, { method: 'DELETE', credentials: 'include' })
+        .catch(() => {});
+      const e = await up.json().catch(() => ({}));
+      throw new Error(e.message || ('上传失败 HTTP ' + up.status));
+    }
+
+    return {
+      url: publicUrl,
+      // 用完即删。放在 finally 里执行，不管是成功还是出错都清掉 ——
+      // 反正 10 分钟也会自动过期，但主动删更干净
+      cleanup: () => fetch(API_BASE + '/api/tmp/' + token, {
+        method: 'DELETE', credentials: 'include'
+      }).catch(() => {})
+    };
+  }
+
+  /** 当前图 → JPEG blob（必要的话先缩到长边 2048，省上传时间和流量） */
+  async function imageBlob(maxSide = 2048) {
+    const long = Math.max(img.width, img.height);
+    const s = Math.min(1, maxSide / long);
+    const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
+
+    const off = document.createElement('canvas');
+    off.width = cw; off.height = ch;
+    off.getContext('2d').drawImage(img, 0, 0, cw, ch);
+    return await new Promise(r => off.toBlob(r, 'image/jpeg', 0.92));
+  }
+
+  async function removeObject() {
+    if (!img) return;
+    if (!hasInpaint()) {
+      toast('去物需要桌面版的「修图 App」\n浏览器里调不通（跨域限制）', 3600);
+      return;
+    }
+    if (mask.isEmpty) {
+      toast('先用画笔涂出要抹掉的东西', 3000);
+      setBrushMode(true);
+      showMaskTool(true);
+      return;
+    }
+
+    // 从蒙版算包围盒和占比，用来生成"改哪里、改多大"的描述
+    const stats = maskStats();
+    if (!stats) { toast('选区是空的'); return; }
+
+    // 用户想抹掉什么。给个输入框而不是固定文案 ——
+    // 提示词说得越具体，生成的结果越准
+    const intent = await askIntent();
+    if (intent === null) return;      // 用户取消
+
+    busy(true, '正在上传…');
+    let up = null;
+    const offProgress = hasInpaint()
+      ? window.albumStudio.onInpaintProgress(p => {
+          if (p.stage === 'submit') busy(true, '正在提交…');
+          else if (p.stage === 'poll') {
+            const s = Math.round((p.elapsed || 0) / 1000);
+            busy(true, `AI 正在重绘… ${s}s`);
+          } else if (p.stage === 'download') busy(true, '正在取回结果…');
+        })
+      : null;
+
+    try {
+      const blob = await imageBlob();
+      up = await uploadForAI(blob);
+
+      busy(true, '正在提交…');
+      const r = await window.albumStudio.volcInpaint({
+        imageUrl: up.url,
+        bbox: stats.bbox,
+        coverage: stats.coverage,
+        intent,
+        timeoutMs: 150000
+      });
+
+      if (!r.ok) throw new Error(r.error || '生成失败');
+      if (r.image) {
+        applyInpaintResult(r.image, blob, stats);
+        toast(`已抹掉（${(r.totalMs / 1000).toFixed(1)}s）`, 3200);
+      }
+    } catch (e) {
+      toast('去物失败：' + (e && e.message ? e.message : e), 4800);
+    } finally {
+      if (offProgress) offProgress();
+      if (up) up.cleanup();
+      busy(false);
+    }
+  }
+
+  /**
+   * 把 AI 的结果贴回来。
+   *
+   * ⚠️ 这里有个容易忽略的点：上传前如果缩过图，返回的结果尺寸
+   * 和画布上的原图对不上。所以不能直接整张替换 ——
+   * 要按「选区周围」这块取回来，缩放到原图坐标再合成。
+   *
+   * 而且 AI 会把整张图重画一遍（它还改了色彩和细节），
+   * 所以只拿选区那一块，其他地方保留原图，才不会被"顺手美化"。
+   */
+  function applyInpaintResult(dataUrl, uploadedBlob, stats) {
+    loadImage(dataUrl).then(res => {
+      // 把结果缩放到和当前画布一致
+      const off = document.createElement('canvas');
+      off.width = img.width; off.height = img.height;
+      const octx = off.getContext('2d');
+      octx.drawImage(res, 0, 0, img.width, img.height);
+
+      const w = off.width, h = off.height;
+      // bbox 是纹理坐标（y 向上），画布是 y 向下，这里翻回去
+      const bx0 = Math.floor(stats.bbox.x0 * w);
+      const bx1 = Math.ceil(stats.bbox.x1 * w);
+      const by0 = Math.floor((1 - stats.bbox.y1) * h);
+      const by1 = Math.ceil((1 - stats.bbox.y0) * h);
+
+      // 往外扩一点，让接缝落在羽化区外面
+      const pad = Math.round(Math.min(w, h) * 0.02);
+      const sx = Math.max(0, bx0 - pad), sy = Math.max(0, by0 - pad);
+      const sw = Math.min(w, bx1 + pad) - sx, sh = Math.min(h, by1 + pad) - sy;
+
+      // 整张换成新图（AI 重画了全图，但只有选区可信）
+      const merged = document.createElement('canvas');
+      merged.width = w; merged.height = h;
+      const mctx = merged.getContext('2d');
+      // 原图当底
+      mctx.drawImage(img, 0, 0);
+      // 只把选区那块盖上去
+      const piece = document.createElement('canvas');
+      piece.width = sw; piece.height = sh;
+      piece.getContext('2d').drawImage(off, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      // 用蒙版裁一下这块，边缘才不会出现生硬的矩形接缝
+      const pc = piece.getContext('2d');
+      pc.globalCompositeOperation = 'destination-in';
+      const mc = mask.canvas;
+      pc.drawImage(mc, sx * mc.width / w, sy * mc.height / h,
+        sw * mc.width / w, sh * mc.height / h, 0, 0, sw, sh);
+
+      mctx.drawImage(piece, sx, sy);
+
+      // 合成结果替换当前图
+      createImageBitmap(merged).then(bmp => {
+        if (img && img.close) img.close();
+        img = bmp;
+        gl.bindTexture(gl.TEXTURE_2D, imageTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        // 结果已经"烤"进图里了，蒙版留着没意义，清掉
+        mask.clear();
+        setMaskActive(false);
+        setBrushMode(false);
+        showMaskTool(false);
+        render();
+        toast('已应用，可以继续修或导出', 2600);
+      });
+    }).catch(e => toast('结果应用失败：' + e.message));
+  }
+
+  /** 从蒙版位图算 {bbox, coverage}。和主进程 ai-inpaint.js 的算法一致 */
+  function maskStats() {
+    // ⚠️ 坐标朝向（这块来来回回错过两次，务必看懂再改）
+    //
+    // 完整链路：
+    //
+    //   鼠标屏幕坐标  y 向下
+    //        │ toImageCoord：1 - y/h  →  翻成 y 向上
+    //        ▼
+    //   笔画点（图片坐标，y 向上）
+    //        │ mask._paintSegment：(1 - y) * h  →  翻成 canvas 的 y 向下
+    //        ▼
+    //   蒙版位图（canvas 坐标，y 向下）
+    //        │ 这里 maskStats：1 - y/h  →  翻回 y 向上
+    //        ▼
+    //   bbox（图片坐标，y 向上）→ 交给 AI 描述方位
+    //
+    // 一翻一翻再翻回来，看着啰嗦，但每一步都是必须的：
+    // mask.js 必须用 canvas 坐标画，而 describeRegion 必须收 y 向上的坐标。
+    //
+    // 踩过的坑：把这里当成"已经翻过了"而不翻 —— 结果在画面上方涂，
+    // 报给 AI 的却是"下方"，AI 就去改了完全不相干的地方，
+    // 成品看起来"就是不对劲"，极难归因。要靠在真机涂一笔、对比 bbox 才查得出来。
+    if (!mask.canvas) return null;
+    const d = mask.toTextureData();
+    const { data, width, height } = d;
+    let x0 = width, y0 = height, x1 = -1, y1 = -1, n = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (data[(y * width + x) * 4] > 8) {
+          n++;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return null;
+
+    return {
+      // 位图 y 向下 → 翻回图片坐标的 y 向上（见上面那段链路说明）
+      bbox: {
+        x0: x0 / width,
+        y0: 1 - (y1 + 1) / height,
+        x1: (x1 + 1) / width,
+        y1: 1 - y0 / height
+      },
+      coverage: n / (width * height),
+      pixels: n
+    };
+  }
+
+  /** 问用户要抹掉什么。返回 null 表示取消 */
+  function askIntent() {
+    return new Promise(resolve => {
+      const wrap = document.createElement('div');
+      wrap.className = 'st-ask';
+      wrap.innerHTML = ''
+        + '<div class="st-ask-box">'
+        + '  <h3>要抹掉什么？</h3>'
+        + '  <p class="dim">说具体一点，AI 抹得越准</p>'
+        + '  <input id="stAskInput" type="text" placeholder="例如：背景里的路人 / 电线杆 / 水印" maxlength="60">'
+        + '  <div class="st-ask-btns">'
+        + '    <button class="st-btn" data-act="cancel">取消</button>'
+        + '    <button class="st-btn primary" data-act="ok">开始抹掉</button>'
+        + '  </div>'
+        + '</div>';
+      document.body.appendChild(wrap);
+
+      const input = wrap.querySelector('#stAskInput');
+      const done = v => { wrap.remove(); resolve(v); };
+
+      wrap.querySelector('[data-act="cancel"]').onclick = () => done(null);
+      wrap.querySelector('[data-act="ok"]').onclick = () => done(input.value.trim() || '多余的物体');
+      wrap.addEventListener('click', e => { if (e.target === wrap) done(null); });
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') done(input.value.trim() || '多余的物体');
+        if (e.key === 'Escape') done(null);
+        e.stopPropagation();     // 别让全局快捷键把输入吃掉
+      });
+      setTimeout(() => input.focus(), 50);
+    });
+  }
+
+  function hasInpaint() {
+    return !!(window.albumStudio && window.albumStudio.volcInpaint);
   }
 
   /* ================================================================
@@ -934,6 +1240,7 @@
     });
 
     $('stSeg').addEventListener('click', segmentPerson);
+    $('stInpaint').addEventListener('click', removeObject);
   }
 
   /* ================================================================
@@ -1033,6 +1340,12 @@
     },
     segmentPerson,
     hasDesktop,
+    // —— 去物 ——
+    hasInpaint,
+    removeObject,
+    maskStats,
+    uploadForAI,
+    imageBlob,
     _syncMaskUI: syncMaskUI,
     /** 给测试读像素用（导出和预览共用同一块画布） */
     _canvas() { return canvas; },

@@ -238,6 +238,42 @@
   text-align:center;font-variant-numeric:tabular-nums;
 }
 
+/* AI 动作按钮：稍微区别于普通按钮，让人知道这个要联网/要等 */
+.st-btn.ai{
+  background:linear-gradient(135deg,#5b4bd6,#8a4bd6);
+  border-color:transparent;color:#fff;
+}
+.st-btn.ai:disabled{opacity:.4;background:var(--spanel2);color:var(--sink2)}
+.st-btn.ai.dim{opacity:.6}
+
+/* 问「要抹掉什么」的弹层 */
+.st-ask{
+  position:fixed;inset:0;z-index:50;
+  background:rgba(0,0,0,.55);
+  display:grid;place-items:center;padding:20px;
+  backdrop-filter:blur(3px);
+}
+.st-ask-box{
+  width:min(420px,100%);
+  background:var(--spanel);border:1px solid var(--sline);
+  border-radius:14px;padding:20px;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.st-ask-box h3{margin:0 0 6px;font-size:15px;color:var(--sink)}
+.st-ask-box p.dim{margin:0 0 14px;font-size:12px;color:var(--sink2)}
+.st-ask-box input{
+  width:100%;box-sizing:border-box;
+  padding:10px 12px;font:inherit;font-size:13px;
+  color:var(--sink);background:var(--sbg);
+  border:1px solid var(--sline);border-radius:9px;
+}
+.st-ask-box input:focus{
+  outline:none;border-color:var(--saccent);
+}
+.st-ask-btns{
+  display:flex;gap:8px;justify-content:flex-end;margin-top:16px;
+}
+
 /* 画布上的笔刷光标 */
 .st-cursor{
   position:absolute;pointer-events:none;z-index:5;
