@@ -22,6 +22,9 @@ const ASSETS = [
   '/reader.js',
   '/share.html',
   '/share.js',
+  '/studio.html',
+  '/studio.css',
+  '/studio.js',
   '/icon.svg',
   '/manifest.webmanifest'
 ];
