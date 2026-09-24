@@ -181,13 +181,16 @@ t('⭐ 局部调整混的是「锐化后」的源图，不是原始源图', () =
 t('锐化在 grade() 之前', () => {
   const main = FRAG.slice(FRAG.indexOf('void main()'));
   // ⚠️ 必须先断言存在，再比位置。
-  // 只比 indexOf 大小的话，把 sharpen(src) 整个删掉时
+  // 只比 indexOf 大小的话，把 sharpen 整个删掉时
   // indexOf 返回 -1，而 -1 < 后面那个位置**依然成立** ——
   // 于是这条断言在锐化完全没接上的时候照样通过。
-  // （这个漏洞是负向测试发现的：把 sharpen(src) 改成 src，测试全绿。）
-  assert.ok(/sharpen\(src\)/.test(main),
-    'main() 里没有调用 sharpen(src) —— 锐化根本没接上');
-  assert.ok(main.indexOf('sharpen(src)') < main.indexOf('grade(sharp)'),
+  // （这个漏洞是负向测试发现的：把 sharpen 调用改成 src，测试全绿。）
+  //
+  // ⚠️ sharpen 现在多带一个 uv 参数（几何变换之后要按变换后的坐标
+  //    取邻居），所以匹配的是 sharpen(src, u) 而不是 sharpen(src)。
+  assert.ok(/sharpen\(src, u\)/.test(main),
+    'main() 里没有调用 sharpen(src, u) —— 锐化根本没接上');
+  assert.ok(main.indexOf('sharpen(src, u)') < main.indexOf('grade(sharp)'),
     '锐化应该在调色之前');
 });
 
@@ -211,7 +214,7 @@ t('⭐ 锐化不在 grade() 里（否则会被调用两次）', () => {
       'grade() 里唯一允许的采样是 uCurve（LUT）；出现了别的采样源');
   }
   // 反向：锐化那 9 次采样必须在 grade() **外面**
-  assert.ok(/vec3 sharpen\(vec3 src\)/.test(FRAG), '找不到 sharpen()');
+  assert.ok(/vec3 sharpen\(vec3 src, vec2 uv\)/.test(FRAG), '找不到 sharpen()');
 });
 
 /* ---------------- 5. 数值健康 ---------------- */

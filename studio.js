@@ -133,6 +133,9 @@
     uniform float uMaskOverlay; // 1 = 显示蒙版本身（红色叠加）
     uniform vec2 uTexel;       // 1/图片宽高，锐化取邻居用
     uniform float uAspect;     // 图片宽高比，暗角要按比例算才不变形
+    uniform float uRot;        // 旋转角（弧度，逆时针）
+    uniform float uUvScale;    // 缩放：输出框相对原图的大小（1 = 恰好内接）
+    uniform vec2 uCropOffset;  // 裁剪中心在原图中的偏移（相对 0.5 中心的归一化值）
 
     // sRGB <-> 线性。这两个函数是「正确调色」的地基：
     // 曝光/高光/阴影必须在线性空间里做，否则会发灰发闷
@@ -329,14 +332,14 @@
        用原图 texel 的代价是屏幕预览时看着比导出略轻 ——
        这是两者不一致里代价最小的取舍。
        ================================================================ */
-    vec3 sharpen(vec3 src) {
+    vec3 sharpen(vec3 src, vec2 uv) {
       if (uSharpness == 0.0) return src;
       vec3 blur = vec3(0.0);
       // 3x3 均值。用均值而不是高斯，是为了省采样 ——
       // 锐化对模糊核的形状不敏感，对半径敏感
       for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-          blur += texture2D(uImage, vUv + vec2(float(x), float(y)) * uTexel).rgb;
+          blur += texture2D(uImage, uv + vec2(float(x), float(y)) * uTexel).rgb;
         }
       }
       blur /= 9.0;
@@ -400,7 +403,29 @@
     }
 
     void main() {
-      vec3 src = texture2D(uImage, vUv).rgb;
+      /* ================================================================
+         几何变换：裁剪 + 旋转
+         ----------------------------------------------------------------
+         先算出「画布上这个像素对应原图的哪个位置」，后面的采样/锐化/蒙版
+         全都用这个 u。这样只需改一处，整条管线自动跟着走。
+
+         ⚠️ 用 u 而不是就地改 vUv：蒙版是按**原图坐标**存的
+         （mask.js 写的是图片坐标，和 vUv 同一套语义），
+         所以蒙版必须继续用 vUv 采样 —— 用 u 的话蒙版会跟着一起转，
+         涂了人脸结果局部调整跑到别处去了。
+
+         ⚠️ 只有「非恒等」时才启用。crop 模式下必然非恒等；
+         正常编辑时 rot=0 且 uvScale=1 且 offset=0，是恒等变换。
+         ================================================================ */
+      vec2 u = vUv;
+      if (uRot != 0.0 || uUvScale != 1.0 || uCropOffset != vec2(0.0)) {
+        vec2 p = (vUv - 0.5) * uUvScale + uCropOffset;
+        float ca = cos(uRot), sa = sin(uRot);
+        p = mat2(ca, sa, -sa, ca) * p;
+        u = p + 0.5;
+      }
+
+      vec3 src = texture2D(uImage, u).rgb;
 
       if (uOriginal > 0.5) {
         gl_FragColor = vec4(src, 1.0);
@@ -408,7 +433,7 @@
       }
 
       // 锐化在调色之前，而且作用在源图上
-      vec3 sharp = sharpen(src);
+      vec3 sharp = sharpen(src, u);
 
       // ⚠️ 局部调整时混的也是 sharp 而不是 src ——
       // 混 src 的话，涂了蒙版之后锐化会在蒙版内被"混掉"，
@@ -653,6 +678,9 @@
     uniforms.uMaskOverlay = gl.getUniformLocation(program, 'uMaskOverlay');
     uniforms.uTexel = gl.getUniformLocation(program, 'uTexel');
     uniforms.uAspect = gl.getUniformLocation(program, 'uAspect');
+    uniforms.uRot = gl.getUniformLocation(program, 'uRot');
+    uniforms.uUvScale = gl.getUniformLocation(program, 'uUvScale');
+    uniforms.uCropOffset = gl.getUniformLocation(program, 'uCropOffset');
     uniforms.uCurve = gl.getUniformLocation(program, 'uCurve');
 
     // 纹理：非 2 的幂也要能重复/夹取
@@ -785,6 +813,17 @@
     gl.uniform2f(uniforms.uTexel, 1 / img.width, 1 / img.height);
     gl.uniform1f(uniforms.uAspect, img.width / img.height);
 
+    // 几何变换：有裁剪就喂裁剪参数，没有就走恒等 ——
+    // ⚠️ 恒等分支不能省：uniform 是**全局状态**，上一次裁剪留下的值
+    // 会一直生效，表现是"取消裁剪之后照片还是歪的"。
+    if (crop) {
+      const plan = cropRenderPlan(false);
+      if (plan) applyGeometryUniforms(plan);
+      else resetGeometryUniforms();
+    } else {
+      resetGeometryUniforms();
+    }
+
     for (const a of ADJUSTMENTS) gl.uniform1f(uniforms[a.key], values[a.key]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -797,6 +836,26 @@
   /** 按容器尺寸和图片比例算出画布该多大（考虑 DPR 保证清晰） */
   function layoutCanvas() {
     if (!img) return;
+    // ⚠️ 用 _trace 而不是 console.log：页面日志经 CDP 不会传回测试侧
+    // （harness 只取 Runtime.evaluate 的返回值），排查时看不到。
+    // 写成数组由测试读出来才看得见。踩过这个坑。
+    _trace('layoutCanvas', img.width + 'x' + img.height + ' crop=' + !!crop
+      + ' stageW=' + ($('stStage') || {}).clientWidth);
+
+    // 裁剪模式下画布尺寸由「取景框比例」决定，不是原图比例
+    if (crop) {
+      const plan = cropRenderPlan(false);
+      if (plan) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = plan.outW;
+        canvas.height = plan.outH;
+        canvas.style.width = Math.round(plan.outW / dpr) + 'px';
+        canvas.style.height = Math.round(plan.outH / dpr) + 'px';
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        return;
+      }
+    }
+
     const stage = $('stStage');
     const pad = 24;
     const availW = Math.max(80, stage.clientWidth - pad);
@@ -817,6 +876,695 @@
     layoutCanvas();
     draw();
     updateInfo();
+  }
+
+  /* ================================================================
+     裁剪 + 旋转
+     ================================================================
+     这是本项目里第一组**几何**变换，和之前的像素级调整完全不同：
+     它会改变输出尺寸和坐标系。所以做法上刻意保守：
+
+       · 参数化（不是累积变换）：只存「旋转角 + 裁剪框」两个状态，
+         每次渲染从零算一遍。累积矩阵一旦出错会越滚越离谱，
+         而且没法"重置"。
+       · **应用时烘焙**成新图，不长期挂着变换。
+
+     ⚠️ 为什么不把变换长期挂在渲染链上（像 Lightroom 那样非破坏）：
+     我们整个坐标系建立在「画布像素 ↔ 原图归一化坐标」这个恒等关系上
+     —— 画笔、蒙版、AI 的 bbox、暗角的 uAspect 全都依赖它。
+     长期挂变换意味着要把这条关系改成复合映射，改动面覆盖
+     蒙版引擎、画笔、去物、美颜、导出，而且每一处都要单独验证。
+     烘焙的代价是「应用后不能撤销到变换前的调整」，
+     收益是其余所有功能完全不用动 —— 这个取舍是划算的。
+
+     ----------------------------------------------------------------
+     坐标系（这是最容易搞错的地方，先讲清楚）
+     ----------------------------------------------------------------
+     三个空间：
+
+       ① 原图空间 (W0,H0)      照片本身
+       ② 旋转框空间 (W,H)      原图绕中心旋转 φ 之后的**外接**矩形
+                                （裁剪框固定为轴对齐，就在这个空间里）
+       ③ 画布空间              屏幕上看到的那块
+
+     旋转角 φ 一确定，②就定了。取景框（裁剪框）在②里是轴对齐矩形，
+     用户可以拖、可以按比例约束。
+
+     ⚠️ 旋转后四角会露白，所以裁剪框必须落在「旋转后的**内接**矩形」
+     里 —— 这就是 inscribedRect() 的作用。它保证任何合法裁剪框
+     都完全落在图片内容内。
+
+     裁剪框不确定时**不给变换**（恒等），正常编辑就完全不受影响。
+     ================================================================ */
+
+  /** 旋转/裁剪状态（null = 没有裁剪，走恒等变换） */
+  let crop = null;
+
+
+  /**
+   * 诊断追踪。页面里的 console.log 经 CDP **不会**传回测试侧
+   * （harness 只取 Runtime.evaluate 的返回值），所以排查时把关键
+   * 步骤记在这个数组里，由测试读出来 —— 这个坑实际踩过，
+   * 白白多花了几轮猜测。
+   */
+  const _traceLog = [];
+  function _trace(tag, msg) {
+    _traceLog.push(tag + ': ' + msg);
+    if (_traceLog.length > 60) _traceLog.shift();
+  }
+
+  /* 每次旋转角度变化都要重算「内接矩形」，裁剪框也随之 rebase。
+     ⚠️ 用归一化坐标（相对旋转框 W×H）而不是像素：
+     这样旋转角度一变，只要把归一化值 clamp 回新的内接矩形就行，
+     不用做像素换算。 */
+  const ASPECTS = [
+    { name: '自由', v: 0 },
+    { name: '1:1', v: 1 },
+    { name: '4:3', v: 4 / 3 },
+    { name: '3:4', v: 3 / 4 },
+    { name: '16:9', v: 16 / 9 },
+    { name: '9:16', v: 9 / 16 }
+  ];
+
+  /**
+   * 旋转后图片的**内接矩形**（归一化，0~1，相对旋转框 W×H）。
+   *
+   * 推导：旋转框里放一个居中的轴对齐矩形 (w,h)，要求它旋转 φ 之后
+   * 仍在原图 (W0,H0) 内。旋转后矩形的外接尺寸是
+   *   w·cosφ + h·sinφ ≤ W0
+   *   w·sinφ + h·cosφ ≤ H0
+   * 取最大面积解。命中哪条边界取决于原图比例落在哪个区间。
+   */
+  function inscribedRect(W0, H0, phi) {
+    const c = Math.abs(Math.cos(phi));
+    const s = Math.abs(Math.sin(phi));
+    const critical = Math.max(H0 / W0, W0 / H0);   // 这个比例以上是"竖长"
+    let w, h;
+    if (H0 / W0 > 1) {
+      // 原图是竖的
+      if (W0 / H0 >= critical * c) {
+        // 宽绰：水平方向不是瓶颈
+        const den = c * c - s * s;
+        if (Math.abs(den) < 1e-9) { w = W0; h = H0; }
+        else { w = W0 / c; h = (H0 - w * s) / c; }
+      } else {
+        const den = c * c - s * s;
+        if (Math.abs(den) < 1e-9) { w = W0; h = H0; }
+        else { h = H0 / c; w = (W0 - h * s) / c; }
+      }
+    } else {
+      // 原图是横的（和上面镜像，把 W0/H0 的角色换一下）
+      if (H0 / W0 >= critical * c) {
+        const den = c * c - s * s;
+        if (Math.abs(den) < 1e-9) { w = W0; h = H0; }
+        else { h = H0 / c; w = (W0 - h * s) / c; }
+      } else {
+        const den = c * c - s * s;
+        if (Math.abs(den) < 1e-9) { w = W0; h = H0; }
+        else { w = W0 / c; h = (H0 - w * s) / c; }
+      }
+    }
+    // 数值保险：不允许超过原图，也不允许 <= 0
+    w = Math.max(1, Math.min(W0, w));
+    h = Math.max(1, Math.min(H0, h));
+    return { w, h };
+  }
+
+  /** 旋转框（外接矩形）的尺寸 */
+  function rotatedBoxSize(W0, H0, phi) {
+    const c = Math.abs(Math.cos(phi));
+    const s = Math.abs(Math.sin(phi));
+    return { W: W0 * c + H0 * s, H: W0 * s + H0 * c };
+  }
+
+  /**
+   * 把裁剪框 clamp 回合法范围（内接矩形内，且不小于最小尺寸）。
+   * 旋转角一变就要调一次 —— 内接矩形缩小了，原来的框可能已经越界。
+   */
+  function clampCropRect(cr, inW, inH) {
+    // 内接矩形在旋转框里的位置（居中）
+    const ix = (1 - inW) / 2, iy = (1 - inH) / 2;
+    const minSide = 0.08;
+
+    let w = Math.min(Math.max(cr.w, minSide), inW);
+    let h = Math.min(Math.max(cr.h, minSide), inH);
+    let x = Math.min(Math.max(cr.x, ix), ix + inW - w);
+    let y = Math.min(Math.max(cr.y, iy), iy + inH - h);
+    return { x, y, w, h };
+  }
+
+  /** 当前旋转角对应的内接矩形（归一化到旋转框） */
+  function currentInscribed() {
+    if (!img) return { inW: 1, inH: 1 };
+    const phi = (crop ? crop.rot : 0) * Math.PI / 180;
+    const box = rotatedBoxSize(img.width, img.height, phi);
+    const ins = inscribedRect(img.width, img.height, phi);
+    return { inW: ins.w / box.W, inH: ins.h / box.H };
+  }
+
+  /** 打开裁剪模式 */
+  function enterCrop() {
+    if (!img) return;
+    const phi = 0;
+    const box = rotatedBoxSize(img.width, img.height, phi);
+    const ins = inscribedRect(img.width, img.height, phi);
+    // 初始取景框 = 整个内接矩形
+    crop = {
+      rot: 0,
+      rect: { x: (1 - ins.w / box.W) / 2, y: (1 - ins.h / box.H) / 2,
+              w: ins.w / box.W, h: ins.h / box.H },
+      aspect: 0
+    };
+    setBrushMode(false);
+    showMaskTool(false);
+    showCropUI(true);
+    layoutCanvas();
+    render();
+    drawCropOverlay();
+    toast('拖动取景框选择要保留的部分，或调上面的旋转', 3600);
+  }
+
+  /** 退出裁剪模式。保留参数不应用（等于取消） */
+  function exitCrop(apply) {
+    showCropUI(false);
+    if (!apply) {
+      crop = null;
+    }
+    render();
+  }
+
+  /** 设置旋转角；内接矩形随之变化，裁剪框要 rebase */
+  function setCropRotation(deg) {
+    if (!crop || !img) return;
+    // 归一化坐标是相对**旋转框**的，旋转角一变框就变了 ——
+    // 所以不能直接把旧的归一化值搬过来，要按比例换算
+    const oldBox = rotatedBoxSize(img.width, img.height,
+      crop.rot * Math.PI / 180);
+    const newBox = rotatedBoxSize(img.width, img.height, deg * Math.PI / 180);
+    const px = { x: crop.rect.x * oldBox.W, y: crop.rect.y * oldBox.H,
+                 w: crop.rect.w * oldBox.W, h: crop.rect.h * oldBox.H };
+
+    crop.rot = deg;
+    crop.rect = { x: px.x / newBox.W, y: px.y / newBox.H,
+                  w: px.w / newBox.W, h: px.h / newBox.H };
+
+    const { inW, inH } = currentInscribed();
+    crop.rect = clampCropRect(crop.rect, inW, inH);
+    if (crop.aspect) applyCropAspect(crop.aspect);
+
+    const r = $('stCropRotVal');
+    if (r) r.textContent = deg.toFixed(0) + '°';
+    layoutCanvas();
+    render();
+    drawCropOverlay();
+  }
+
+  /** 按比例约束裁剪框（居中收缩到目标比例） */
+  function applyCropAspect(ratio) {
+    if (!crop) return;
+    crop.aspect = ratio;
+    if (!ratio) return;
+    const { inW, inH } = currentInscribed();
+    // 在旋转框里按目标比例取最大的框，再收缩到当前大小
+    const box = rotatedBoxSize(img.width, img.height, crop.rot * Math.PI / 180);
+    const inPx = { w: inW * box.W, h: inH * box.H };
+    let w = inPx.w, h = w / ratio;
+    if (h > inPx.h) { h = inPx.h; w = h * ratio; }
+    // 归一化回旋转框
+    const nw = w / box.W, nh = h / box.H;
+    const cx = crop.rect.x + crop.rect.w / 2;
+    const cy = crop.rect.y + crop.rect.h / 2;
+    crop.rect = clampCropRect(
+      { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh }, inW, inH);
+  }
+
+  /**
+   * 应用裁剪 + 旋转：把结果烘焙成新图。
+   *
+   * 走「按目标尺寸重画一帧 → readPixels」这条路，而不是在 CPU 上
+   * 重采样 —— 复用的是同一个 shader，所以**所见即所得**，
+   * 而且不用再写一遍调色逻辑（写两遍必然漂移）。
+   */
+  async function applyCrop() {
+    if (!crop || !img) return;
+    const prevRect = crop.rect, prevRot = crop.rot;
+    busy(true, '正在应用…');
+    try {
+      // ⚠️ 必须传 true 走**导出**分支。默认参数是预览模式，
+      // 返回的是屏幕尺寸（比如 832×624）—— 拿它当输出尺寸的话，
+      // 裁剪出来的图会变成屏幕分辨率，而且比原图还大。
+      // 这个 bug 实际发生过：400×300 的图"裁剪"完变成 832×624。
+      const plan = cropRenderPlan(true);
+      if (!plan) throw new Error('取景框太小');
+
+      // 切到目标分辨率重画
+      const prevW = canvas.width, prevH = canvas.height;
+      canvas.width = plan.outW;
+      canvas.height = plan.outH;
+      gl.viewport(0, 0, plan.outW, plan.outH);
+      applyGeometryUniforms(plan);
+      draw();
+
+      const pixels = new Uint8Array(plan.outW * plan.outH * 4);
+      gl.readPixels(0, 0, plan.outW, plan.outH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      /* 行序：**翻一次**。
+         实测依据（裁画面上半，正确结果应是"左半红、右半绿"）：
+           · 导出缓冲原始采样：TL=红 TR=绿 BL=蓝 BR=白  ✅
+           · 烘焙出的位图：同上                        ✅
+           · 不翻时画布显示：垂直翻转（下红上蓝）      ❌
+           · 翻一次后画布显示：左红右绿                ✅
+         所以对照实验的结论很明确：这里翻一次是对的。
+
+         ⚠️ 它和 cropRenderPlan 里 offY 的负号是配套的两处约定，
+         改动任何一处都会让画面上下颠倒 —— 两个一起看。 */
+      const flipped = new Uint8ClampedArray(pixels.length);
+      const rowBytes = plan.outW * 4;
+      for (let y = 0; y < plan.outH; y++) {
+        const src = (plan.outH - 1 - y) * rowBytes;
+        flipped.set(pixels.subarray(src, src + rowBytes), y * rowBytes);
+      }
+
+      const bmp = await createImageBitmap(new ImageData(flipped, plan.outW, plan.outH));
+
+      // 换图 + 重置一切跟尺寸相关的东西
+      if (img && img.close) img.close();
+      img = bmp;
+      crop = null;
+      showCropUI(false);
+
+      mask.clear();
+      mask.resize(img.width, img.height);
+      setMaskActive(false);
+      setBrushMode(false);
+      showMaskTool(false);
+
+      gl.bindTexture(gl.TEXTURE_2D, imageTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      _trace('applyCrop:afterUpload', 'img=' + img.width + 'x' + img.height
+        + ' tex=' + gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WIDTH || 0x1000)
+        + 'x' + gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_HEIGHT || 0x1001)
+        + ' canvas=' + canvas.width + 'x' + canvas.height);
+
+      render();
+      _trace('applyCrop:afterRender', 'canvas=' + canvas.width + 'x' + canvas.height
+        + ' img=' + img.width + 'x' + img.height + ' crop=' + !!crop);
+      /* ⚠️ 强制同步 GPU 管线。
+         不加这个的话，紧跟其后的 readPixels / 截图有时会拿到**上一帧**
+         的内容（表现是"应用了裁剪但画面还是旧的"）。
+         它是异步提交的，刚 texImage2D 上传的新纹理不一定已经生效。
+         代价只是一次同步等待 —— 这个操作本来就不在热路径上。 */
+      gl.finish();
+      toast(`已应用裁剪（${img.width}×${img.height}）`, 3000);
+    } catch (e) {
+      // 失败要把状态还原，否则用户会卡在一个半应用的状态里
+      crop.rect = prevRect; crop.rot = prevRot;
+      canvas.width = canvas.width;   // 触发重新分配，避免半截缓冲
+      toast('应用裁剪失败：' + (e && e.message ? e.message : e));
+    } finally {
+      busy(false);
+    }
+  }
+
+  /**
+   * 由当前状态算出「输出尺寸 + UV 变换参数」。
+   *
+   * ⚠️ 关键区分：**s / rot / off 只由裁剪几何决定，和输出分辨率无关**。
+   * 预览和导出必须用同一组值，只有 outW/outH 不同 ——
+   * 一开始把 DPR 也乘进 s 里了，那会让预览和导出采样的范围不一样，
+   * 表现是"预览好好的，导出的构图偏了"。
+   *
+   * 输出尺寸：按原图分辨率算，保证导出清晰
+   *   outW = 裁剪框宽（旋转框像素）× (内接矩形占原图的比例)
+   *
+   * ⚠️ 缩放系数 s 的作用：裁剪框只在「旋转后的图片」范围内，
+   * 而旋转后的图片比原图大（外接矩形）。所以从输出框往回采样时，
+   * 原图那部分被放大了 1/s 倍 —— 不乘这个 s 的话画面会被拉大。
+   */
+  function cropRenderPlan(forExport = false) {
+    if (!crop || !img) return null;
+    const W0 = img.width, H0 = img.height;
+    const phi = crop.rot * Math.PI / 180;
+    const box = rotatedBoxSize(W0, H0, phi);
+    const ins = inscribedRect(W0, H0, phi);
+
+    const r = crop.rect;
+    const viewW = r.w * box.W;      // 旋转框像素
+    const viewH = r.h * box.H;
+    if (viewW < 2 || viewH < 2) return null;
+
+    // 内接矩形在原图上的实际尺寸 ÷ 旋转框尺寸 = 采样缩放（与分辨率无关）
+    const s = ins.w / box.W;
+
+    // 裁剪框中心相对图片中心的偏移，换成原图归一化单位
+    const offX = (r.x + r.w / 2 - 0.5) * box.W * s / W0;
+    /* ⚠️⚠️ 纵向偏移的**符号必须取反**。
+       原因：裁剪框 y 向**上**（旋转框坐标，和图片坐标一致，
+       y 大 = 画面靠上），而 shader 里采样的 v 是纹理坐标，
+       上传后 v=0 对应**画面底部** —— 两者方向相反。
+
+       踩过的现象：不取反的话，裁剪区域整体上下颠倒
+       （取景框选上半，画面上出来的是翻转过的下半）。
+       横向没有这个问题：x 两套都是向右。 */
+    /* ⚠️ 纵向偏移**不取反**。实测：取反会让预览直接采到相反的一半
+       （裁画面上半却采到下半）。而且因为烘焙走的是同一套 uniform、
+       行序又翻了一次，两处错误会互相掩盖 —— 表现是
+       "预览和应用后一致，但两个都是反的"，只看"一致"发现不了。
+
+       所以判断依据不能是"预览==应用"，必须有**已知答案**：
+       裁画面上半（红+绿）就该整块只有红和绿，出现蓝/白就是反了。 */
+    const offY = (r.y + r.h / 2 - 0.5) * box.H * s / H0;
+
+    if (forExport) {
+      return {
+        outW: Math.max(1, Math.round(viewW * s)),
+        outH: Math.max(1, Math.round(viewH * s)),
+        s, rot: phi, offX, offY, W0, H0
+      };
+    }
+
+    // 预览：画布尺寸按屏幕可用空间定，**比例**用裁剪框的比例。
+    // s / rot / off 和导出完全一致（见上面的说明）。
+    const stage = $('stStage');
+    const pad = 24;
+    const availW = Math.max(80, stage.clientWidth - pad);
+    const availH = Math.max(80, stage.clientHeight - pad);
+    let w = availW, h = w * viewH / viewW;
+    if (h > availH) { h = availH; w = h * viewW / viewH; }
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    return {
+      outW: Math.max(1, Math.round(w * dpr)),
+      outH: Math.max(1, Math.round(h * dpr)),
+      s, rot: phi, offX, offY, W0, H0
+    };
+  }
+
+  /** 把几何参数喂给 shader */
+  function applyGeometryUniforms(plan) {
+    gl.uniform1f(uniforms.uRot, plan.rot);
+    gl.uniform1f(uniforms.uUvScale, plan.s);
+    gl.uniform2f(uniforms.uCropOffset, plan.offX, plan.offY);
+  }
+
+  /** 没有裁剪时必须是恒等变换，否则正常编辑会被莫名缩放/旋转 */
+  function resetGeometryUniforms() {
+    gl.uniform1f(uniforms.uRot, 0);
+    gl.uniform1f(uniforms.uUvScale, 1);
+    gl.uniform2f(uniforms.uCropOffset, 0, 0);
+  }
+
+  /* ---------------- 裁剪框 overlay ----------------
+     用一个 2D canvas 画在 WebGL 画布上面：
+       · 取景框外面压暗
+       · 三分线
+       · 四角标记
+     为什么不用 DOM 元素：取景框的比例/位置每次拖动都在变，
+     用 CSS 摆一堆 div 反而更绕，而且没法画三分线。
+     ================================================ */
+  let cropCanvas = null;
+
+  function ensureCropCanvas() {
+    if (cropCanvas) return cropCanvas;
+    cropCanvas = document.createElement('canvas');
+    cropCanvas.id = 'stCropOverlay';
+    cropCanvas.hidden = true;
+    // 放在 stage 里，和 WebGL 画布同一个定位上下文
+    const stage = $('stStage');
+    stage.appendChild(cropCanvas);
+    return cropCanvas;
+  }
+
+  /** 裁剪框在画布上的像素位置（canvas 坐标，y 向下） */
+  function cropRectOnCanvas() {
+    if (!crop) return null;
+    const r = crop.rect;
+    const baseX = (1 - r.w) / 2, baseY = (1 - r.h) / 2;
+    return {
+      x: (r.x - baseX) / r.w,
+      y: (r.y - baseY) / r.h,
+      w: 1 / r.w,
+      h: 1 / r.h
+    };
+  }
+
+  function drawCropOverlay() {
+    const cv = ensureCropCanvas();
+    if (!crop || !img) { cv.hidden = true; return; }
+    cv.hidden = false;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = canvas.width, H = canvas.height;
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    cv.style.width = canvas.style.width;
+    cv.style.height = canvas.style.height;
+
+    const g = cv.getContext('2d');
+    g.clearRect(0, 0, W, H);
+
+    const br = cropRectOnCanvas();
+    const bx = br.x * W, by = br.y * H, bw = br.w * W, bh = br.h * H;
+
+    // 框外压暗
+    g.fillStyle = 'rgba(0,0,0,.55)';
+    g.fillRect(0, 0, W, by);                          // 上
+    g.fillRect(0, by + bh, W, H - by - bh);           // 下
+    g.fillRect(0, by, bx, bh);                        // 左
+    g.fillRect(bx + bw, by, W - bx - bw, bh);         // 右
+
+    // 三分线
+    g.strokeStyle = 'rgba(255,255,255,.45)';
+    g.lineWidth = Math.max(1, dpr);
+    for (let i = 1; i <= 2; i++) {
+      g.beginPath();
+      g.moveTo(bx + bw * i / 3, by); g.lineTo(bx + bw * i / 3, by + bh);
+      g.moveTo(bx, by + bh * i / 3); g.lineTo(bx + bw, by + bh * i / 3);
+      g.stroke();
+    }
+
+    // 边框 + 四角
+    g.strokeStyle = 'rgba(255,255,255,.9)';
+    g.lineWidth = Math.max(1, dpr);
+    g.strokeRect(bx, by, bw, bh);
+
+    const L = Math.min(bw, bh) * 0.12;
+    g.lineWidth = Math.max(3, dpr * 3);
+    g.beginPath();
+    for (const [cx2, cy2, dx, dy] of [
+      [bx, by, 1, 1], [bx + bw, by, -1, 1],
+      [bx, by + bh, 1, -1], [bx + bw, by + bh, -1, -1]
+    ]) {
+      g.moveTo(cx2 + dx * L, cy2); g.lineTo(cx2, cy2); g.lineTo(cx2, cy2 + dy * L);
+    }
+    g.stroke();
+  }
+
+  function showCropUI(on) {
+    const sec = $('stCropOpts');
+    if (sec) sec.hidden = !on;
+    const b = $('stCrop');
+    if (b) {
+      b.classList.toggle('on', on);
+      b.textContent = on ? '✓ 裁剪中…' : '裁剪 / 旋转';
+    }
+    const cv = ensureCropCanvas();
+    // ⚠️ 非裁剪模式下必须把 overlay 的 pointer-events 关掉，
+    // 否则它会盖住画布，画笔就涂不上了
+    cv.style.pointerEvents = on ? 'auto' : 'none';
+    if (!on) cv.hidden = true;
+  }
+
+  /* ================================================================
+     裁剪 UI 初始化
+     ================================================================ */
+  function initCropUI() {
+    const seg = $('stCropAspect');
+    if (!seg) return;
+
+    seg.innerHTML = '';
+    for (const a of ASPECTS) {
+      const b = document.createElement('button');
+      b.textContent = a.name;
+      b.dataset.ratio = String(a.v);
+      if (!a.v) b.classList.add('on');
+      b.addEventListener('click', () => {
+        if (!crop) return;
+        for (const el of seg.children) el.classList.remove('on');
+        b.classList.add('on');
+        // ⚠️ 先清掉当前比例再设新的：applyCropAspect 会按目标比例
+        // 重算尺寸，如果旧的 aspect 还留着，clampCropRect 会把它拉回去
+        crop.aspect = 0;
+        if (a.v) applyCropAspect(a.v);
+        render();
+        drawCropOverlay();
+      });
+      seg.appendChild(b);
+    }
+
+    $('stCrop').addEventListener('click', () => {
+      if (crop) exitCrop(false);      // 再点一次 = 取消
+      else enterCrop();
+    });
+
+    $('stCropRot').addEventListener('input', e => {
+      setCropRotation(parseFloat(e.target.value));
+    });
+
+    // 90° 快转：超出 ±45 的范围，直接烘焙一次
+    // （滑块只到 ±45，90° 用按钮更顺手；走"应用 + 重新进入"这条路）
+    for (const [id, dir] of [['stCropRotL', -1], ['stCropRotR', 1]]) {
+      const btn = $(id);
+      if (!btn) continue;
+      btn.addEventListener('click', async () => {
+        if (!img) return;
+        await rotateQuarter(dir);
+      });
+    }
+
+    $('stCropApply').addEventListener('click', () => applyCrop());
+    $('stCropCancel').addEventListener('click', () => exitCrop(false));
+
+    initCropDrag();
+  }
+
+  /**
+   * 90° 整转：直接用 canvas 的 2D 变换烘焙，不走 shader。
+   *
+   * 为什么不走 shader 的旋转：90° 是**精确置换**（行列互换），
+   * 用 2D drawImage 一步到位、零重采样误差；而走 shader 要经过
+   * 浮点三角函数，虽然也能对，但没必要。
+   */
+  async function rotateQuarter(dir) {
+    const t0 = Date.now();
+    busy(true, '正在旋转…');
+    try {
+      // 先按当前参数渲染一帧（含已有的调色），再整体转
+      const src = document.createElement('canvas');
+      src.width = img.width; src.height = img.height;
+      const sg = src.getContext('2d');
+      // 用 WebGL 画布的内容：切到原分辨率重画一帧
+      const prevW = canvas.width, prevH = canvas.height;
+      canvas.width = img.width; canvas.height = img.height;
+      gl.viewport(0, 0, img.width, img.height);
+      resetGeometryUniforms();          // 90° 单独做，不带裁剪
+      draw();
+      sg.drawImage(canvas, 0, 0);
+      canvas.width = prevW; canvas.height = prevH;
+
+      const out = document.createElement('canvas');
+      out.width = img.height; out.height = img.width;
+      const og = out.getContext('2d');
+      og.translate(out.width / 2, out.height / 2);
+      og.rotate(dir * Math.PI / 2);
+      og.drawImage(src, -src.width / 2, -src.height / 2);
+
+      const bmp = await createImageBitmap(out);
+      if (img && img.close) img.close();
+      img = bmp;
+
+      // 尺寸变了，蒙版必须重建
+      mask.clear();
+      mask.resize(img.width, img.height);
+      setMaskActive(false);
+      setBrushMode(false);
+      showMaskTool(false);
+
+      gl.bindTexture(gl.TEXTURE_2D, imageTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+
+      if (crop) {
+        // 在裁剪模式里转 90°：重新算内接矩形和取景框
+        const keepRot = crop.rot;
+        crop = null;
+        enterCrop();
+        setCropRotation(keepRot);
+      }
+      render();
+      drawCropOverlay();
+      toast(`已旋转 90°（${img.width}×${img.height}）`, 2200);
+    } catch (e) {
+      toast('旋转失败：' + (e && e.message ? e.message : e));
+    } finally {
+      busy(false);
+    }
+  }
+
+  /** 开始拖拽：记录起点和当前框 */
+  function initCropDrag() {
+    const cv = ensureCropCanvas();
+    cv.style.pointerEvents = 'auto';
+    cv.style.cursor = 'move';
+
+    let drag = null;
+
+    const pos = e => {
+      const r = cv.getBoundingClientRect();
+      return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+    };
+
+    cv.addEventListener('pointerdown', e => {
+      if (!crop) return;
+      e.preventDefault();
+      cv.setPointerCapture(e.pointerId);
+      const p = pos(e);
+      const br = cropRectOnCanvas();
+      // 判断抓到的是哪个手柄（离角点近就缩放，否则整体移动）
+      const th = 0.06;
+      const near = (ax, ay) => Math.abs(p.x - ax) < th && Math.abs(p.y - ay) < th;
+      let mode = 'move';
+      if (near(br.x, br.y)) mode = 'nw';
+      else if (near(br.x + br.w, br.y)) mode = 'ne';
+      else if (near(br.x, br.y + br.h)) mode = 'sw';
+      else if (near(br.x + br.w, br.y + br.h)) mode = 'se';
+      drag = { mode, start: p, rect0: { ...crop.rect } };
+    });
+
+    cv.addEventListener('pointermove', e => {
+      if (!drag || !crop) return;
+      e.preventDefault();
+      const p = pos(e);
+      const br = cropRectOnCanvas();
+      // 画布归一化位移 → 裁剪框归一化位移
+      const dx = (p.x - drag.start.x) / br.w;
+      const dy = (p.y - drag.start.y) / br.h;
+      const r0 = drag.rect0;
+      const { inW, inH } = currentInscribed();
+
+      if (drag.mode === 'move') {
+        crop.rect = clampCropRect(
+          { x: r0.x + dx * r0.w, y: r0.y + dy * r0.h, w: r0.w, h: r0.h },
+          inW, inH);
+      } else {
+        // 角点缩放：改的是宽高，对角的那个角保持不动
+        let w = r0.w + (drag.mode.includes('e') ? dx * r0.w : -dx * r0.w);
+        let h = r0.h + (drag.mode.includes('s') ? dy * r0.h : -dy * r0.h);
+        w = Math.max(0.05, w); h = Math.max(0.05, h);
+
+        if (crop.aspect) {
+          // 按比例：先定宽，再算高（宽是拖动的主轴）
+          const box = rotatedBoxSize(img.width, img.height, crop.rot * Math.PI / 180);
+          h = (w * box.W) / (crop.aspect * box.H);
+        }
+
+        const ax = drag.mode.includes('e') ? r0.x : r0.x + r0.w - w;
+        const ay = drag.mode.includes('s') ? r0.y : r0.y + r0.h - h;
+        crop.rect = clampCropRect({ x: ax, y: ay, w, h }, inW, inH);
+      }
+
+      layoutCanvas();
+      render();
+      drawCropOverlay();
+    });
+
+    const end = e => {
+      if (!drag) return;
+      drag = null;
+      if (cv.hasPointerCapture && cv.hasPointerCapture(e.pointerId)) {
+        cv.releasePointerCapture(e.pointerId);
+      }
+    };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
   }
 
   /* ================================================================
@@ -886,6 +1634,10 @@
     if (ip) ip.disabled = !on || mask.isEmpty;
     const u = $('stUseMask');
     if (u) u.disabled = !on || mask.isEmpty;
+    const cr = $('stCrop');
+    if (cr) cr.disabled = !on;
+    // 没图的时候裁剪状态必须清掉，否则"打开新图但还在裁剪模式里"
+    if (!on && crop) { crop = null; showCropUI(false); }
     if (!on && typeof syncMaskUI === 'function') syncMaskUI();
   }
 
@@ -2008,7 +2760,12 @@
     let rt = null;
     window.addEventListener('resize', () => {
       clearTimeout(rt);
-      rt = setTimeout(render, 120);
+      rt = setTimeout(() => {
+        render();
+        // 裁剪框 overlay 是独立画布，尺寸跟着 WebGL 画布走，
+        // 窗口一变必须重画 —— 忘了的话框会留在旧位置上
+        if (crop) drawCropOverlay();
+      }, 120);
     });
   }
 
@@ -2087,6 +2844,7 @@
       initGL();
       buildSliders();
       initEvents();
+      initCropUI();
       updateInfo();
       // 美颜面板要等主进程回参数表，不能拖住启动 ——
       // 失败也只是那一块显示"用不了"，不影响其他功能
@@ -2198,6 +2956,47 @@
     maskStats,
     uploadForAI,
     imageBlob,
+    // —— 裁剪 / 旋转 ——
+    // 暴露出来是为了能在浏览器里读像素验证「转的角度对不对、
+    // 裁剪尺寸对不对、四角有没有露白」—— 这些静态一律验不出来。
+    enterCrop,
+    exitCrop,
+    setCropRotation,
+    applyCrop,
+    rotateQuarter,
+    cropRenderPlan,
+    inscribedRect,
+    rotatedBoxSize,
+    applyCropAspect,
+    get crop() { return crop; },
+    /** 直接设裁剪框（归一化，相对旋转框），测试用 */
+    setCropRect(r) {
+      if (!crop) return false;
+      const { inW, inH } = currentInscribed();
+      crop.rect = clampCropRect(r, inW, inH);
+      render();
+      drawCropOverlay();
+      return true;
+    },
+    _drawCropOverlay: drawCropOverlay,
+    _cropRectOnCanvas: cropRectOnCanvas,
+    _applyGeometry: applyGeometryUniforms,
+    /** 追踪日志：页面里的 console.log 经 CDP 传不回测试侧，
+        所以关键步骤记在数组里由测试读出来。排查几何问题很有用。 */
+    get _trace() { return [..._traceLog]; },
+    _clearTrace() { _traceLog.length = 0; },
+    _draw: draw,
+    /** 读回当前 shader 上的几何 uniform —— 排查"裁剪没生效"用。
+        这一层是整块逻辑的最终落点，出问题时先看它对不对。 */
+    _geometryUniforms() {
+      return {
+        rot: gl.getUniform(program, uniforms.uRot),
+        scale: gl.getUniform(program, uniforms.uUvScale),
+        offset: gl.getUniform(program, uniforms.uCropOffset),
+        viewport: Array.from(gl.getParameter(gl.VIEWPORT)),
+        canvas: [canvas.width, canvas.height]
+      };
+    },
     _syncMaskUI: syncMaskUI,
     // —— 色调曲线 ——
     // 暴露出来是为了能在 node 里直接测 LUT 的**数值行为**。

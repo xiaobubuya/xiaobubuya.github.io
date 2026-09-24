@@ -27,7 +27,8 @@ const FAST = [
 ];
 
 const BROWSER = [
-  ['adjust-browser', '锐化/暗角/颗粒（真 Chrome + WebGL）'],
+  ['adjust-browser', '锐化/暗角/颗粒/曲线/HSL（真 Chrome + WebGL）'],
+  ['crop-browser', '裁剪 / 旋转（几何变换）'],
   ['mask-browser', '蒙版与局部调整（需外部 harness）'],
   ['inpaint-browser', '去物链路（需外部 harness）']
 ];

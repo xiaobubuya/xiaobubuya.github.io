@@ -259,6 +259,45 @@
 .st-btn.ai:disabled{opacity:.4;background:var(--spanel2);color:var(--sink2)}
 .st-btn.ai.dim{opacity:.6}
 
+/* ---------------- 裁剪 / 旋转 ---------------- */
+.st-crop{
+  flex:none;display:flex;flex-direction:column;
+  border-top:1px solid var(--sline);
+}
+.st-crop-head{display:flex;padding:10px 14px}
+.st-crop-body{
+  display:flex;flex-direction:column;gap:8px;
+  padding:0 14px 12px;
+}
+.st-crop-row{display:flex;align-items:center;gap:6px}
+.st-crop-val{
+  flex:none;width:38px;font-size:11.5px;
+  color:var(--sink2);font-variant-numeric:tabular-nums;
+}
+
+/* 比例选择：一排小按钮，选中态用强调色 */
+.st-crop-seg{
+  display:flex;background:var(--spanel2);
+  border:1px solid var(--sline);border-radius:8px;overflow:hidden;
+}
+.st-crop-seg button{
+  flex:1;padding:6px 2px;font:inherit;font-size:11px;
+  color:var(--sink2);background:none;border:0;cursor:pointer;
+  white-space:nowrap;
+}
+.st-crop-seg button.on{background:var(--saccent);color:#fff}
+.st-crop-seg button:hover:not(.on){color:var(--sink)}
+
+/* 裁剪框 overlay：盖在 WebGL 画布上，用 2D 画。
+   pointer-events 由 JS 按需开关 —— 非裁剪模式下必须是 none，
+   否则会挡住画笔。 */
+#stCropOverlay{
+  position:absolute;
+  pointer-events:none;
+  z-index:4;
+  touch-action:none;
+}
+
 /* ---------------- 美颜（旷视） ---------------- */
 .st-beauty{
   flex:none;display:flex;flex-direction:column;

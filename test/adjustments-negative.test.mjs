@@ -68,7 +68,7 @@ const MUTATIONS = [
   },
   {
     name: '锐化整个没接上（main 里直接用 src）',
-    from: 'vec3 sharp = sharpen(src);',
+    from: 'vec3 sharp = sharpen(src, u);',
     to: 'vec3 sharp = src;'
   },
 
