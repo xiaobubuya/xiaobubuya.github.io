@@ -20,7 +20,9 @@ const FAST = [
   ['upload', '上传流程'],
   ['mask', '蒙版引擎'],
   ['contract', '跨仓库契约'],
+  ['shader-guard', 'shader 模板字符串护栏'],
   ['adjustments', '调整项 ↔ shader 一致性'],
+  ['curve', '色调曲线 LUT（单调性/串扰）'],
   ['adjustments-negative', '断言有效性（变异测试）']
 ];
 

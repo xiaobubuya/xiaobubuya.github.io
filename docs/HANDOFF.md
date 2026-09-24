@@ -200,10 +200,13 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 - WebGL 实时调色：曝光 / 对比度 / 高光 / 阴影 / 饱和度 / 色温
   - 曝光、高光、阴影在**线性空间**算；对比度、饱和度在 sRGB 空间
   - 单趟 fragment shader，拖滑块只更新 uniform，60fps
-- **质感三件套：锐化 / 暗角 / 颗粒**（阶段 5.1 补的）
+- **质感与影调：锐化 / 暗角 / 颗粒 / 色调曲线 / HSL**（阶段 5.1 补的）
   - 锐化用 USM，作用在源图上、步长取原图 texel（不随窗口变）
   - 暗角正值压暗、负值提亮；颗粒用哈希噪声 + 亮度调制
   - 暗角和颗粒放在蒙版混合**之后**（它们是整张照片的收尾处理）
+  - 曲线是 CPU 生成的**单调** LUT（256×1 纹理），四个控制：阴影/中间调/高光/褪色
+  - HSL：色相/饱和度走 YIQ，明度按 HSL 定义在 RGB 上做
+  - 详见 `docs/ROADMAP.md` 5.1 的 10 条实现要点
 - 蒙版引擎（`mask.js`）：矢量描边 + 撤销 + 反选 + 从位图导入
 - 局部调整（蒙版控制调整范围，线性空间混合）
 - 导出（原分辨率重绘，`原名-edit.jpg`）
@@ -227,10 +230,9 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 
 ### 1. 更多本地修图工具 ⭐ 建议先做
 
-云 AI 三家都接完了，本地工具也已经开了头（锐化/暗角/颗粒 ✅）。
-再往上加：
+云 AI 三家都接完了，本地工具也已经做了五个
+（锐化/暗角/颗粒/曲线/HSL）。再往上加：
 
-- **曲线 / HSL**（中）—— 曲线需要 LUT 或分段函数
 - **裁剪 / 旋转**（中）—— 几何变换，要改 canvas 逻辑
 - **液化 / 透视校正**（高）—— 需要网格变形或独立 shader pass
 - 局部调整的**渐变蒙版**和**径向蒙版**（现在只有画笔）——
@@ -422,11 +424,13 @@ node test/autolayout.test.mjs      # 62 项 · 自动排版几何
 node test/upload.test.mjs          # 20 项 · 上传流程
 node test/mask.test.mjs            # 21 项 · 蒙版引擎
 node test/contract.test.mjs        #  9 项 · 跨仓库契约（改接口后必跑）
+node test/shader-guard.test.mjs    #  3 项 · shader 模板字符串护栏
 node test/adjustments.test.mjs     # 22 项 · 调整项 ↔ shader uniform 一致性
-node test/adjustments-negative.test.mjs  # 8 项 · 断言有效性（变异测试）
+node test/curve.test.mjs           # 20 项 · 曲线 LUT 数值（单调性/串扰）
+node test/adjustments-negative.test.mjs  # 14 项 · 断言有效性（变异，约 1 分钟）
 
 # 浏览器测试（自带 harness，见下）
-node test/adjust-browser.test.mjs  # 16 项 · 锐化/暗角/颗粒，读真实像素
+node test/adjust-browser.test.mjs  # 25 项 · 读像素验方向/幅度/边界
 
 # 桌面（在 album-studio/）
 node test/inpaint.test.js          # 20 项 · 提示词生成 + 坐标
@@ -486,19 +490,20 @@ harness 需要 `/tmp/session.txt` 存登录 Cookie，启动 Chrome 时加
 
 ```
 autolayout 62 · upload 20 · mask 21 · contract 9       = 112
-adjustments 22 · adjustments-negative 8                 =  30
-adjust-browser 16                                       =  16
+shader-guard 3 · adjustments 22 · curve 20              =  45
+adjustments-negative 14（含浏览器变异）                  =  14
+adjust-browser 25                                       =  25
 mask-browser 18 · inpaint-browser 13                    =  31
 inpaint（桌面）20 · beautify（桌面）43                    =  63
 smoke（后端）193                                         = 193
-                                                合计    414
+                                                合计    452
 ```
 
 前端和桌面都有统一入口：
 
 ```bash
-cd xiaobubuya-github-io && node test/run-all.mjs          # 全部
-cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 跳过浏览器，秒出
+cd xiaobubuya-github-io && node test/run-all.mjs          # 全部（约 80 秒）
+cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 跳过浏览器，几秒
 cd album-studio && npm test
 cd album-api && npm test
 ```
@@ -541,11 +546,12 @@ cd album-api && npm test
 
 ```
 ✅ 能用：上传、相册排版、翻页阅读、分享、WebGL 调色、
-        锐化/暗角/颗粒、蒙版局部调整、AI 抠人、AI 去物、AI 美颜、导出
-📋 没做：曲线/HSL/裁剪旋转/液化、渐变与径向蒙版、
+        锐化/暗角/颗粒/曲线/HSL、蒙版局部调整、
+        AI 抠人、AI 去物、AI 美颜、导出
+📋 没做：裁剪旋转/液化/透视校正、渐变与径向蒙版、
         修图结果回存、火山任务持久化
 🔑 密钥：已全部迁到保险箱，本地文件已删
-🧪 测试：414 项全绿（前端 158 + 桌面 63 + 后端 193）
+🧪 测试：452 项全绿（前端 196 + 桌面 63 + 后端 193）
 ⚠️ 没真人验证过：旷视美颜的实际出图效果、美颜面板的手感、
-                 新加的三个调整项的手感、Windows 安装包
+                 五个本地工具的手感、Windows 安装包
 ```

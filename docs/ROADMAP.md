@@ -56,13 +56,13 @@
 | 锐化 | 低 | USM，需要邻域采样 | ✅ 完成 |
 | 暗角 | 低 | 按距离压暗，可用负值提亮 | ✅ 完成 |
 | 颗粒 | 低 | 哈希噪声 + 亮度调制 | ✅ 完成 |
-| 曲线 | 中 | 需要 LUT 或分段函数 | 待做 |
-| HSL | 中 | 分通道调整，shader 里做 | 待做 |
+| 色调曲线 | 中 | CPU 生成单调 LUT，四个控制 | ✅ 完成 |
+| HSL | 中 | YIQ 色相/饱和度 + HSL 明度 | ✅ 完成 |
 | 裁剪 / 旋转 | 中 | 几何变换，要改 canvas 逻辑 | 待做 |
 | 液化 | 高 | 需要网格变形，可能要独立 shader pass | 待做 |
 | 透视校正 | 高 | 同上 | 待做 |
 
-**已完成的三个（锐化 / 暗角 / 颗粒）—— 值得记住的实现要点：**
+**已完成五个（锐化 / 暗角 / 颗粒 / 曲线 / HSL）—— 实现要点：**
 
 1. **锐化必须在原始像素上做，而且不能放进 `grade()`。**
    `grade()` 在局部调整时会被调用两次，塞邻域采样进去既浪费
@@ -79,19 +79,58 @@
 4. **暗角的符号：正值压暗（乘 `1 - amt`）。**
    第一版写成 `1 + amt`，结果 0.9 把四角从 128 抬到 **216** —— 越大越亮。
    ⚠️ 这个错误**静态测试抓不到**（它只看有没有 `1.0 - amt` 这个子串），
-   是浏览器测试读像素抓出来的。见 5.1 下面的「测试分工」。
+   是浏览器测试读像素抓出来的。
 
 5. **颗粒要按亮度调制**，否则暗部会浮出一层灰雾（暗部本来就没余量）。
 
-#### 测试分工（这次验证出来的经验）
+6. **色调曲线用 CPU 生成 LUT，不在 shader 里叠函数。**
+   GLSL ES 1.00 没法把一条任意曲线塞进 shader（没有数组构造器），
+   用 mix/smoothstep 叠出来的曲线**不保证单调** —— 一旦不单调，
+   影调会反转，看着就是坏了。CPU 上可以写真正的单调三次插值
+   （Fritsch–Carlson），256 个点、只在滑杆动时算，成本可忽略。
+
+7. **⭐ 曲线的单调约束必须加在「生成控制点」这一步，不是在插值里。**
+   实测反例：「中间调+1」把 0.5 抬到 0.65，同时「高光-1」把 0.75
+   压到 0.63 —— **控制点本身**先跌再涨。Fritsch–Carlson 保证的是
+   「单调数据 → 单调曲线」，数据非单调它无能为力。
+   所以生成控制点后要把每个点夹在左右邻居之间（两遍，中间那个点
+   受两边夹，一遍不收敛）。
+
+8. **曲线用五个均匀控制点（0/0.25/0.5/0.75/1），不是四个。**
+   四个点（0/1-3/2-3/1）时单调插值的端点斜率受限，实测三个滑杆
+   **全都主要作用在中间调**（阴影+1 在 @128 抬 19 级，高光+1 也抬 19 级）。
+   换五个均匀点之后每个滑杆只动自己那段（+37 / +38 / +30，交叉≈0）。
+
+9. **曲线的 LUT 查表用「加法 + 余量缩放」，不是按比例缩放。**
+   按比例（`c *= lut / y`）时纯黑会除以零，加保护之后就正好把
+   **褪色最该起作用的像素**漏掉了 —— 纯黑图配褪色实测输出还是 0。
+   无脑加法又会让亮饱和色越界、被 clamp 后色相偏移，所以要按剩余
+   余量缩一下 delta。
+
+10. **⭐ HSL 的明度不能塞进 YIQ 的 Y。**
+    I/Q 是**相对 Y 编码**的色度分量。把「HSL 的 L」当成 Y 用，等于
+    换了基准却仍拿旧 I/Q 重建 RGB —— 实测纯红转 30° 后 R 冲到 **242**
+    （比原来的 208 还高）。正确顺序：色相/饱和度在 YIQ 里做完，
+    **变回 RGB 之后**再按 HSL 的定义推白/推黑。
+
+#### 测试分工（这轮验证出来的经验）
 
 | 类型 | 手段 | 能抓什么 |
 |---|---|---|
-| 接线 | `test/adjustments.test.mjs`（静态比对） | uniform 名对不对、顺序对不对、有没有赋值 |
-| 断言有效性 | `test/adjustments-negative.test.mjs`（变异测试） | 上面那些断言是不是装饰品 |
-| 算得对不对 | `test/adjust-browser.test.mjs`（真 Chrome 读像素） | 方向、幅度、边界 —— **静态一律验不出来** |
+| 接线 | `adjustments.test.mjs`（静态比对） | uniform 名对不对、顺序对不对、有没有赋值 |
+| 数值 | `curve.test.mjs`（纯数学） | 单调性、过冲、串扰、恒等性 —— 不需要浏览器 |
+| 断言有效性 | `adjustments-negative.test.mjs`（变异测试） | 上面那些断言是不是装饰品 |
+| 算得对不对 | `adjust-browser.test.mjs`（真 Chrome 读像素） | 方向、幅度、边界 —— **静态一律验不出来** |
 
-实测：把暗角的符号取反，静态测试 22 项仍然全绿，只有读像素的那条红了。
+三条硬教训：
+
+- **把暗角的符号取反，静态测试 22 项仍然全绿**，只有读像素那条红了。
+- **断言写太松等于没写**：褪色那条本来写 `lut[255] < 255` 又加 `> 200`，
+  把"压白位"整个删掉它照样通过。每加一条断言都该问：
+  把对应逻辑删掉，测试会红吗？
+- **变异测试要跑对文件**：曲线的问题归 `curve.test.mjs`，只跑
+  `adjustments.test.mjs` 的话会"永远抓不到"——那不是断言太松，
+  是**跑错了测试文件**。
 
 ### 5.2 局部调整增强
 
@@ -166,39 +205,36 @@ API_PASS=你的口令 node tools/vault-import.mjs
 ## 快速验证清单（改完代码后跑）
 
 ```bash
-# 0. 一把梭（前端两个仓库都有统一入口）
-cd xiaobubuya-github-io && node test/run-all.mjs      # 158 项（含浏览器）
-cd xiaobubuya-github-io && node test/run-all.mjs --fast  # 只跑静态，秒出
-cd ../album-studio && npm test                        # 63 项
+# 0. 一把梭（前端有统一入口）
+cd xiaobubuya-github-io && node test/run-all.mjs          # 196 项（含浏览器）
+cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 只跑静态，秒出
+cd ../album-studio && npm test                            # 63 项
+cd ../album-api && npm test                               # 193 项
 
-# 1. 后端
-cd album-api && node test/smoke.mjs                    # 193 项
-
-# 2. 跨仓库契约（改接口必跑）
-cd ../xiaobubuya-github-io && node test/contract.test.mjs   # 9 项
-
-# 3. 前端静态
+# 单独跑
 node test/adjustments.test.mjs          # 22 项 · uniform 一致性
-node test/adjustments-negative.test.mjs #  8 项 · 断言有效性（变异测试）
+node test/curve.test.mjs                # 20 项 · 曲线 LUT 数值（单调性/串扰）
+node test/shader-guard.test.mjs         #  3 项 · 模板字符串护栏
+node test/adjustments-negative.test.mjs # 14 项 · 断言有效性（含浏览器变异，约 1 分钟）
+node test/adjust-browser.test.mjs       # 25 项 · 读像素验方向/幅度
 
-# 4. 浏览器（自己起 Chrome，零依赖）
-node test/adjust-browser.test.mjs       # 16 项 · 锐化/暗角/颗粒读像素
-
-# 5. AI 接口还通不通（真实调用，会产生少量费用）
+# AI 接口还通不通（真实调用，会产生少量费用）
 cd ../album-studio && node tools/ai-probe.mjs
 
-# 6. App 端到端（真实调用火山）
+# App 端到端（真实调用火山）
 ALBUM_URL=https://muyaya.world/studio.html \
 ALBUM_SMOKE_AI=inpaint ALBUM_SMOKE_USER=yuge ALBUM_SMOKE_PASS=你的口令 \
   npx electron . --user-data-dir=/tmp/albumstudio-test
 
-# 6b. 修图页自检（不联网、不需要密钥，验 shader 能不能编译）
+# 修图页自检（不联网、不需要密钥，验 shader 能不能编译）
 ALBUM_URL=https://muyaya.world/studio.html ALBUM_SMOKE_STUDIO=1 npx electron .
 ```
 
-合计 **414 项**（前端 158 + 桌面 63 + 后端 193）。
+合计 **452 项**（前端 196 + 桌面 63 + 后端 193）。
 
 `beautify.test.js` 里有一段会真等 3 秒，属正常 ——
 测的是旷视并发限流下的串行间隔。
+`adjustments-negative.test.mjs` 约一分钟，因为它会对每个变异真跑一次
+浏览器测试（这一步不能省：方向类错误静态一律验不出来）。
 
 浏览器测试见 `HANDOFF.md` 第八节（含自带的 CDP harness 说明）。

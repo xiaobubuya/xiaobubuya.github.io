@@ -19,7 +19,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 
 /* ---------------- 找 Chrome ---------------- */
 export function findChrome() {
@@ -175,6 +175,8 @@ export function portFree(port) {
 
 /* ---------------- 启动 Chrome 并等调试端口 ---------------- */
 export async function launch(opts = {}) {
+  hookExit();
+  reapStale();
   const chrome = findChrome();
   let port = opts.port || 9333;
   while (!(await portFree(port))) port++;
@@ -203,11 +205,14 @@ export async function launch(opts = {}) {
   // stdio: 'ignore' —— Chrome 的输出管道在受限环境下会 EPERM，
   // 而且我们也不需要它的日志（真出错时调试端口会超时，那时再手查）
   const proc = spawn(chrome, args, { stdio: 'ignore' });
+  _launched.add(proc);
+  proc.on('exit', () => _launched.delete(proc));
 
   const deadline = Date.now() + 30000;
   for (;;) {
     if (Date.now() > deadline) {
       try { proc.kill(); } catch { /* 已退 */ }
+      _launched.delete(proc);
       throw new Error('Chrome 调试端口 30 秒内没起来（port ' + port + '）');
     }
     try {
@@ -222,6 +227,52 @@ export function shutdown(chrome) {
   if (!chrome) return;
   try { chrome.proc.kill(); } catch { /* 已退 */ }
   try { fs.rmSync(chrome.userDir, { recursive: true, force: true }); } catch { /* 忽略 */ }
+}
+
+/* ================================================================
+   兜底清理
+   ----------------------------------------------------------------
+   ⚠️ 这个不能省。变异测试会反复起 Chrome（每个变异一次），
+   如果某次没清干净，进程和端口会累积 —— 实测积到 10 个 chrome
+   进程、端口被占满，后面的测试直接卡死（而且看起来像"测试卡住"，
+   很难联想到是残留进程）。
+
+   两道保险：
+     ① 进程退出时兜底 kill（正常路径 + 异常路径都覆盖）
+     ② 每次 launch 前清掉"上一次留下的"同端口残留
+   ================================================================ */
+const _launched = new Set();
+let _hooked = false;
+
+function hookExit() {
+  if (_hooked) return;
+  _hooked = true;
+  const cleanup = () => {
+    for (const p of _launched) { try { p.kill(); } catch { /* 已退 */ } }
+    _launched.clear();
+  };
+  process.on('exit', cleanup);
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => { cleanup(); process.exit(1); });
+  }
+  process.on('uncaughtException', e => { cleanup(); throw e; });
+}
+
+/** 清掉测试遗留的 Chrome（按命令行里的 cdp-profile-* 认出是我们起的） */
+function reapStale() {
+  if (process.platform !== 'win32') return;
+  try {
+    // 用 CIM 拿命令行。Get-Process 的 CommandLine 属性在 PS 5.1 上没有
+    const ps = 'Get-CimInstance Win32_Process -Filter "Name=\'chrome.exe\'" | '
+      + 'Where-Object { $_.CommandLine -like "*cdp-profile-*" } | '
+      + 'Select-Object -ExpandProperty ProcessId';
+    const out = execFileSync('powershell', ['-NoProfile', '-Command', ps],
+      { encoding: 'utf8', timeout: 20000 });
+    for (const line of out.split(/\r?\n/)) {
+      const pid = Number(line.trim());
+      if (pid) { try { process.kill(pid); } catch { /* 已退 */ } }
+    }
+  } catch { /* 拿不到就算了，不阻断测试 */ }
 }
 
 /* ---------------- 打开页面并求值 ---------------- */
@@ -251,38 +302,19 @@ function closeTarget(port, id) {
 }
 
 /**
- * 打开 url，求值一个**表达式**（不是语句块）。
- * 语句块会被 Runtime.evaluate 静默当成 undefined —— 包装成
- * `(async () => { ... })()` 是调用方的责任。
+ * 建一个可复用的页面会话。
  *
- * ⚠️ 这里有个真实的坑：站点注册了 Service Worker，而 sw.js 里
- * `skipWaiting()` + `clients.claim()` 会让**首次访问的页面重新加载一次**。
- * 表现是 Runtime.evaluate 报 "Execution context was destroyed"，
- * 而且只在前面几个用例上出现（后面的页面已经是 SW 控制的了）——
- * 看起来像"前几个测试是坏的"，其实是被导航打断了。
+ * ⚠️ 为什么要有这个：一开始每个用例都新建标签页（evaluate 一次建一个），
+ * 24 个用例就是 24 次「开标签页 + 等就绪 + 等 SW 安定」——
+ * 实测跑一轮要十几分钟，还会因为反复起进程把端口占满卡死。
+ * 复用同一个页面之后一轮不到一分钟。
  *
- * 所以：① 先等页面完全稳定，② 求值遇到 context 被销毁就重试。
+ * 用法：
+ *   const page = await openPage(port, url);
+ *   await page.eval('(async () => { ... })()');
+ *   await page.close();
  */
-export async function evaluate(port, url, expression, opts = {}) {
-  const attempts = opts.attempts || 3;
-  let lastErr = null;
-
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await evaluateOnce(port, url, expression, opts);
-    } catch (e) {
-      lastErr = e;
-      const msg = String(e && e.message || e);
-      // 只重试"页面被换掉了"这类瞬时错误，真的异常要如实报出来
-      const transient = /Execution context was destroyed|Cannot find context|Target closed|Inspected target navigated/.test(msg);
-      if (!transient) throw e;
-      await sleep(700);
-    }
-  }
-  throw lastErr;
-}
-
-async function evaluateOnce(port, url, expression, opts = {}) {
+export async function openPage(port, url, opts = {}) {
   const target = await newTarget(port, url);
   const ws = await WS.connect(target.webSocketDebuggerUrl);
 
@@ -307,40 +339,84 @@ async function evaluateOnce(port, url, expression, opts = {}) {
     ws.send(JSON.stringify({ id: myId, method, params: params || {} }));
   });
 
-  try {
-    await call('Runtime.enable');
-    await call('Page.enable');
+  await call('Runtime.enable');
+  await call('Page.enable');
 
-    // 等 document 就绪。新建的标签页在 url 加载完之前 evaluate 会拿到
-    // 一个空上下文，那时 window.Studio 当然不存在
-    for (let n = 0; n < 100; n++) {
-      try {
-        const st = await call('Runtime.evaluate', {
-          expression: 'document.readyState', returnByValue: true
-        });
-        if (st && st.result && st.result.value === 'complete') break;
-      } catch { /* 上下文还没建好，继续等 */ }
-      await sleep(100);
-    }
-
-    if (opts.wait) await sleep(opts.wait);
-    // Service Worker 首次 claim 会导致一次重载，给它一点时间安定下来
-    await sleep(opts.settle || 900);
-
-    const r = await call('Runtime.evaluate', {
-      expression,
-      awaitPromise: true,
-      returnByValue: true
-    });
-
-    if (r.exceptionDetails) {
-      const ex = r.exceptionDetails;
-      throw new Error('页面异常: '
-        + ((ex.exception && ex.exception.description) || ex.text));
-    }
-    return r.result && r.result.value;
-  } finally {
-    ws.close();
-    closeTarget(port, target.id);
+  // 等 document 就绪
+  for (let n = 0; n < 100; n++) {
+    try {
+      const st = await call('Runtime.evaluate', {
+        expression: 'document.readyState', returnByValue: true
+      });
+      if (st && st.result && st.result.value === 'complete') break;
+    } catch { /* 上下文还没建好 */ }
+    await sleep(100);
   }
+  // Service Worker 首次 claim 会导致一次重载，给它时间安定
+  await sleep(opts.settle || 900);
+
+  return {
+    /** 求值一个表达式（awaitPromise + returnByValue），context 被销毁时自动重试 */
+    async eval(expression, o = {}) {
+      for (let attempt = 0; attempt < (o.attempts || 3); attempt++) {
+        try {
+          const r = await call('Runtime.evaluate', {
+            expression, awaitPromise: true, returnByValue: true
+          });
+          if (r.exceptionDetails) {
+            const ex = r.exceptionDetails;
+            throw new Error('页面异常: '
+              + ((ex.exception && ex.exception.description) || ex.text));
+          }
+          return r.result && r.result.value;
+        } catch (e) {
+          const msg = String(e && e.message || e);
+          const transient = /Execution context was destroyed|Cannot find context|Target closed|Inspected target navigated/.test(msg);
+          if (!transient || attempt === (o.attempts || 3) - 1) throw e;
+          await sleep(700);
+        }
+      }
+    },
+    async close() {
+      ws.close();
+      closeTarget(port, target.id);
+    }
+  };
+}
+
+/**
+ * 打开 url，求值一个**表达式**（不是语句块）。
+ * 语句块会被 Runtime.evaluate 静默当成 undefined —— 包装成
+ * `(async () => { ... })()` 是调用方的责任。
+ *
+ * ⚠️ 只跑一次求值时用它；要反复求值请用 openPage（复用页面快得多）。
+ *
+ * ⚠️ 这里有个真实的坑：站点注册了 Service Worker，而 sw.js 里
+ * `skipWaiting()` + `clients.claim()` 会让**首次访问的页面重新加载一次**。
+ * 表现是 Runtime.evaluate 报 "Execution context was destroyed"，
+ * 而且只在前面几个用例上出现（后面的页面已经是 SW 控制的了）——
+ * 看起来像"前几个测试是坏的"，其实是被导航打断了。
+ *
+ * 所以：① 先等页面完全稳定，② 求值遇到 context 被销毁就重试。
+ */
+export async function evaluate(port, url, expression, opts = {}) {
+  const attempts = opts.attempts || 3;
+  let lastErr = null;
+
+  for (let i = 0; i < attempts; i++) {
+    let page = null;
+    try {
+      page = await openPage(port, url, opts);
+      return await page.eval(expression, opts);
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e && e.message || e);
+      const transient = /Execution context was destroyed|Cannot find context|Target closed|Inspected target navigated/.test(msg);
+      if (!transient) throw e;
+      await sleep(700);
+    } finally {
+      if (page) await page.close().catch(() => {});
+    }
+  }
+  throw lastErr;
 }

@@ -193,11 +193,25 @@ t('锐化在 grade() 之前', () => {
 
 t('⭐ 锐化不在 grade() 里（否则会被调用两次）', () => {
   // grade() 在局部调整时被调用两次（一次原图、一次调整后）。
-  // 锐化放里面就多采样 4 次纹理，而且局部调整的效果会变得很怪。
+  // 锐化每多调一次就多采样 9 次纹理，而且邻域采样会把 grade()
+  // 从"逐像素的纯颜色运算"变成"有状态的函数"，后面再加局部调整就会出错。
+  //
+  // ⚠️ 这里允许 **1 次** 纹理采样 —— 色调曲线的 LUT 查表。
+  // 它是单点采样（不是邻域）、固定 1 次、和设备上的纹理读取一样便宜，
+  // 和锐化的 3x3 邻域完全是两码事。
   const gradeBody = FRAG.slice(FRAG.indexOf('vec3 grade('),
                                 FRAG.indexOf('vec3 sharpen('));
-  assert.ok(!/texture2D/.test(gradeBody),
-    'grade() 里出现了纹理采样 —— 它应该只做逐像素的颜色运算');
+  const samples = [...gradeBody.matchAll(/texture2D\(/g)].length;
+  assert.ok(samples <= 1,
+    `grade() 里有 ${samples} 次纹理采样 —— 最多只允许 1 次（曲线 LUT 查表）。`
+    + ' 邻域采样必须放在 grade() 外面');
+  // 而且要确认那一次真的是 LUT 单点，不是邻域
+  if (samples === 1) {
+    assert.ok(/texture2D\(uCurve/.test(gradeBody),
+      'grade() 里唯一允许的采样是 uCurve（LUT）；出现了别的采样源');
+  }
+  // 反向：锐化那 9 次采样必须在 grade() **外面**
+  assert.ok(/vec3 sharpen\(vec3 src\)/.test(FRAG), '找不到 sharpen()');
 });
 
 /* ---------------- 5. 数值健康 ---------------- */

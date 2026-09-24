@@ -44,21 +44,40 @@
      范围不强行统一：曝光 ±2 EV，质感类各自定义（见下方注释）。
      ================================================================ */
   const ADJUSTMENTS = [
-    { key: 'uExposure',   name: '曝光',   min: -2,  max: 2,  step: 0.01, def: 0, unit: ' EV' },
-    { key: 'uContrast',   name: '对比度', min: -1,  max: 1,  step: 0.01, def: 0 },
-    { key: 'uHighlights', name: '高光',   min: -1,  max: 1,  step: 0.01, def: 0 },
-    { key: 'uShadows',    name: '阴影',   min: -1,  max: 1,  step: 0.01, def: 0 },
-    { key: 'uSaturation', name: '饱和度', min: -1,  max: 1,  step: 0.01, def: 0 },
-    { key: 'uTemp',       name: '色温',   min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uExposure',   name: '曝光',   group: '基础', min: -2,  max: 2,  step: 0.01, def: 0, unit: ' EV' },
+    { key: 'uContrast',   name: '对比度', group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uHighlights', name: '高光',   group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uShadows',    name: '阴影',   group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uSaturation', name: '饱和度', group: '色彩', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uTemp',       name: '色温',   group: '色彩', min: -1,  max: 1,  step: 0.01, def: 0 },
+
+    // —— 色调曲线 ——
+    // 四个控制点，CPU 生成单调 LUT（见 buildCurveLut）。
+    // 和上面的「高光/阴影」不重复：那两个是**线性空间的曝光乘子**（加权
+    // 提亮/压暗），曲线是 **sRGB 空间的影调重映射**。前者改亮度，
+    // 后者改「灰阶落在哪」—— 做胶片感靠曲线，救欠曝靠阴影。
+    //   · 褪色（Fade）：抬黑位做"褪色胶片"，暗部不再纯黑。这是
+    //     手机修图 App 里最常被点的一个，比 S 曲线更常用。
+    { key: 'uCurveShadow', name: '曲线·阴影', group: '曲线', min: -1, max: 1, step: 0.01, def: 0 },
+    { key: 'uCurveMid',    name: '曲线·中间调', group: '曲线', min: -1, max: 1, step: 0.01, def: 0 },
+    { key: 'uCurveHigh',   name: '曲线·高光', group: '曲线', min: -1, max: 1, step: 0.01, def: 0 },
+    { key: 'uCurveFade',   name: '褪色',   group: '曲线', min: 0,   max: 1,  step: 0.01, def: 0 },
+
+    // —— HSL ——
+    // 用 YIQ 近似（详见 shader 里的说明）。色相 ±1 对应 ±30°：
+    // 再大就不像"微调"而像"换了个滤镜"。
+    { key: 'uHue',        name: '色相',   group: 'HSL', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uHslSat',     name: '自然饱和度', group: 'HSL', min: -1, max: 1, step: 0.01, def: 0 },
+    { key: 'uHslLight',   name: '明度',   group: 'HSL', min: -1,  max: 1,  step: 0.01, def: 0 },
 
     // —— 质感类 ——
     // 范围刻意不统一：这三个的「满格」含义不同。
     // 锐化 1.0 已经能看出白边（内部再乘 1.5），所以上限就 1；
     // 暗角 1.0 是很重的压角，但正常用会在 -0.5~0.5；
     // 颗粒 1.0 是明显的胶片感，婚纱照一般 0.2~0.4 就够。
-    { key: 'uSharpness',  name: '锐化',   min: 0,   max: 1,  step: 0.01, def: 0 },
-    { key: 'uVignette',   name: '暗角',   min: -1,  max: 1,  step: 0.01, def: 0 },
-    { key: 'uGrain',      name: '颗粒',   min: 0,   max: 1,  step: 0.01, def: 0 },
+    { key: 'uSharpness',  name: '锐化',   group: '质感', min: 0,   max: 1,  step: 0.01, def: 0 },
+    { key: 'uVignette',   name: '暗角',   group: '质感', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uGrain',      name: '颗粒',   group: '质感', min: 0,   max: 1,  step: 0.01, def: 0 },
   ];
 
   const values = {};
@@ -104,8 +123,11 @@
     varying vec2 vUv;
     uniform sampler2D uImage;
     uniform sampler2D uMask;
+    uniform sampler2D uCurve;   // 256x1 的色调曲线 LUT（CPU 算好上传）
     uniform float uExposure, uContrast, uHighlights, uShadows, uSaturation, uTemp;
     uniform float uSharpness, uVignette, uGrain;
+    uniform float uCurveShadow, uCurveMid, uCurveHigh, uCurveFade;
+    uniform float uHue, uHslSat, uHslLight;
     uniform float uOriginal;   // 1 = 显示原图（对比用）
     uniform float uUseMask;    // 1 = 调整只作用在蒙版内
     uniform float uMaskOverlay; // 1 = 显示蒙版本身（红色叠加）
@@ -155,12 +177,118 @@
 
       c = toSrgb(c);
 
+      /* ---------------- 色调曲线 ----------------
+         曲线按**亮度**查表再整体缩放（RGB 同比），不是三个通道各查一次。
+
+         为什么不做成独立 RGB 曲线：那会立刻引入偏色（三通道的曲线
+         稍微不同就是一张彩色滤镜），而这里要的是**影调**控制。
+         婚纱照要的是"影调好看"，不是"换了个色"。
+
+         LUT 由 CPU 生成（见 buildCurveLut）：那里能写真正的
+         单调三次插值，比在 GLSL 里用 mix/smoothstep 叠出来精确得多，
+         而且能保证**单调**（不单调的曲线会让影调出现反转，很难看）。
+         ================================================ */
+      if (uCurveFade != 0.0 || uCurveShadow != 0.0
+          || uCurveMid != 0.0 || uCurveHigh != 0.0) {
+        float y = luma(c);
+        // 采样位置避开 0 和 1：CLAMP_TO_EDGE 下边界像素正好落在
+        // 纹理边缘，某些驱动会取到半个像素的混合值
+        float lut = texture2D(uCurve, vec2(clamp(y, 0.0, 1.0) * 0.99609375 + 0.001953125, 0.5)).r;
+
+        /* 曲线带来的亮度变化，**加法**加到 RGB 上（不是按比例缩放）。
+           ------------------------------------------------------------
+           为什么不能用比例（c *= lut / y）：
+           纯黑（y = 0）会除以零，只能特判跳过 —— 而"跳过"正好把
+           **褪色最该起作用的像素**漏掉了：纯黑图配褪色，实测输出还是 0。
+           （一开始就是按比例写的，加了 y > 0.0001 的保护，症状就是这条。）
+
+           也不能无脑加：亮饱和色加过头会某个通道越界，被 clamp 之后
+           **色相会偏**（比如亮红 +0.05 冲顶后变成粉白）。
+           所以按剩余余量缩一下 delta —— 保证不越界，这样影调抬了、
+           色相饱和度都还是对的。 */
+        float delta = lut - y;
+        if (delta != 0.0) {
+          float mx = max(max(c.r, c.g), c.b);
+          float room = (delta > 0.0) ? (1.0 - mx) : mx;
+          float k = (delta > 0.0)
+            ? min(1.0, room / max(delta, 1e-4))
+            : min(1.0, room / max(-delta, 1e-4));
+          c += delta * k;
+        }
+      }
+
       // 对比度：绕中灰旋转（sRGB 空间，符合直觉）
       c = (c - 0.5) * (1.0 + uContrast) + 0.5;
 
       // 饱和度：朝灰度插值
       float g = luma(c);
-      return mix(vec3(g), c, 1.0 + uSaturation);
+      c = mix(vec3(g), c, 1.0 + uSaturation);
+
+      /* ---------------- HSL ----------------
+         色相和饱和度用 YIQ 旋转近似，**明度按 HSL 的定义在 RGB 上做**。
+         为什么不用真 HSL：RGB↔HSL 要算 max/min、开方、分支，
+         在 shader 里又贵又容易出数值问题（灰色附近 hue 不稳定）。
+
+         ⚠️ 为什么明度不能塞进 YIQ 的 Y —— 这里踩过，必须说清楚：
+         I/Q 是**相对 Y 编码**的色度分量。把「HSL 的 L」直接当成 Y 用，
+         等于换了基准却仍拿旧 I/Q 去重建 RGB，结果越界、颜色乱掉。
+         实测：纯红 #d02020 转 30° 后 R 冲到 **242**（比原来的 208 还高），
+         明显不对。正确顺序是：色相/饱和度在 YIQ 里做完，
+         **变回 RGB 之后**再按 HSL 的定义推白/推黑。
+
+         它排在饱和度**之后**：先定调子（饱和度），再微调色相/明度，
+         符合修图的实际顺序 —— 反过来会出现"调完色相饱和度又变了"。
+         ================================================ */
+      if (uHue != 0.0 || uHslSat != 0.0 || uHslLight != 0.0) {
+        // —— 色相 / 饱和度：RGB -> YIQ -> 旋转 -> RGB ——
+        if (uHue != 0.0 || uHslSat != 0.0) {
+          float yy = dot(c, vec3(0.299,  0.587,  0.114));
+          float ii = dot(c, vec3(0.5959, -0.2746, -0.3213));
+          float qq = dot(c, vec3(0.2115, -0.5227,  0.3112));
+
+          // ±1 对应 ±30°：再大就不像"微调"而像换了个滤镜
+          float ang = uHue * 0.5236;
+          float ca = cos(ang), sa = sin(ang);
+          float i2 = ii * ca - qq * sa;
+          float q2 = ii * sa + qq * ca;
+
+          // 饱和度：I/Q 等比缩放
+          i2 *= 1.0 + uHslSat;
+          q2 *= 1.0 + uHslSat;
+
+          c = vec3(
+            yy + 0.9563 * i2 + 0.6210 * q2,
+            yy - 0.2721 * i2 - 0.6474 * q2,
+            yy - 1.1070 * i2 + 1.7046 * q2
+          );
+        }
+
+        /* —— 明度：HSL 的定义（最亮/最暗两极的中点）——
+           l 是"色阶位置"：+1 推到纯白、-1 推到纯黑，整条色阶力度一致。
+
+           ⚠️ 这里也踩过一个坑：第一版写「yy += uHslLight * 0.35」，
+           中灰看着正常，但对本来就很亮的像素一加就顶到 1.0 被 clamp ——
+           明度在高光区完全失效。而那一版的变异测试**没抓到**，
+           因为断言阈值写的是「> base + 8」，两种写法都满足。
+           **阈值太松等于没测** —— 现在阈值收严到能区分语义。
+
+           ⚠️⚠️ 这个注释块里绝对不要出现反引号：整个 shader 包在 JS
+           模板字符串里，一个反引号就会提前闭合它，后面的 GLSL 被当成
+           JS 执行 —— 报的却是「base is not defined」这种指不到原因的
+           错误，整个修图页直接打不开。踩过一次。要引代码用「」。 */
+        if (uHslLight != 0.0) {
+          float mx = max(max(c.r, c.g), c.b);
+          float mn = min(min(c.r, c.g), c.b);
+          float l = (mx + mn) * 0.5;
+          if (uHslLight > 0.0) {
+            c += (1.0 - c) * (uHslLight * (1.0 - l));
+          } else {
+            c += c * (uHslLight * l);
+          }
+        }
+      }
+
+      return c;
     }
 
     /* ================================================================
@@ -305,7 +433,7 @@
     alpha: false
   });
 
-  let program = null, uniforms = {}, imageTex = null, maskTex = null;
+  let program = null, uniforms = {}, imageTex = null, maskTex = null, curveTex = null;
 
   function compile(type, src) {
     const s = gl.createShader(type);
@@ -315,6 +443,159 @@
       throw new Error('shader 编译失败: ' + gl.getShaderInfoLog(s));
     }
     return s;
+  }
+
+  /* ================================================================
+     色调曲线：CPU 生成 LUT
+     ----------------------------------------------------------------
+     为什么在 CPU 上算而不是 shader 里：
+       GLSL ES 1.00 没有数组构造器，也没法用变长数组，想把一条曲线
+       塞进 shader 只能用一个固定次数的 mix/smoothstep 叠加 ——
+       那样叠出来的曲线**不保证单调**，而单调性是影调曲线的底线：
+       一旦不单调，亮的地方比更亮的地方还暗，画面会出现"反转"，
+       看着就是坏了。
+
+       在 CPU 上可以写真正的单调三次插值（Fritsch–Carlson），
+       而且只算 256 个点、只在滑杆动的时候算，成本可以忽略。
+
+     控制点怎么定：
+       用**五个均匀控制点**（0 / 0.25 / 0.5 / 0.75 / 1），三个滑杆
+       各推一个内部点，褪色推两个端点。
+
+       ⚠️ 一开始用的是四个点（0 / 1/3 / 2/3 / 1），实测很糟：
+       因为单调插值在端点处斜率受限，"高光+1"在 208 级只抬 5 级，
+       而在 128 级却抬了 19 级 —— 三个滑杆**全都主要作用在中间调**，
+       互相串扰。换成五个均匀点之后：
+
+         阴影+1  @48: +37   @128: 0   @208: 0
+         中间调+1 @48:  -2   @128: +38  @208: -4
+         高光+1  @48:   0   @128: 0   @208: +30
+
+       每个滑杆只动自己那段，这才是分区调整该有的样子。
+       （调参是用 test/curve.test.mjs 的量测脚本比对出来的，
+       不要凭感觉改这些数字。）
+
+       ⚠️ 幅度 0.15 是量出来的平衡点。影调曲线是"微调"工具，
+       给太大很容易调出灰蒙蒙或者断层的结果 ——
+       宁可让用户多拖一点，也不要一拖就废。
+     ================================================================ */
+  const CURVE_N = 256;
+
+  /** 四个滑杆值 → 控制点（输入、输出都在 0~1 的 sRGB 空间）
+   *
+   *  ⚠️ 这里最关键的一步是**强制控制点单调**，理由见下方长注释。
+   *  顺序不能随便改：先让三个滑杆各自发挥，再做两遍单调约束
+   *  （中间那个点受两边夹，必须两遍才能收敛 —— 只做一遍的话
+   *  先去夹左边、右边随后又变了，左边就失效了）。
+   */
+  function curveControlPoints(values) {
+    const sh = values.uCurveShadow || 0;
+    const mid = values.uCurveMid || 0;
+    const hi = values.uCurveHigh || 0;
+    const fade = values.uCurveFade || 0;
+
+    // 幅度：0.15 让"拉满"看得出明显变化但不破坏影调
+    const A = 0.15;
+
+    const x = [0, 0.25, 0.5, 0.75, 1];
+    let y = [
+      Math.max(0, fade * 0.14),            // 褪色抬黑位
+      0.25 + sh * A,
+      0.5 + mid * A,
+      0.75 + hi * (A * 0.8),
+      Math.min(1, 1 - fade * 0.05)         // 褪色同时压白位
+    ];
+
+    /* ================================================================
+       强制单调（这一步不能省）
+       ----------------------------------------------------------------
+       实测过一个反例：「中间调+1」把 0.5 抬到 0.65，
+       同时「高光-1」把 0.75 压到 0.63 —— 控制点本身就变成了
+       先跌再涨（0.65 → 0.63）。这时 Fritsch–Carlson 插值出来的曲线
+       在 0.5~0.75 区间是**下降**的，也就是影调反转。
+
+       ⚠️ 这不是插值实现的 bug：单调插值保证的是
+       「单调的数据 → 单调的曲线」，数据本身非单调它无能为力。
+
+       所以约束必须加在**生成控制点**这一步：让每个点待在两边的
+       范围里。代价是两侧反向拉时效果会互相压制（数学上无解，
+       不能同时既抬中间又压上面还不产生反转），但保证曲线永远单调。
+       ================================================================ */
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 1; i < y.length - 1; i++) {
+        y[i] = Math.min(Math.max(y[i], y[i - 1]), y[i + 1]);
+      }
+    }
+    // 端点本身也要夹（褪色和某个滑杆反着拉时）
+    y[0] = Math.min(y[0], y[1]);
+    y[y.length - 1] = Math.max(y[y.length - 1], y[y.length - 2]);
+    // 保险：控制点必须在 0~1
+    y = y.map(v => Math.min(1, Math.max(0, v)));
+
+    return x.map((xi, i) => [xi, y[i]]);
+  }
+
+  /**
+   * 单调三次插值（Fritsch–Carlson）。
+   *
+   * 三个要点，少一个都会让曲线出问题：
+   ① 斜率用 **加权调和平均**（不是算术平均）—— 这是保证单调的经典做法
+   ② 斜率符号和割线不一致时清零 —— 极值点处不能继续按原斜率走
+   ③ 斜率绝对值不超过相邻割线的 3 倍 —— 否则会过冲（overshoot），
+      表现是曲线在控制点附近"鼓出去"，影调出现假的亮暗带
+   */
+  function monotoneSpline(xs, ys) {
+    const n = xs.length;
+    const dx = [], dy = [], slope = [];
+    for (let i = 0; i < n - 1; i++) {
+      dx[i] = xs[i + 1] - xs[i];
+      dy[i] = ys[i + 1] - ys[i];
+      slope[i] = dy[i] / dx[i];
+    }
+
+    const m = new Array(n);
+    m[0] = slope[0];
+    m[n - 1] = slope[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      if (slope[i - 1] * slope[i] <= 0) {
+        m[i] = 0;                                  // ② 极值点，压平
+      } else {
+        const w1 = 2 * dx[i] + dx[i - 1];
+        const w2 = dx[i] + 2 * dx[i - 1];
+        m[i] = (w1 + w2) / (w1 / slope[i - 1] + w2 / slope[i]);   // ① 加权调和平均
+      }
+    }
+
+    return x => {
+      if (x <= xs[0]) return ys[0];
+      if (x >= xs[n - 1]) return ys[n - 1];
+      let i = n - 2;
+      while (i > 0 && x < xs[i]) i--;
+      const h = dx[i];
+      const t = (x - xs[i]) / h;
+      const t2 = t * t, t3 = t2 * t;
+      // 三次 Hermite 基
+      const h00 =  2 * t3 - 3 * t2 + 1;
+      const h10 =       t3 - 2 * t2 + t;
+      const h01 = -2 * t3 + 3 * t2;
+      const h11 =       t3 -     t2;
+      return h00 * ys[i] + h10 * h * m[i] + h01 * ys[i + 1] + h11 * h * m[i + 1];
+    };
+  }
+
+  /** 生成 256 个采样点（0~1 输入 → 0~1 输出，已 clamp） */
+  function buildCurveLut(values) {
+    const pts = curveControlPoints(values);
+    const xs = pts.map(p => p[0]);
+    const ys = pts.map(p => Math.min(1, Math.max(0, p[1])));
+    const f = monotoneSpline(xs, ys);
+
+    const lut = new Uint8Array(CURVE_N);
+    for (let i = 0; i < CURVE_N; i++) {
+      const v = Math.min(1, Math.max(0, f(i / (CURVE_N - 1))));
+      lut[i] = Math.round(v * 255);
+    }
+    return lut;
   }
 
   function initGL() {
@@ -348,6 +629,7 @@
     uniforms.uMaskOverlay = gl.getUniformLocation(program, 'uMaskOverlay');
     uniforms.uTexel = gl.getUniformLocation(program, 'uTexel');
     uniforms.uAspect = gl.getUniformLocation(program, 'uAspect');
+    uniforms.uCurve = gl.getUniformLocation(program, 'uCurve');
 
     // 纹理：非 2 的幂也要能重复/夹取
     imageTex = gl.createTexture();
@@ -374,6 +656,40 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+
+    /* 色调曲线 LUT：256x1 的单通道纹理。
+       用 LUMINANCE 而不是 RGBA —— 只要一个通道，省 4 倍显存和带宽。
+       LINEAR 过滤让 256 个采样点之间的插值由硬件做，
+       所以 LUT 不需要更密（256 足够，色阶 8bit 也只有 256 级）。 */
+    curveTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, curveTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    // 这里不用先 refreshCurve()：draw() 每次都会重传 LUT，
+    // 而 initGL 之后紧接着就是 buildSliders + 第一次 draw
+  }
+
+  /* ================================================================
+     曲线 LUT 上传
+     ----------------------------------------------------------------
+     滑杆一动就重算 + 重传。256 个字节的纹理上传成本可以忽略，
+     比"判断哪些参数变了要不要重算"的逻辑更不容易出错。
+
+     ⚠️ 只 bind 不 unbind：解绑（bindTexture(TEXTURE_2D, null)）会把
+     纹理单元 0 上的绑定也清掉，而 draw() 依赖那边绑着照片。
+     这个坑很难查 —— 表现是"调完曲线照片变黑"。
+     （顺便：宽度 256 是 4 的倍数，UNPACK_ALIGNMENT 用默认值 4 就是对的，
+     不需要动。）
+     ================================================================ */
+  function refreshCurve() {
+    if (!curveTex) return;
+    const lut = buildCurveLut(values);
+    gl.bindTexture(gl.TEXTURE_2D, curveTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, CURVE_N, 1, 0,
+      gl.LUMINANCE, gl.UNSIGNED_BYTE, lut);
   }
 
   /**
@@ -423,6 +739,14 @@
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, maskTex);
     gl.uniform1i(uniforms.uMask, 1);
+
+    // 曲线 LUT 放 2 号单元。每次 draw 都重传一次 —— 256 字节，
+    // 比"记录哪些参数变了"的分支逻辑便宜也更不容易漏
+    refreshCurve();
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, curveTex);
+    gl.uniform1i(uniforms.uCurve, 2);
+
     gl.activeTexture(gl.TEXTURE0);
 
     gl.uniform1f(uniforms.uOriginal, showingOriginal ? 1 : 0);
@@ -548,9 +872,22 @@
     const box = $('stSliders');
     box.innerHTML = '';
 
+    let lastGroup = null;
+
     for (const a of ADJUSTMENTS) {
+      // 分组标题。15 个滑杆平铺太长，而且「曝光」和「颗粒」放一起
+      // 会让人以为它们是同一类东西
+      if (a.group && a.group !== lastGroup) {
+        const h = document.createElement('div');
+        h.className = 'st-sl-group';
+        h.textContent = a.group;
+        box.appendChild(h);
+        lastGroup = a.group;
+      }
+
       const row = document.createElement('div');
       row.className = 'st-sl';
+      row.dataset.group = a.group || '';
 
       const top = document.createElement('div');
       top.className = 'st-sl-top';
@@ -1838,6 +2175,14 @@
     uploadForAI,
     imageBlob,
     _syncMaskUI: syncMaskUI,
+    // —— 色调曲线 ——
+    // 暴露出来是为了能在 node 里直接测 LUT 的**数值行为**。
+    // 单调性是影调曲线的底线，而它不需要浏览器就能验 ——
+    // 这类"纯数学"的部分不该推给浏览器测试。
+    buildCurveLut,
+    curveControlPoints,
+    _monotoneSpline: monotoneSpline,
+    CURVE_N,
     /** 给测试读像素用（导出和预览共用同一块画布） */
     _canvas() { return canvas; },
     _mask() { return mask; },

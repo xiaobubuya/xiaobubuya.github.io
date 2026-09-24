@@ -160,6 +160,19 @@
 .st-sl-name{cursor:pointer;user-select:none}
 .st-sl-name:hover{color:var(--saccent)}
 
+/* 分组标题：把 15 个滑杆分成「基础/色彩/曲线/HSL/质感」。
+   用一条细上边线而不是大标题 —— 面板本来就不宽，
+   分组只是给个视觉分隔，不该抢占注意力。 */
+.st-sl-group{
+  margin:14px 0 6px;
+  padding-top:10px;
+  border-top:1px solid var(--sline);
+  font-size:10.5px;letter-spacing:.12em;
+  color:var(--sink2);opacity:.8;
+}
+/* 第一组不需要上边线（上面已经是面板标题了） */
+.st-sl-group:first-child{margin-top:2px;padding-top:0;border-top:0}
+
 /* ---------------- 蒙版工具区 ---------------- */
 .st-scope{
   flex:none;padding:0 14px 10px;
