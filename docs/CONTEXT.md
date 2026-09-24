@@ -101,7 +101,7 @@
 
 ---
 
-## 测试基线（452 项）
+## 测试基线（455 项）
 
 ```
 autolayout  62   前端几何
@@ -111,8 +111,8 @@ contract     9   跨仓库契约 ← 改任何接口后必跑
 shader-guard 3   shader 模板字符串护栏（反引号会提前闭合模板）
 adjustments 22   调整项 ↔ shader uniform 一致性（静态）
 curve       20   色调曲线 LUT 数值（单调性/过冲/串扰）
-adjustments-negative 14  上面那些断言是不是装饰品（变异测试，含浏览器）
-adjust-browser    25   读像素验方向/幅度/边界
+adjustments-negative 16  上面那些断言是不是装饰品（变异测试，含浏览器）
+adjust-browser    26   读像素验方向/幅度/边界
 mask-browser      18   真实 Chrome + WebGL（需外部 harness）
 inpaint-browser   13   去物链路（真逻辑 + 假网络，需外部 harness）
 inpaint（桌面）    20   提示词 + 坐标
@@ -150,6 +150,21 @@ smoke（后端）    193   全接口
 4. **变异可能本身无效。** 「把明度改写成给 Y 加常数」在中灰上
    输出和正确写法**完全一样**（都是 217/39），所以那条变异测不出东西。
    遇到"抓不到"要先确认变异真的改变了行为，再怀疑断言。
+5. **别用 RGB 通道差当"饱和度"的指标。** OKLab 的 chroma 是感知色度，
+   RGB 三通道极差受色相影响极大（纯红天生就大）。第一版用通道差定
+   阈值，把"去色不够"误判成通过；换成直接算 OKLab chroma 才准。
+
+## 参考项目
+
+`docs/REFERENCES.md` 记了两个外部参考项目的评估结论，以及
+**哪些代码是独立写的**（现有全部本地工具都是独立实现，
+用的是公开的通用算法）。要点：
+
+- `pixel-cake`（Python，MIT 但缺 LICENSE 文件）—— 它的
+  径向/渐变蒙版思路值得参考；`_detect_skin` 的 HSV 范围法可直接用
+- `JixelLight`（C++，**无许可证，不要复制代码**）—— 它的 OKLab
+  感知颜色层已经**借鉴思路实现**到我们的 HSL 里了；
+  它的 5 控制点曲线和我们独立选的一致
 
 ---
 

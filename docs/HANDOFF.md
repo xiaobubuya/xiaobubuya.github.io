@@ -205,8 +205,10 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
   - 暗角正值压暗、负值提亮；颗粒用哈希噪声 + 亮度调制
   - 暗角和颗粒放在蒙版混合**之后**（它们是整张照片的收尾处理）
   - 曲线是 CPU 生成的**单调** LUT（256×1 纹理），四个控制：阴影/中间调/高光/褪色
-  - HSL：色相/饱和度走 YIQ，明度按 HSL 定义在 RGB 上做
-  - 详见 `docs/ROADMAP.md` 5.1 的 10 条实现要点
+  - HSL 在 **OKLab 感知色彩空间**里做（不是 YIQ / HSV）——
+    色相在 (a,b) 平面旋转、明度直接用 L，肤色上比 YIQ 准得多
+  - ⚠️ 已知代价：高饱和色旋转会被 sRGB 色域裁剪（纯红转 30° 实测只动 11°）
+  - 详见 `docs/ROADMAP.md` 5.1 的实现要点
 - 蒙版引擎（`mask.js`）：矢量描边 + 撤销 + 反选 + 从位图导入
 - 局部调整（蒙版控制调整范围，线性空间混合）
 - 导出（原分辨率重绘，`原名-edit.jpg`）
@@ -427,10 +429,10 @@ node test/contract.test.mjs        #  9 项 · 跨仓库契约（改接口后必
 node test/shader-guard.test.mjs    #  3 项 · shader 模板字符串护栏
 node test/adjustments.test.mjs     # 22 项 · 调整项 ↔ shader uniform 一致性
 node test/curve.test.mjs           # 20 项 · 曲线 LUT 数值（单调性/串扰）
-node test/adjustments-negative.test.mjs  # 14 项 · 断言有效性（变异，约 1 分钟）
+node test/adjustments-negative.test.mjs  # 16 项 · 断言有效性（变异，约 70 秒）
 
 # 浏览器测试（自带 harness，见下）
-node test/adjust-browser.test.mjs  # 25 项 · 读像素验方向/幅度/边界
+node test/adjust-browser.test.mjs  # 26 项 · 读像素验方向/幅度/边界
 
 # 桌面（在 album-studio/）
 node test/inpaint.test.js          # 20 项 · 提示词生成 + 坐标
@@ -491,12 +493,12 @@ harness 需要 `/tmp/session.txt` 存登录 Cookie，启动 Chrome 时加
 ```
 autolayout 62 · upload 20 · mask 21 · contract 9       = 112
 shader-guard 3 · adjustments 22 · curve 20              =  45
-adjustments-negative 14（含浏览器变异）                  =  14
-adjust-browser 25                                       =  25
+adjustments-negative 16（含浏览器变异）                  =  16
+adjust-browser 26                                       =  26
 mask-browser 18 · inpaint-browser 13                    =  31
 inpaint（桌面）20 · beautify（桌面）43                    =  63
 smoke（后端）193                                         = 193
-                                                合计    452
+                                                合计    455
 ```
 
 前端和桌面都有统一入口：
@@ -515,6 +517,9 @@ cd album-api && npm test
 | 文档 | 位置 | 内容 |
 |---|---|---|
 | **本文档** | `xiaobubuya.github.io/docs/HANDOFF.md` | 总览 + 交接 |
+| 执行计划 | `xiaobubuya.github.io/docs/ROADMAP.md` | 各阶段状态 + 实现要点 + 测试分工 |
+| 上下文速查 | `xiaobubuya.github.io/docs/CONTEXT.md` | 压缩版工作记忆（给接手的人/Agent） |
+| **参考项目评估** | `xiaobubuya.github.io/docs/REFERENCES.md` | 两个外部项目的评估 + **哪些代码是独立写的** |
 | AI 接口笔记 | `album-studio/docs/AI-API-NOTES.md` | 三家厂商的**实测**调用方式、参数、坑 |
 | 前端说明 | `xiaobubuya.github.io/README.md` | 前端结构 |
 | 后端说明 | `album-api/README.md` | API 路由 |

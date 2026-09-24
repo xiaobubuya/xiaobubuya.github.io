@@ -325,12 +325,12 @@ export async function openPage(port, url, opts = {}) {
     if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
   });
 
-  const call = (method, params) => new Promise((resolve, reject) => {
+  const call = (method, params, timeoutMs) => new Promise((resolve, reject) => {
     const myId = ++id;
     const t = setTimeout(() => {
       pending.delete(myId);
       reject(new Error('CDP 超时: ' + method));
-    }, opts.timeout || 60000);
+    }, timeoutMs || opts.timeout || 60000);
     pending.set(myId, m => {
       clearTimeout(t);
       if (m.error) reject(new Error(JSON.stringify(m.error)));
@@ -342,16 +342,28 @@ export async function openPage(port, url, opts = {}) {
   await call('Runtime.enable');
   await call('Page.enable');
 
-  // 等 document 就绪
-  for (let n = 0; n < 100; n++) {
-    try {
-      const st = await call('Runtime.evaluate', {
-        expression: 'document.readyState', returnByValue: true
-      });
-      if (st && st.result && st.result.value === 'complete') break;
-    } catch { /* 上下文还没建好 */ }
+  /* 等 document 就绪。
+     ⚠️ 这里每次探测都带**短超时**。第一版直接用默认的 60 秒，
+     结果页面因为 shader 编译失败而卡死时，26 个用例每个都要等
+     60 秒 —— 一轮跑十几分钟，看起来像"测试挂了"。
+     就绪探测本来就该用短超时：没准备好就继续等。
+
+     ⚠️ 复用的是同一条 call 路径，只是外面套一层 race 限时。
+     别自己另写一套消息解析 —— 试过，那样拿不到返回值。 */
+  const probe = expr => Promise.race([
+    call('Runtime.evaluate', { expression: expr, returnByValue: true }, 4000)
+      .then(r => (r && r.result && r.result.value))
+      .catch(() => undefined),
+    sleep(4000).then(() => undefined)
+  ]);
+
+  let ready = false;
+  for (let n = 0; n < 20; n++) {
+    if (await probe('document.readyState') === 'complete') { ready = true; break; }
     await sleep(100);
   }
+  if (!ready) throw new Error('页面 40 秒内没到 readyState=complete');
+
   // Service Worker 首次 claim 会导致一次重载，给它时间安定
   await sleep(opts.settle || 900);
 
@@ -362,7 +374,7 @@ export async function openPage(port, url, opts = {}) {
         try {
           const r = await call('Runtime.evaluate', {
             expression, awaitPromise: true, returnByValue: true
-          });
+          }, o.timeout || 60000);
           if (r.exceptionDetails) {
             const ex = r.exceptionDetails;
             throw new Error('页面异常: '

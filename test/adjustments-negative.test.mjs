@@ -94,7 +94,7 @@ const MUTATIONS = [
     to: '1'
   },
 
-  /* ---------------- HSL ---------------- */
+  /* ---------------- HSL（OKLab） ---------------- */
   {
     name: 'HSL 把色相旋转的弧度写成角度（转了 57 倍）',
     from: 'float ang = uHue * 0.5236;',
@@ -102,25 +102,41 @@ const MUTATIONS = [
     tests: ['adjust-browser.test.mjs']
   },
   {
-    name: 'HSL 漏掉 YIQ -> RGB 的还原（画面直接变成 YIQ 分量）',
-    from: `          c = vec3(
-            yy + 0.9563 * i2 + 0.6210 * q2,
-            yy - 0.2721 * i2 - 0.6474 * q2,
-            yy - 1.1070 * i2 + 1.7046 * q2
-          );`,
-    to: '          c = vec3(yy, i2, q2);',
+    name: 'HSL 漏掉 OKLab -> 线性 sRGB 的还原（画面直接变成 Lab 分量）',
+    from: `        vec3 linOut = vec3(
+           dot(cube, vec3( 4.0767416621, -3.3077115913,  0.2309699292)),
+          dot(cube, vec3(-1.2684380046,  2.6097574011, -0.3413193965)),
+          dot(cube, vec3(-0.0041960863, -0.7034186147,  1.7076147010))
+        );`,
+    to: '        vec3 linOut = vec3(L, A, B);',
     tests: ['adjust-browser.test.mjs']
   },
   {
-    name: 'HSL 明度丢了两端权重（高光/暗部推不动）',
-    /* ⚠️ 这条变异特意只去掉 **l 权重**，不是退回「给 Y 加常数」那种写法。
-       原因：加常数那种写法在中灰上和正确写法输出**完全一样**
-       （实测都是 217/39），所以 `HSL 明度 +1 提亮、-1 压暗` 那条断言
-       根本区分不出来 —— 变异测试里试过，那是**变异无效**，不是断言太松。
-       区别只在接近白/接近暗的像素上显出来，见
-       adjust-browser.test.mjs 的「高光区也要有效」那条。 */
-    from: '            c += c * (uHslLight * l);',
-    to: '            c += c * uHslLight;',
+    name: 'HSL 的 OKLab 输入忘了转线性（把 gamma 编码当线性用）',
+    // 感知色彩空间的前提是**线性光**输入。喂 sRGB 进去会让
+    // 暗部被过度处理（因为 gamma 编码在暗部压缩得厉害）
+    from: '        vec3 lin = toLinear(c);\n',
+    to: '',
+    tests: ['adjust-browser.test.mjs']
+  },
+  {
+    name: 'HSL 去色时也套"保护"系数（-1 只降一半，去不了色）',
+    // 第一版就是这样：正负共用一个 room 系数，实测纯红 -1 之后
+    // OKLab chroma 还剩 53%，根本不是"去色"。用 OKLab chroma
+    // 当指标才测得出来（RGB 通道差会被色相影响，定不准阈值）。
+    from: `          A *= 1.0 + uHslSat;
+          B *= 1.0 + uHslSat;`,
+    to: `          float chroma2 = sqrt(A * A + B * B);
+          float room2 = 1.0 - clamp(chroma2 / 0.30, 0.0, 0.85);
+          A *= 1.0 + uHslSat * room2;
+          B *= 1.0 + uHslSat * room2;`,
+    tests: ['adjust-browser.test.mjs']
+  },
+  {
+    name: 'HSL 明度没做正负分支（只能提亮不能压暗）',
+    from: `        if (uHslLight > 0.0)      L = mix(L, 1.0, uHslLight);
+        else if (uHslLight < 0.0) L = mix(L, 0.0, -uHslLight);`,
+    to: '        if (uHslLight > 0.0) L = mix(L, 1.0, uHslLight);',
     tests: ['adjust-browser.test.mjs']
   },
   {
@@ -136,6 +152,7 @@ const MUTATIONS = [
 
 /** 跑一次被测测试，返回失败项数；被测测试非零退出会抛，所以自己接住 */
 function runTest(file) {
+  const t0 = Date.now();
   let out = '', err = null;
   try {
     out = execFileSync(process.execPath, [path.join(HERE, file)],
@@ -145,7 +162,7 @@ function runTest(file) {
     err = e;
   }
   if (process.env.MUT_DEBUG) {
-    lastRaw = { file, len: out.length, tail: out.slice(-160), threw: !!err };
+    lastRaw = { file, len: out.length, ms: Date.now() - t0, tail: out.slice(-160), threw: !!err };
   }
   const m = /失败 (\d+) 项/.exec(out);
   return m ? Number(m[1]) : 0;
@@ -170,7 +187,8 @@ for (const mu of MUTATIONS) {
         n += c;
       }
       if (process.env.MUT_DEBUG) {
-        console.log(`      [debug] ${mu.name} → ${counts.join(' ')}`);
+        console.log(`      [debug] ${mu.name.slice(0, 24)} → ${counts.join(' ')}`);
+        if (lastRaw) console.log(`      [time] ${lastRaw.file} ${lastRaw.ms}ms`);
       }
       // 变异后如果测试仍然全绿，把被测测试的原始输出吐出来 ——
       // 否则只能看到"抓不到"，看不到**为什么**没抓到

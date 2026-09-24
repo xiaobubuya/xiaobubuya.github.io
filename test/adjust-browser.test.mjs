@@ -141,8 +141,7 @@ try {
 
   /* ---------------- 前置：页面可用 ---------------- */
 
-  await t('页面加载，shader 编译通过（9 个调整项都在）', SETUP + `
-    return {
+  await t('页面加载，shader 编译通过（16 个调整项都在）', SETUP + `    return {
       hasStudio: !!window.Studio,
       n: (window.Studio.ADJUSTMENTS || []).length,
       keys: (window.Studio.ADJUSTMENTS || []).map(a => a.key),
@@ -162,6 +161,26 @@ try {
     assert.ok(r.keys.includes('uHue'), '缺 uHue');
     assert.equal(r.sliders, 16, `滑杆数应该和调整项一致，实际 ${r.sliders}`);
   });
+
+  /* 前置断言一过就确认页面健康。
+     ⚠️ 这一步很重要：shader 编译失败时页面完全初始化不了，
+     后面每个用例都会卡在自己那 20 秒的就绪等待上 —— 26 个用例
+     就是十几分钟，看起来像"测试挂了"。
+     （变异测试里真发生过：一条让 shader 编译失败的变异，
+      整轮跑了 523 秒。）这里直接抛，让整轮秒级退出。 */
+  {
+    const health = await page.eval(`(() => ({
+      hasStudio: !!window.Studio,
+      shaderFailed: /打不开修图功能/.test(
+        (document.getElementById('stDrop') || {}).textContent || ''),
+      n: (window.Studio && window.Studio.ADJUSTMENTS || []).length
+    }))()`, { timeout: 15000 }).catch(e => ({ err: e.message }));
+    if (health.err || !health.hasStudio || health.shaderFailed || health.n < 16) {
+      console.log(`  ⛔ 页面不可用，跳过后续用例：${JSON.stringify(health)}`);
+      console.log(`\n通过 ${pass} 项，失败 ${fail + 1} 项\n`);
+      process.exit(1);
+    }
+  }
 
   /* ---------------- 暗角 ---------------- */
 
@@ -417,9 +436,50 @@ try {
 
   /* ---------------- HSL（读像素验证） ---------------- */
 
-  await t('⭐ 色相 +1 让红色往黄绿转（R 减、B 增）', SETUP + `
+  await t('⭐ 色相 +1 在 OKLab 里转约 30°（用低饱和色，避免色域裁剪）', SETUP + `
     await load(makeImage('edge'));
-    // 造一张纯红的图，方便看色相旋转
+    /* ⚠️ 为什么不用纯红测：纯红的 OKLab chroma 约 0.20，转 30° 之后
+       会**超出 sRGB 色域**，被 clamp 回来 —— 实测色相只移动了 11.3°
+       而不是 30°。这是 OKLab 的已知代价（感知上转对了，
+       但物理上放不进 sRGB），不是代码错。
+       用一个色域内有"余量"的柔红（chroma 小）来验算法本身：
+       这类颜色转 30° 不会越界，色相应该真的动 30°。 */
+    const c = document.createElement('canvas');
+    c.width = 200; c.height = 200;
+    const x = c.getContext('2d');
+    x.fillStyle = '#c89090'; x.fillRect(0, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await window.Studio.openFile(new File([blob], 'r.png', { type: 'image/png' }));
+    window.Studio.resetAll();
+
+    function oklabHue([R, G, B]) {
+      const f = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+      const r0 = f(R / 255), g0 = f(G / 255), b0 = f(B / 255);
+      const L = Math.cbrt(0.4122214708*r0 + 0.5363325363*g0 + 0.0514459929*b0);
+      const M = Math.cbrt(0.2119034982*r0 + 0.6806995451*g0 + 0.1073969566*b0);
+      const S = Math.cbrt(0.0883024619*r0 + 0.2817188376*g0 + 0.6299787005*b0);
+      const a = 1.9779984951*L - 2.4285922050*M + 0.4505937099*S;
+      const bb = 0.0259040371*L + 0.7827717662*M - 0.8086757660*S;
+      return (Math.atan2(bb, a) * 180 / Math.PI + 360) % 360;
+    }
+    const h0 = oklabHue(px(0.5, 0.5));
+    window.Studio.setValue('uHue', 1.0);
+    const h1 = oklabHue(px(0.5, 0.5));
+    return { h0, h1 };
+  `, r => {
+    let d = r.h1 - r.h0;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    // ±1 对应 ±30°，允许一点数值误差
+    assert.ok(d > 24 && d < 36,
+      `色相+1 应该在 OKLab 里正向转约 30°：${r.h0.toFixed(1)}° -> ${r.h1.toFixed(1)}°（转了 ${d.toFixed(1)}°）`);
+  });
+
+  await t('色相旋转在高饱和色上会被 sRGB 色域裁剪（已知代价）', SETUP + `
+    await load(makeImage('edge'));
+    // 纯红：旋转后超出 sRGB 色域，实际位移会小于 30°。
+    // 这条测试是**记录这个已知行为**，不是要求它达到 30° ——
+    // 免得以后有人看到"转了 11° 不到 30°"以为是 bug。
     const c = document.createElement('canvas');
     c.width = 200; c.height = 200;
     const x = c.getContext('2d');
@@ -427,23 +487,30 @@ try {
     const blob = await new Promise(r => c.toBlob(r, 'image/png'));
     await window.Studio.openFile(new File([blob], 'r.png', { type: 'image/png' }));
     window.Studio.resetAll();
-    const before = px(0.5, 0.5);
+
+    function oklabHue([R, G, B]) {
+      const f = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+      const r0 = f(R / 255), g0 = f(G / 255), b0 = f(B / 255);
+      const L = Math.cbrt(0.4122214708*r0 + 0.5363325363*g0 + 0.0514459929*b0);
+      const M = Math.cbrt(0.2119034982*r0 + 0.6806995451*g0 + 0.1073969566*b0);
+      const S = Math.cbrt(0.0883024619*r0 + 0.2817188376*g0 + 0.6299787005*b0);
+      const a = 1.9779984951*L - 2.4285922050*M + 0.4505937099*S;
+      const bb = 0.0259040371*L + 0.7827717662*M - 0.8086757660*S;
+      return (Math.atan2(bb, a) * 180 / Math.PI + 360) % 360;
+    }
+    const h0 = oklabHue(px(0.5, 0.5));
     window.Studio.setValue('uHue', 1.0);
-    const after = px(0.5, 0.5);
-    return { before, after };
+    const h1 = oklabHue(px(0.5, 0.5));
+    return { h0, h1 };
   `, r => {
-    // 纯红 #d02020 = (208,32,32)。+30° 之后实测是 (206,10,149) ——
-    // ⚠️ 注意别只看 R：R 只降了 2，变化主要在 **B**（32 → 149）。
-    // 一开始断言写的是"R 明显下降、G 明显上升"，结果 R 只降 2 就误报了，
-    // 其实 HSL 是对的（和手算的 YIQ 旋转逐位相同）。
-    // 用"红色往蓝/品红方向转"来判断更稳：R 微降、B 大增。
-    assert.ok(r.after[2] > r.before[2] + 50,
-      `色相+1 应该让蓝通道大增：B ${r.before[2]} -> ${r.after[2]}`);
-    assert.ok(r.after[0] <= r.before[0],
-      `色相+1 时红通道不该增加：R ${r.before[0]} -> ${r.after[0]}`);
-    // G 应该降到接近 0（红转出去之后绿分量很小）
-    assert.ok(r.after[1] < r.before[1],
-      `色相+1 应该让绿通道下降：G ${r.before[1]} -> ${r.after[1]}`);
+    let d = r.h1 - r.h0;
+    while (d > 180) d -= 360;
+    while (d < -180) d += 360;
+    assert.ok(d > 5,
+      `高饱和色也该有正向位移，实际 ${d.toFixed(1)}°`);
+    assert.ok(d < 25,
+      `高饱和色的实测位移应该明显小于 30°（色域裁剪）—— `
+      + `如果这里超过 25°，说明裁剪行为变了，需要重新评估。实际 ${d.toFixed(1)}°`);
   });
 
   await t('无彩色像素不被色相影响（灰色没有色相可转）', SETUP + `
@@ -458,7 +525,7 @@ try {
     assert.ok(d <= 3, `灰度图不该被色相影响，实际最大通道差 ${d}`);
   });
 
-  await t('⭐ HSL 饱和度 -1 把彩色去成灰', SETUP + `
+  await t('⭐ HSL 饱和度 -1 把彩色明显去色', SETUP + `
     await load(makeImage('edge'));
     const c = document.createElement('canvas');
     c.width = 200; c.height = 200;
@@ -467,12 +534,31 @@ try {
     const blob = await new Promise(r => c.toBlob(r, 'image/png'));
     await window.Studio.openFile(new File([blob], 'r.png', { type: 'image/png' }));
     window.Studio.resetAll();
+
+    /* 用 OKLab 的 chroma 量"去色程度"，不用 RGB 通道差。
+       ⚠️ RGB 通道差和"饱和度"不是一回事：OKLab 的 chroma 是感知色度，
+       RGB 是三通道极差 —— 同一个 chroma 变化，在不同色相上对应的
+       通道差完全不同（纯红的通道差天生就大）。用通道差定阈值
+       定不准，也会随色彩空间变化而失效。 */
+    function oklabChroma([R, G, B]) {
+      const f = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+      const r0 = f(R / 255), g0 = f(G / 255), b0 = f(B / 255);
+      const L = Math.cbrt(0.4122214708*r0 + 0.5363325363*g0 + 0.0514459929*b0);
+      const M = Math.cbrt(0.2119034982*r0 + 0.6806995451*g0 + 0.1073969566*b0);
+      const S = Math.cbrt(0.0883024619*r0 + 0.2817188376*g0 + 0.6299787005*b0);
+      const a = 1.9779984951*L - 2.4285922050*M + 0.4505937099*S;
+      const bb = 0.0259040371*L + 0.7827717662*M - 0.8086757660*S;
+      return Math.hypot(a, bb);
+    }
+    const c0 = oklabChroma(px(0.5, 0.5));
     window.Studio.setValue('uHslSat', -1.0);
-    const p = px(0.5, 0.5);
-    return { p, spread: Math.max(...p) - Math.min(...p) };
+    const c1 = oklabChroma(px(0.5, 0.5));
+    return { c0, c1, ratio: c1 / Math.max(c0, 1e-6) };
   `, r => {
-    assert.ok(r.spread < 20,
-      `HSL 饱和度 -1 应该基本去色，实际通道差 ${r.spread}（${r.p.join(',')}）`);
+    // -1 表示 chroma 归零（代码里就是乘 0），允许 sRGB 往返的数值误差
+    assert.ok(r.ratio < 0.15,
+      `饱和度 -1 应该把 OKLab chroma 压到接近 0：`
+      + `${r.c0.toFixed(4)} -> ${r.c1.toFixed(4)}（剩 ${(r.ratio * 100).toFixed(1)}%）`);
   });
 
   await t('HSL 明度 +1 提亮、-1 压暗', SETUP + `

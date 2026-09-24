@@ -113,6 +113,34 @@
     （比原来的 208 还高）。正确顺序：色相/饱和度在 YIQ 里做完，
     **变回 RGB 之后**再按 HSL 的定义推白/推黑。
 
+10. **⭐ HSL 从 YIQ 换成了 OKLab 感知色彩空间。**
+    YIQ 是 1950 年代为模拟电视广播设计的，色度平面和人的感知差得
+    比较远 —— 在**肤色**（红橙黄那一带）附近尤其明显。婚纱照全是
+    肤色，所以这一条很要命。
+
+    OKLab（Björn Ottosson, 2020）的做法是先把线性 sRGB 开立方根到
+    近似 LMS 锥体响应，再做矩阵。几个要点：
+    - 输入必须是**线性** sRGB，不是 gamma 编码的
+    - 色相旋转 = 在 (a,b) 平面上转，**不用 atan2**
+      （只有「按色相分区间调」才需要角度；我们没有分区间）
+    - 明度直接用 OKLab 的 L（本身就是感知亮度），
+      不需要再算 max/min 去凑一个"亮度"
+    - 饱和度**正负要分开**：往负（去色）是明确意图，直接等比缩；
+      往正（加艳）才需要"已饱和的少动"的保护。
+      第一版两边共用一个保护系数，实测 -1 只降约 47%，根本去不了色。
+
+    ⚠️ **已知代价：高饱和色旋转会被 sRGB 色域裁剪。**
+    纯红（OKLab 22.7°、chroma≈0.20）转 30° 后超出 sRGB 色域，
+    clamp 回来实测只移动了 11.3°；低饱和色（chroma 小）能转满 30°。
+    这是 OKLab 的固有性质（感知上转对了，但放不进 sRGB），
+    不是代码错 —— `adjust-browser.test.mjs` 里有两条测试分别
+    固定这两种行为，免得以后误判成 bug。
+
+11. **测试：给就绪探测和断言都加了超时/快速失败。**
+    一条让 shader 编译失败的变异会让页面完全初始化不了，
+    26 个用例各等 60 秒 → 整轮 **523 秒**。
+    改成：就绪探测用 4 秒超时 + 页面健康前置检查，整轮降到 21 秒。
+
 #### 测试分工（这轮验证出来的经验）
 
 | 类型 | 手段 | 能抓什么 |
@@ -122,15 +150,17 @@
 | 断言有效性 | `adjustments-negative.test.mjs`（变异测试） | 上面那些断言是不是装饰品 |
 | 算得对不对 | `adjust-browser.test.mjs`（真 Chrome 读像素） | 方向、幅度、边界 —— **静态一律验不出来** |
 
-三条硬教训：
+五条硬教训：
 
 - **把暗角的符号取反，静态测试 22 项仍然全绿**，只有读像素那条红了。
 - **断言写太松等于没写**：褪色那条本来写 `lut[255] < 255` 又加 `> 200`，
-  把"压白位"整个删掉它照样通过。每加一条断言都该问：
-  把对应逻辑删掉，测试会红吗？
+  把"压白位"整个删掉它照样通过。
 - **变异测试要跑对文件**：曲线的问题归 `curve.test.mjs`，只跑
-  `adjustments.test.mjs` 的话会"永远抓不到"——那不是断言太松，
-  是**跑错了测试文件**。
+  `adjustments.test.mjs` 会"永远抓不到"——不是断言太松，是跑错了文件。
+- **变异可能本身无效**：中灰上两种写法输出完全一样时，那条变异测不出东西。
+- **⚠️ 别用 RGB 通道差当"饱和度"的指标。** OKLab 的 chroma 是感知色度，
+  RGB 三通道极差受色相影响极大（纯红天生就大）。第一版用通道差定阈值，
+  判错了实现好坏；换成直接算 OKLab chroma 才准。
 
 ### 5.2 局部调整增强
 
@@ -215,8 +245,8 @@ cd ../album-api && npm test                               # 193 项
 node test/adjustments.test.mjs          # 22 项 · uniform 一致性
 node test/curve.test.mjs                # 20 项 · 曲线 LUT 数值（单调性/串扰）
 node test/shader-guard.test.mjs         #  3 项 · 模板字符串护栏
-node test/adjustments-negative.test.mjs # 14 项 · 断言有效性（含浏览器变异，约 1 分钟）
-node test/adjust-browser.test.mjs       # 25 项 · 读像素验方向/幅度
+node test/adjustments-negative.test.mjs # 16 项 · 断言有效性（约 70 秒）
+node test/adjust-browser.test.mjs       # 26 项 · 读像素验方向/幅度
 
 # AI 接口还通不通（真实调用，会产生少量费用）
 cd ../album-studio && node tools/ai-probe.mjs
@@ -230,7 +260,7 @@ ALBUM_SMOKE_AI=inpaint ALBUM_SMOKE_USER=yuge ALBUM_SMOKE_PASS=你的口令 \
 ALBUM_URL=https://muyaya.world/studio.html ALBUM_SMOKE_STUDIO=1 npx electron .
 ```
 
-合计 **452 项**（前端 196 + 桌面 63 + 后端 193）。
+合计 **455 项**（前端 199 + 桌面 63 + 后端 193）。
 
 `beautify.test.js` 里有一段会真等 3 秒，属正常 ——
 测的是旷视并发限流下的串行间隔。
