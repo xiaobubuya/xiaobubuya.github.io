@@ -947,6 +947,21 @@
     }
   }
 
+  /* ================================================================
+     把一张位图换成当前编辑图
+     ----------------------------------------------------------------
+     去物和美颜都要做这件事，所以抽出来。原来这段内联在
+     applyInpaintResult 里，复制一份的话迟早两边不一致。
+     ================================================================ */
+  async function swapImage(source) {
+    const bmp = await createImageBitmap(source);
+    if (img && img.close) img.close();
+    img = bmp;
+    gl.bindTexture(gl.TEXTURE_2D, imageTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    render();
+  }
+
   /**
    * 把 AI 的结果贴回来。
    *
@@ -998,11 +1013,7 @@
       mctx.drawImage(piece, sx, sy);
 
       // 合成结果替换当前图
-      createImageBitmap(merged).then(bmp => {
-        if (img && img.close) img.close();
-        img = bmp;
-        gl.bindTexture(gl.TEXTURE_2D, imageTex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      swapImage(merged).then(() => {
         // 结果已经"烤"进图里了，蒙版留着没意义，清掉
         mask.clear();
         setMaskActive(false);
@@ -1012,6 +1023,276 @@
         toast('已应用，可以继续修或导出', 2600);
       });
     }).catch(e => toast('结果应用失败：' + e.message));
+  }
+
+  /* ================================================================
+     美颜（旷视 Face++）
+     ----------------------------------------------------------------
+     和抠人、去物的关键差别：这条链路**只要 0.7 秒**，同步返回。
+     所以交互可以做成「调完点一下 → 看效果 → 决定要不要」。
+
+     ----------------------------------------------------------------
+     为什么不做成「拖滑块实时预览」
+     ----------------------------------------------------------------
+     试过这么想：拖一下发一次请求，0.7 秒就回来了，看起来很适合实时。
+
+     但旷视免费额度的**并发只有 1**。拖动滑块一秒钟能触发十几次，
+     结果是一路 CONCURRENCY_LIMIT_EXCEEDED（403），
+     表现成「拖了半天没反应，偶尔闪一下」—— 比不做实时还糟。
+
+     所以做成显式的一步：调参数 → 点「看一下效果」→ 出预览 →
+     应用 或 撤销。这样每次点击 = 一次请求，天然串行。
+     （主进程那边还有一层 3 秒最小间隔兜底，见 ai-megvii.js。）
+
+     ----------------------------------------------------------------
+     为什么预览不直接落盘
+     ----------------------------------------------------------------
+     一次美颜会消耗免费额度，用户点之前不知道效果好不好。
+     所以结果先摆在预览浮层里：满意点「应用」才换掉画布上的图，
+     不满意点「撤销」，原图原封不动。
+     ================================================================ */
+
+  /** 参数表 / 滤镜表 / 预设：从主进程读，不在页面里再抄一份 */
+  let beautySchema = null;
+  /** 当前滑块值：key → 0~100 */
+  const beautyValues = {};
+  let beautyFilter = '';
+  /**
+   * 美颜前的原图备份（null 表示当前没有可撤销的美颜）。
+   * 留着它是为了「撤销」—— 美颜不是可逆运算，反算不回来。
+   */
+  let beautyBackup = null;
+
+  function hasBeauty() {
+    return !!(window.AlbumStudio && window.AlbumStudio.megviiBeautify);
+  }
+
+  /**
+   * 生成美颜面板。
+   *
+   * ⚠️ 参数定义来自主进程（megviiSchema），不在这里写死。
+   * 两边各存一份的话，加参数时漏改一边，症状是
+   * 「滑块拖了但没效果」—— 这类静默失效最难查，
+   * 之前 window.AlbumStudio 大小写那次就是这么坑的。
+   */
+  async function initBeauty() {
+    const body = $('stBeautyBody');
+    if (!body) return;
+
+    if (!hasBeauty()) {
+      body.innerHTML = '<div class="st-beauty-empty">'
+        + '美颜需要桌面版的「修图 App」<br>（浏览器里调不通，跨域限制）</div>';
+      return;
+    }
+
+    try {
+      const s = await window.AlbumStudio.megviiSchema();
+      if (!s || !s.ok) throw new Error((s && s.error) || '读不到参数表');
+      beautySchema = s;
+
+      for (const p of s.params) beautyValues[p.key] = 0;
+
+      const groups = { skin: '肤质', face: '脸型' };
+      let html = '';
+
+      for (const [g, label] of Object.entries(groups)) {
+        const list = s.params.filter(p => p.group === g);
+        if (!list.length) continue;
+        html += `<div class="st-beauty-group">${label}</div>`;
+        for (const p of list) {
+          html += ''
+            + `<label class="st-bsl" data-key="${p.key}">`
+            + `  <span>${p.name}</span>`
+            + `  <input type="range" min="0" max="100" step="1" value="0" data-bsl="${p.key}">`
+            + `  <span class="st-bsl-val" data-val="${p.key}">0</span>`
+            + '</label>';
+        }
+      }
+
+      // 滤镜
+      if (s.filters && s.filters.length) {
+        const common = s.filters.filter(f => f.common);
+        const rest = s.filters.filter(f => !f.common && f.value);
+        const none = s.filters.filter(f => !f.value);
+        html += '<div class="st-beauty-group">滤镜</div>';
+        html += '<label class="st-bsl"><span>效果</span><select id="stBeautyFilter">';
+        for (const f of none) html += `<option value="">${f.name}</option>`;
+        for (const f of common) html += `<option value="${f.value}">${f.name}</option>`;
+        if (rest.length) {
+          html += '<optgroup label="更多">';
+          for (const f of rest) html += `<option value="${f.value}">${f.name}</option>`;
+          html += '</optgroup>';
+        }
+        html += '</select></label>';
+      }
+
+      // 动作按钮
+      html += ''
+        + '<div class="st-mask-row" style="margin-top:2px">'
+        + '  <button id="stBeautyGo" class="st-btn wide ai">✨ 看一下效果</button>'
+        + '</div>'
+        + '<div class="st-beauty-empty" id="stBeautyHint">'
+        + '   0 = 不碰这一项。不动的项不会发给旷视 ——'
+        + '   它这些参数的默认值是 50，全发出去会把脸改得不像本人。'
+        + '</div>';
+
+      body.innerHTML = html;
+
+      // 滑块
+      body.querySelectorAll('input[data-bsl]').forEach(inp => {
+        inp.addEventListener('input', () => onBeautySlider(inp.dataset.bsl, inp.value));
+      });
+
+      // 滤镜
+      const sel = $('stBeautyFilter');
+      if (sel) sel.addEventListener('change', () => { beautyFilter = sel.value; });
+
+      $('stBeautyGo').addEventListener('click', runBeauty);
+
+      // 一键美颜：填预设，不直接发请求 —— 让用户先看到参数再决定
+      const pre = $('stBeautyPreset');
+      if (pre) {
+        pre.addEventListener('click', () => {
+          applyBeautyPreset();
+          toast('已填入一组保守参数，点「看一下效果」试试', 3000);
+        });
+      }
+    } catch (e) {
+      body.innerHTML = '<div class="st-beauty-empty">美颜面板打不开：'
+        + String(e && e.message || e) + '</div>';
+    }
+  }
+
+  function onBeautySlider(key, raw) {
+    const v = Math.max(0, Math.min(100, Math.round(Number(raw) || 0)));
+    beautyValues[key] = v;
+
+    const val = document.querySelector(`[data-val="${key}"]`);
+    if (val) val.textContent = v;
+    const row = document.querySelector(`.st-bsl[data-key="${key}"]`);
+    if (row) row.classList.toggle('on', v > 0);
+  }
+
+  function applyBeautyPreset() {
+    const preset = (beautySchema && beautySchema.preset) || {};
+    for (const [k, v] of Object.entries(preset)) {
+      beautyValues[k] = v;
+      const inp = document.querySelector(`input[data-bsl="${k}"]`);
+      if (inp) inp.value = v;
+      onBeautySlider(k, v);
+    }
+  }
+
+  /** 只挑出 > 0 的项。0 的含义是「别碰这一项」，不是「调成 0」 */
+  function beautyParams() {
+    const out = {};
+    for (const [k, v] of Object.entries(beautyValues)) if (v > 0) out[k] = v;
+    if (beautyFilter) out.filter_type = beautyFilter;
+    return out;
+  }
+
+  async function runBeauty() {
+    if (!img) return;
+    if (!hasBeauty()) {
+      toast('美颜需要桌面版的「修图 App」\n浏览器里调不通（跨域限制）', 3600);
+      return;
+    }
+
+    const params = beautyParams();
+    if (!Object.keys(params).length) {
+      toast('先把某个滑块拖起来，或者点「一键美颜」\n全 0 的话调过去只是白费一次额度', 3600);
+      return;
+    }
+
+    busy(true, '正在美颜…');
+    try {
+      // 密钥走保险箱（有 10 分钟缓存，通常不打请求）
+      await getKeys('megvii');
+
+      // 长边 1600 再传。旷视按张计费不按像素，但没有理由把
+      // 4000px 的原图（几 MB）塞进请求体 —— 白等上传时间。
+      // 1600 和相册里 preview 档一致，做婚礼相册足够。
+      const long = Math.max(img.width, img.height);
+      const s = Math.min(1, 1600 / long);
+      const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
+
+      const off = document.createElement('canvas');
+      off.width = cw; off.height = ch;
+      off.getContext('2d').drawImage(img, 0, 0, cw, ch);
+
+      // 统一 JPEG：相册里的 preview 是 WebP 存成 .jpg 的（踩过这个坑）
+      const b64 = off.toDataURL('image/jpeg', 0.92).split(',')[1];
+
+      const r = await window.AlbumStudio.megviiBeautify(b64, params);
+      if (!r || !r.ok) throw new Error((r && r.error) || '美颜失败');
+
+      // 结果缩回原图尺寸再换。旷视返回值是按我们发过去的尺寸出的，
+      // 直接换上去的话画布会突然"变小"（其实是图变小了）——
+      // 而且原图上万一有别的调整，尺寸一变坐标就全错。
+      const res = await loadImage(r.image);
+      const merged = document.createElement('canvas');
+      merged.width = img.width; merged.height = img.height;
+      merged.getContext('2d').drawImage(res, 0, 0, img.width, img.height);
+
+      // 先留住原图，才能撤销。
+      // 只在**第一次**美颜前留 —— 连着美颜两次，撤销要回到最初那张，
+      // 不是回到"上一次美颜后"。
+      if (!beautyBackup) beautyBackup = img;
+      else if (img && img.close && img !== beautyBackup) img.close();
+
+      await swapImage(merged);
+
+      const n = r.applied ? Object.keys(r.applied).length : 0;
+      showPreview(`已美颜 · ${n} 项 · ${r.ms}ms`);
+      toast('不满意就点「撤销」', 2400);
+    } catch (e) {
+      toast('美颜失败：' + (e && e.message ? e.message : e), 5200);
+    } finally {
+      busy(false);
+    }
+  }
+
+  function showPreview(tip) {
+    const box = $('stPreview');
+    if (!box) return;
+    const t = $('stPreviewTip');
+    if (t && tip) t.textContent = tip;
+    box.hidden = false;
+  }
+
+  function hidePreview() {
+    const box = $('stPreview');
+    if (box) box.hidden = true;
+  }
+
+  /** 「就这样」：清掉备份，美颜结果正式留下 */
+  function keepBeauty() {
+    if (beautyBackup && beautyBackup.close && beautyBackup !== img) {
+      beautyBackup.close();
+    }
+    beautyBackup = null;
+    hidePreview();
+    toast('已保留，可以继续修或导出', 2200);
+  }
+
+  /**
+   * 撤销美颜：换回改动前那张。
+   *
+   * 用备份而不是「记住参数反算」—— 美颜不是可逆运算，
+   * 反算不可能还原。留一张原图是最省事也最可靠的做法
+   * （代价是编辑期间多占一份内存，可以接受）。
+   */
+  async function undoBeauty() {
+    if (!beautyBackup) { hidePreview(); return; }
+    const back = beautyBackup;
+    beautyBackup = null;
+    hidePreview();
+    try {
+      await swapImage(back);      // swapImage 会负责关掉被替换掉的那张
+      toast('已撤销，回到美颜前', 2200);
+    } catch (e) {
+      toast('撤销失败：' + (e && e.message ? e.message : e));
+    }
   }
 
   /** 从蒙版位图算 {bbox, coverage}。和主进程 ai-inpaint.js 的算法一致 */
@@ -1299,6 +1580,11 @@
 
     $('stSeg').addEventListener('click', segmentPerson);
     $('stInpaint').addEventListener('click', removeObject);
+
+    // 美颜结果的去留
+    const ok = $('stPreviewOk'), no = $('stPreviewCancel');
+    if (ok) ok.addEventListener('click', keepBeauty);
+    if (no) no.addEventListener('click', undoBeauty);
   }
 
   /* ================================================================
@@ -1314,6 +1600,9 @@
       buildSliders();
       initEvents();
       updateInfo();
+      // 美颜面板要等主进程回参数表，不能拖住启动 ——
+      // 失败也只是那一块显示"用不了"，不影响其他功能
+      initBeauty();
     } catch (e) {
       busy(false);
       const d = $('stDrop');
@@ -1401,6 +1690,21 @@
     // —— 去物 ——
     hasInpaint,
     removeObject,
+    // —— 美颜 ——
+    hasBeauty,
+    runBeauty,
+    keepBeauty,
+    undoBeauty,
+    /** 这次会发出去的参数（只含 > 0 的项 + 滤镜），测试要断言这个 */
+    beautyParams,
+    get beautyValues() { return { ...beautyValues }; },
+    setBeautyValue: onBeautySlider,
+    get beautyFilter() { return beautyFilter; },
+    setBeautyFilter(v) { beautyFilter = v; const s = $('stBeautyFilter'); if (s) s.value = v; },
+    applyBeautyPreset,
+    get beautySchema() { return beautySchema; },
+    get _beautyBackup() { return beautyBackup; },
+    _swapImage: swapImage,
     getKeys,
     invalidateKeys,
     maskStats,

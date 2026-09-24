@@ -149,13 +149,13 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 - 局部调整（蒙版控制调整范围，线性空间混合）
 - 导出（原分辨率重绘，`原名-edit.jpg`）
 
-### 阶段 3 · AI 修图 ✅（接口全通）
+### 阶段 3 · AI 修图 ✅ 全部完成
 
 | 能力 | 厂商 | 状态 | 实测耗时 |
 |---|---|---|---|
 | 人像分割 | 百度 | ✅ 已接 UI | 925ms |
 | 去物 / 生成式重绘 | 火山即梦 | ✅ 已接 UI | 16~22s |
-| 美颜 | 旷视 | ⚠️ 接口通了，**UI 没接** | 925ms |
+| 美颜（10 参数 + 35 滤镜） | 旷视 | ✅ 已接 UI | ~0.7s |
 
 ### 阶段 4 · 密钥保险箱 ✅
 
@@ -166,33 +166,29 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 
 ## 五、还没做的（按建议优先级）
 
-### 1. 旷视美颜接 UI ⭐ 建议先做
+### 1. 更多本地修图工具 ⭐ 建议先做
 
-接口早就调通了（`v2/beautify`，参数见 `docs/AI-API-NOTES.md`），
-只是还没接界面。**性价比最高的一项** ——
-不用蒙版、不用公网 URL、不用等 20 秒，0.9 秒出结果。
+云 AI 三家都接完了，再往上加就只剩本地工具。
 
-参数：`whitening` `smoothing` `thinface` `enlarge_eye` `shrink_face`
-`remove_acne` `remove_eyebrow` `remove_eyebag` `remove_wrinkle` `filter_type`（0~100）
-
-### 2. 更多本地修图工具
-
-- 磨皮 / 锐化 / 暗角
+- 锐化 / 暗角 / 颗粒（纯 shader，加 uniform 就行，最容易）
 - 曲线 / HSL
-- 液化 / 裁剪 / 透视校正
+- 裁剪 / 旋转 / 透视校正 / 液化
 - 局部调整的**渐变蒙版**和**径向蒙版**（现在只有画笔）
 
-### 3. 修图结果回存相册
+好处是**零成本、实时、照片不出设备** —— 和云 AI 打个来回 20 秒比，
+这些更值得日常用。
+
+### 2. 修图结果回存相册
 
 现在导出是存到本地文件。可以加「存回相册」——
 内容寻址天然支持非破坏性：改完的图是新 key，原图还在。
 
-### 4. 火山异步任务的持久化
+### 3. 火山异步任务的持久化
 
 现在即梦是同步等待（轮询直到出图）。如果关掉 App，任务就丢了。
 要做得更稳的话需要一张任务表记录 `task_id`，重开 App 还能取回结果。
 
-### 5. 密钥定期轮换
+### 4. 密钥定期轮换
 
 你之前在对话里贴过明文密钥，建议在厂商控制台轮换一遍，
 然后用 `tools/vault-import.mjs` 重新导入。
@@ -330,6 +326,12 @@ JS 里是两个完全不同的变量。preload 暴露大写，页面读小写，
   但图根本没进去（输出尺寸对不上才发现）。它对不认识的字段不报错，直接忽略。
   → **「返回 200 + 有 task_id + 出图了」不能证明参数生效**，要验输入输出的因果关系。
 - **旷视美颜是 `v2/beautify` 不是 `v3`**（v3 返回 `API_NOT_FOUND`）。
+- **旷视这些参数的服务端默认值是 50，不是 0。** 传 `0` 不等于"关掉这一项"，
+  **不传**才是。全发出去的话，只想磨皮的用户会顺带被美白 50 + 瘦脸 50 ——
+  脸就不是本人了。所以 `ai-megvii.js` 的 `pickParams()` 只发 > 0 的项。
+- **旷视免费额度并发只有 1。** 连发两个请求报 403 `CONCURRENCY_LIMIT_EXCEEDED`，
+  这个码**容易被误读成"功能没开通"**（上一位就去控制台翻了半天权限）。
+  间隔 ≥3 秒才稳。所以没做拖滑块实时预览，而且主进程加了单通道队列。
 - **文件扩展名不可信**：相册 preview 是 WebP 但存成了 `.jpg`，旷视直接报格式错。
 - **TOML**：`[table]` / `[[array]]` 之后的裸键值对属于那张表。`routes` 被这个坑过两次。
 - **Electron 44.4.4** 的 registry 元数据没有 `scripts` 字段，`npm ci` 不会下载二进制，
@@ -347,7 +349,7 @@ JS 里是两个完全不同的变量。preload 暴露大写，页面读小写，
 node test/autolayout.test.mjs      # 62 项 · 自动排版几何
 node test/upload.test.mjs          # 20 项 · 上传流程
 node test/mask.test.mjs            # 21 项 · 蒙版引擎
-node test/contract.test.mjs        #  6 项 · 跨仓库契约（改接口后必跑）
+node test/contract.test.mjs        #  9 项 · 跨仓库契约（改接口后必跑）
 
 # 浏览器测试（需要 CDP harness，见下）
 STUDIO_URL=http://127.0.0.1:8899/studio.html node test/mask-browser.test.mjs      # 18 项
@@ -355,6 +357,8 @@ STUDIO_URL=http://127.0.0.1:8899/studio.html node test/inpaint-browser.test.mjs 
 
 # 桌面（在 album-studio/）
 node test/inpaint.test.js          # 20 项 · 提示词生成 + 坐标
+node test/beautify.test.js         # 43 项 · 美颜参数裁剪/密钥形状/串行限流
+                                   #   ⚠️ 会真等 3 秒，那是在测并发限流的间隔
 
 # 后端（在 album-api/）
 node test/smoke.mjs                # 193 项 · 全接口
@@ -383,11 +387,11 @@ harness 需要 `/tmp/session.txt` 存登录 Cookie，启动 Chrome 时加
 ### 当前测试基线
 
 ```
-autolayout 62 · upload 20 · mask 21 · contract 6       = 109
+autolayout 62 · upload 20 · mask 21 · contract 9       = 112
 mask-browser 18 · inpaint-browser 13                    =  31
-inpaint（桌面）20                                        =  20
+inpaint（桌面）20 · beautify（桌面）43                    =  63
 smoke（后端）193                                         = 193
-                                                合计    353
+                                                合计    368
 ```
 
 ---
@@ -428,9 +432,10 @@ smoke（后端）193                                         = 193
 
 ```
 ✅ 能用：上传、相册排版、翻页阅读、分享、WebGL 调色、
-        蒙版局部调整、AI 抠人、AI 去物、导出
-⚠️ 接口通但没 UI：旷视美颜
-📋 没做：更多修图工具、修图结果回存、火山任务持久化
+        蒙版局部调整、AI 抠人、AI 去物、AI 美颜、导出
+📋 没做：更多本地修图工具、修图结果回存、火山任务持久化
 🔑 密钥：已全部迁到保险箱，本地文件已删
-🧪 测试：353 项全绿
+🧪 测试：368 项全绿（368 = 前端 112 + 桌面 63 + 后端 193）
+⚠️ 没真人验证过：旷视美颜的实际出图效果、美颜面板的手感、
+                  Windows 安装包
 ```

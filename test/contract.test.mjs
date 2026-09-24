@@ -148,5 +148,49 @@ t('页面里没有引用不存在的桌面方法', () => {
     `hasDesktop 探测的是 ${probe}，但 preload 没暴露它 —— 会导致桌面能力永远醒不过来`);
 });
 
+t('美颜的参数表只有一份（主进程定义，页面读接口）', () => {
+  // 这是「接缝」性质的检查，和大小写那次同一个道理：
+  // 参数表如果在 main 和页面里各存一份，加参数时漏改一边，
+  // 症状是「滑块拖了但没效果」—— 静默失效，最难查。
+  const mainSrc = read(path.join(STUDIO, 'electron', 'main.js'));
+  assert.ok(mainSrc.includes("require('./ai-megvii.js')"),
+    'main.js 没有引入 ai-megvii.js');
+  assert.ok(/ipcMain\.handle\(\s*'ai:beautifySchema'/.test(mainSrc),
+    'main.js 没有注册 ai:beautifySchema —— 页面就拿不到参数表');
+
+  // 页面必须通过接口读，不能自己写死一份参数名
+  assert.ok(/window\.AlbumStudio\.megviiSchema\(/.test(studioSrc),
+    '页面没有调用 megviiSchema()，那参数表从哪来？');
+  const hardcoded = /\bsmoothing\s*:\s*\d+[^0-9]/.test(studioSrc);
+  assert.ok(!hardcoded,
+    '页面里出现了写死的美颜参数名（如 smoothing: 45）—— '
+    + '参数表必须从 megviiSchema() 读，否则两边会漂移');
+});
+
+t('美颜的 data: 前缀只补一次', () => {
+  // 旷视回的 result 是裸 base64。补前缀这件事只能在 IPC 那层做一次。
+  // 补两次（主进程 + 页面各一次）会变成
+  // "data:image/jpeg;base64,data:image/jpeg;base64,..." —— 图片加载不出来，
+  // 而且不报错，只是一直不触发 onload，表现成「点了没反应」。
+  const mainSrc = read(path.join(STUDIO, 'electron', 'main.js'));
+  assert.ok(/data:image\/jpeg;base64,'\s*\+\s*r\.imageB64/.test(mainSrc),
+    'main.js 的 ai:beautify 应该补上 data:image/jpeg;base64, 前缀');
+
+  // 页面拿到的是已经带前缀的 image，不该再拼一次
+  const rePrefix = /'data:image\/jpeg;base64,'\s*\+\s*[\w.]*beauty[\w.]*/i;
+  assert.ok(!rePrefix.test(studioSrc),
+    '页面里又给美颜结果补了一次前缀 —— 会拼成双重前缀，图加载不出来');
+});
+
+t('美颜的 provider 名在主进程和页面之间一致', () => {
+  const mainSrc = read(path.join(STUDIO, 'electron', 'main.js'));
+  // 主进程从保险箱取的是 'megvii'
+  assert.ok(/vault\.get\(\s*'megvii'\s*\)/.test(mainSrc),
+    "main.js 没有用 vault.get('megvii') 取旷视密钥");
+  // 页面侧也要用同一个名字（渲染进程负责 prime 给主进程）
+  assert.ok(/getKeys\(\s*'megvii'\s*\)/.test(studioSrc),
+    "studio.js 没有用 getKeys('megvii') —— 名字不一致的话主进程拿不到密钥");
+});
+
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);
 process.exit(fail ? 1 : 0);

@@ -43,6 +43,18 @@
       <button id="stOpen2" class="st-btn primary wide">选择文件</button>
     </div>
 
+    <!-- 美颜结果浮层。
+         结果直接进画布（所见即所得），但留了一张原图备份，
+         所以「撤销」随时能回到美颜前。点「就这样」表示认可，
+         备份随即释放。 -->
+    <div class="st-preview" id="stPreview" hidden>
+      <div class="st-preview-tip" id="stPreviewTip">已美颜</div>
+      <div class="st-preview-btns">
+        <button id="stPreviewCancel" class="st-btn">撤销</button>
+        <button id="stPreviewOk" class="st-btn primary">就这样</button>
+      </div>
+    </div>
+
     <!-- 正在处理的提示 -->
     <div class="st-busy" id="stBusy" hidden>
       <div class="spinner"></div>
@@ -110,6 +122,23 @@
       </div>
 
       <div class="st-mask-info" id="stMaskInfo">没涂任何区域</div>
+    </div>
+
+    <!-- ===================== 美颜（旷视 Face++） =====================
+         单独一块，和蒙版工具分开。原因：美颜不需要蒙版，
+         是「整张脸」的操作 —— 混在蒙版区里会让人以为要先涂东西。
+         0.7 秒返回，所以做成"调完点一下看效果"，而不是实时的。
+         刻意不做成实时：拖动滑块每动一下都发一次请求，
+         免费额度并发只有 1，会一路撞限流。 -->
+    <div class="st-beauty">
+      <div class="st-beauty-head">
+        <span>美颜</span>
+        <button id="stBeautyPreset" class="st-mini wide" title="填入一组保守的婚纱照参数">一键美颜</button>
+      </div>
+
+      <div class="st-beauty-body" id="stBeautyBody">
+        <div class="st-beauty-empty">需要在桌面版「修图 App」里使用</div>
+      </div>
     </div>
 
     <div class="st-panel-foot" id="stInfo">—</div>

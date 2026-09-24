@@ -10,55 +10,46 @@
 ```
 阶段 1  相册基础（上传 / 排版 / 翻页 / 分享）        ✅ 完成
 阶段 2  本地修图（WebGL 调色 + 蒙版）                ✅ 完成
-阶段 3  AI 修图（分割 / 去物 / 美颜）                🟡 2/3 完成
+阶段 3  AI 修图（分割 / 去物 / 美颜）                ✅ 完成
 阶段 4  密钥保险箱（加密存储 + 下发）                ✅ 完成
-阶段 5  体验打磨（更多工具 / 结果回存 / 稳定性）      📋 未开始
+阶段 5  体验打磨（更多工具 / 结果回存 / 稳定性）      🟡 进行中
 ```
 
 ---
 
-## 阶段 3 · AI 修图（进行中）
+## 阶段 3 · AI 修图 ✅ 完成
 
 | 能力 | 厂商 | 接口 | UI | 备注 |
 |---|---|---|---|---|
 | 人像分割 | 百度 | ✅ | ✅ | 925ms，抠出人像当蒙版 |
 | 去物 | 火山即梦 | ✅ | ✅ | 16~22s，需蒙版 |
-| 美颜 | 旷视 | ✅ | ❌ | 925ms，**下一步就做这个** |
+| 美颜 | 旷视 | ✅ | ✅ | ~0.7s，10 个参数 + 35 种滤镜 |
 
-### 3.1 旷视美颜接 UI ⭐ 下一个任务
+### 3.1 旷视美颜 ✅
 
-**为什么优先**：接口早就调通了，而且这条链路最简单 ——
-不用蒙版、不用公网 URL、不用等 20 秒。
+已经做完，实现落在 `album-studio/electron/ai-megvii.js` +
+`studio.js` 的美颜面板。四件值得记住的事：
 
-**要做的事**：
+1. **0 不是"效果调成 0"，是"别碰这一项"。**
+   旷视这些参数的**服务端默认值是 50**。全发出去的话，只想磨皮的
+   用户会顺带被美白 50 + 瘦脸 50 —— 脸就不是本人了。
+   所以客户端只发用户明确调过的项。
 
-1. `album-studio/electron/ai-megvii.js`（新建）
-   - 表单直传 `apiKey` / `apiSecret`，**不换 token**
-   - 端点是 `/facepp/v2/beautify`（**不是 v3**，v3 返回 `API_NOT_FOUND`）
-   - 参数（0~100）：`whitening` `smoothing` `thinface` `enlarge_eye`
-     `shrink_face` `remove_acne` `remove_eyebrow` `remove_eyebag`
-     `remove_wrinkle` `filter_type`
-   - 返回 `{ result: "<base64 JPEG>" }`
+2. **并发只有 1，必须串行 + 间隔 ≥3 秒。**
+   所以没做成"拖滑块实时预览"（拖动每秒触发十几次，一路撞 403）。
+   交互是显式的「看一下效果」。主进程那边还有一层单通道队列兜底。
 
-2. `main.js` 加 IPC `ai:beautify`
-   - 密钥走保险箱：`await vault.get('megvii')`
-   - 传 base64 进、base64 出，和 `ai:bodySeg` 保持同一套形状
+3. **端点必须是 `v2/beautify`**，v3 返回 `API_NOT_FOUND`。
 
-3. `preload.js` 暴露 `megviiBeautify(b64, params)`
-
-4. `studio.js` 加美颜面板（一组滑块 + 应用按钮）
-
-5. `test/` 加测试 + 更新 `contract.test.mjs`（provider 名要对得上）
-
-**注意**：旷视免费额度**并发约 1**，连续调用要串行 + 加延时，
-否则报 `CONCURRENCY_LIMIT_EXCEEDED`（403）。
-（这个错误码容易被误读成"功能没开通"。）
+4. **`filter_type` 的格式没实测**（官方说字符串，旷视自家 Dart SDK 说整数）。
+   按字符串实现了，详见 `album-studio/docs/AI-API-NOTES.md` 的说明 ——
+   如果滤镜不生效，第一件事就是在这上面查。
 
 ---
 
-## 阶段 5 · 体验打磨
+## 阶段 5 · 体验打磨（进行中）
 
-### 5.1 更多本地修图工具
+### 5.1 更多本地修图工具 ⭐ 下一个任务
 
 按实现难度排序，建议这个顺序：
 
@@ -70,6 +61,10 @@
 | 裁剪 / 旋转 | 中 | 几何变换，要改 canvas 逻辑 |
 | 液化 | 高 | 需要网格变形，可能要独立 shader pass |
 | 透视校正 | 高 | 同上 |
+
+**为什么它排在 AI 之后**：这三家云 AI 的链路都通了，能做的都做了。
+再往上加就只能堆本地工具 —— 而且这些是**零成本、实时、照片不出设备**的，
+比云 AI 更值得日常用。
 
 ### 5.2 局部调整增强
 
@@ -148,13 +143,14 @@ API_PASS=你的口令 node tools/vault-import.mjs
 cd album-api && node test/smoke.mjs                    # 193 项
 
 # 2. 跨仓库契约（改接口必跑）
-cd ../xiaobubuya-github-io && node test/contract.test.mjs   # 6 项
+cd ../xiaobubuya-github-io && node test/contract.test.mjs   # 9 项
 
 # 3. 前端单元
 for f in autolayout upload mask; do node test/$f.test.mjs; done   # 103 项
 
 # 4. 桌面
-cd ../album-studio && node test/inpaint.test.js        # 20 项
+cd ../album-studio && node test/inpaint.test.js        # 20 项（去物）
+cd ../album-studio && node test/beautify.test.js       # 43 项（美颜，会真等 3 秒）
 
 # 5. AI 接口还通不通（真实调用，会产生少量费用）
 node tools/ai-probe.mjs
@@ -164,5 +160,8 @@ ALBUM_URL=https://muyaya.world/studio.html \
 ALBUM_SMOKE_AI=inpaint ALBUM_SMOKE_USER=yuge ALBUM_SMOKE_PASS=你的口令 \
   npx electron . --user-data-dir=/tmp/albumstudio-test
 ```
+
+合计 **368 项**。`beautify.test.js` 里有一段会真等 3 秒，属正常 ——
+测的是旷视并发限流下的串行间隔。
 
 浏览器测试见 `HANDOFF.md` 第八节。
