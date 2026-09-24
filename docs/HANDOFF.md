@@ -79,6 +79,61 @@ git clone git@github.com:xiaobubuya/album-studio.git
 
 三个仓库都要放在同一个父目录下（`contract.test.mjs` 会跨目录读文件）。
 
+### Windows 开发环境的三个坑（2026-09-24 实测踩过）
+
+之前在 macOS 上开发，换到 Windows 后有三个问题，都已修好，但记下来：
+
+**1. `npm install` 在后端会失败（内网源）**
+
+`album-api/package-lock.json` 里 91 条 `resolved` 曾经**全是内网
+`npm.nie.netease.com`**，外面访问不到（ETIMEDOUT × 105 次）。
+
+⚠️ 关键点：`npm install --registry=...` **不会覆盖** lockfile 里写死的
+`resolved` 地址 —— npm 直接照那些 URL 抓。所以在有病的 lockfile 上
+改什么参数都没用，必须先修 lockfile。
+
+修法：只把 `resolved` 的**域名**换掉，版本和 integrity 一个不动，
+再用 `npm ci` 验证能干净装上。**不要用 `npm install` 去重新生成** ——
+实测它顺带把 wrangler 4.135→4.138、workerd 和 6 个平台包一起升了。
+
+现在 `album-api/.npmrc` 和 `album-studio/.npmrc` 都把源钉在公开源，
+以后不会再被污染。
+
+**2. PowerShell 里 `npm` 命令用不了**
+
+执行策略禁了 `.ps1`：
+`npm.ps1 cannot be loaded because running scripts is disabled`。
+
+绕过：`cmd /c "npm install"`，或直接用 `npm.cmd`。
+
+**3. `npm start` 起不来，报 `app.requestSingleInstanceLock` 不是函数**
+
+现象很怪：直接调用 `node_modules/electron/dist/electron.exe .` 能跑，
+走 `npm start` / `npx electron .` 就报 `Cannot read properties of
+undefined (reading 'requestSingleInstanceLock')`。
+
+真因：**PATH 上第一个 `node` 不是真的 node**。
+npm 脚本用 `node cli.js` 启动 electron 的 CLI，如果那个 `node`
+是某个 shim（比如 DSH harness 的 `.desktop-bin\node.cmd`），
+Electron 就会以 **Node 模式**跑 —— 于是 `require('electron')` 返回的
+是二进制路径**字符串**而不是 API 对象，`app` 就是 undefined。
+
+诊断方法：`npx electron --version`
+- 正常 → `v44.4.4`
+- 中了这个坑 → 打印 **Node 的版本号**（比如 `v24.21.0`）
+
+修法：把真正的 node 放到 PATH 最前面。
+
+```powershell
+$env:PATH = "C:\Program Files\nodejs;" + $env:PATH
+npx electron --version      # 应该输出 v44.4.4
+```
+
+**4.（附带）Unix 风格的 dev 脚本在 Windows 不通**
+
+`npm run dev` 是 `ALBUM_URL=... electron .`，那是 bash 语法。
+Windows 用 `npm run dev:win`（`set ALBUM_URL=...&& electron .`）。
+
 ### 前端
 
 静态文件，直接 `python3 -m http.server` 就能本地看。
