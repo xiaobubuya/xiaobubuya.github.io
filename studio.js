@@ -696,7 +696,7 @@
      所以走 Electron 主进程转发。网页版就把按钮禁掉并说明原因。
      ================================================================ */
   function hasDesktop() {
-    return !!(window.albumStudio && window.albumStudio.baiduBodySeg);
+    return !!(window.AlbumStudio && window.AlbumStudio.baiduBodySeg);
   }
 
   async function segmentPerson() {
@@ -724,7 +724,7 @@
       // （相册里的 preview 就是 WebP 存成 .jpg 的，踩过这个坑）
       const b64 = off.toDataURL('image/jpeg', 0.9).split(',')[1];
 
-      const res = await window.albumStudio.baiduBodySeg(b64);
+      const res = await window.AlbumStudio.baiduBodySeg(b64);
       if (!res || !res.ok) throw new Error((res && res.error) || '识别失败');
 
       if (!res.persons) {
@@ -806,8 +806,8 @@
     vaultCache.set(provider, { secret: body.secret, at: Date.now() });
 
     // 交给主进程缓存。失败也不阻断 —— 主进程那边会自己回退到本地文件
-    if (hasDesktop() && window.albumStudio.vaultPrime) {
-      await window.albumStudio.vaultPrime(provider, body.secret, API_BASE).catch(() => {});
+    if (hasDesktop() && window.AlbumStudio.vaultPrime) {
+      await window.AlbumStudio.vaultPrime(provider, body.secret, API_BASE).catch(() => {});
     }
     return body.secret;
   }
@@ -816,8 +816,8 @@
   async function invalidateKeys(provider) {
     if (provider) vaultCache.delete(provider);
     else vaultCache.clear();
-    if (hasDesktop() && window.albumStudio.vaultInvalidate) {
-      await window.albumStudio.vaultInvalidate(provider).catch(() => {});
+    if (hasDesktop() && window.AlbumStudio.vaultInvalidate) {
+      await window.AlbumStudio.vaultInvalidate(provider).catch(() => {});
     }
   }
 
@@ -908,7 +908,7 @@
     busy(true, '正在准备…');
     let up = null;
     const offProgress = hasInpaint()
-      ? window.albumStudio.onInpaintProgress(p => {
+      ? window.AlbumStudio.onInpaintProgress(p => {
           if (p.stage === 'submit') busy(true, '正在提交…');
           else if (p.stage === 'poll') {
             const s = Math.round((p.elapsed || 0) / 1000);
@@ -925,7 +925,7 @@
       up = await uploadForAI(blob);
 
       busy(true, '正在提交…');
-      const r = await window.albumStudio.volcInpaint({
+      const r = await window.AlbumStudio.volcInpaint({
         imageUrl: up.url,
         bbox: stats.bbox,
         coverage: stats.coverage,
@@ -1101,7 +1101,7 @@
   }
 
   function hasInpaint() {
-    return !!(window.albumStudio && window.albumStudio.volcInpaint);
+    return !!(window.AlbumStudio && window.AlbumStudio.volcInpaint);
   }
 
   /* ================================================================
