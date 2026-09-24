@@ -134,7 +134,7 @@
     uniform vec2 uTexel;       // 1/图片宽高，锐化取邻居用
     uniform float uAspect;     // 图片宽高比，暗角要按比例算才不变形
     uniform float uRot;        // 旋转角（弧度，逆时针）
-    uniform float uUvScale;    // 缩放：输出框相对原图的大小（1 = 恰好内接）
+    uniform vec2 uUvScale;     // 采样缩放 x/y（分开：旋转后两轴比例不同）
     uniform vec2 uCropOffset;  // 裁剪中心在原图中的偏移（相对 0.5 中心的归一化值）
 
     // sRGB <-> 线性。这两个函数是「正确调色」的地基：
@@ -418,7 +418,7 @@
          正常编辑时 rot=0 且 uvScale=1 且 offset=0，是恒等变换。
          ================================================================ */
       vec2 u = vUv;
-      if (uRot != 0.0 || uUvScale != 1.0 || uCropOffset != vec2(0.0)) {
+      if (uRot != 0.0 || uUvScale != vec2(1.0) || uCropOffset != vec2(0.0)) {
         vec2 p = (vUv - 0.5) * uUvScale + uCropOffset;
         float ca = cos(uRot), sa = sin(uRot);
         p = mat2(ca, sa, -sa, ca) * p;
@@ -1213,33 +1213,38 @@
     const viewH = r.h * box.H;
     if (viewW < 2 || viewH < 2) return null;
 
-    // 内接矩形在原图上的实际尺寸 ÷ 旋转框尺寸 = 采样缩放（与分辨率无关）
-    const s = ins.w / box.W;
+    /* ⚠️ 采样缩放：x / y **分别算**，而且直接等于
+       "裁剪框在原图上的尺寸 ÷ 原图尺寸"。
 
-    // 裁剪框中心相对图片中心的偏移，换成原图归一化单位
-    const offX = (r.x + r.w / 2 - 0.5) * box.W * s / W0;
-    /* ⚠️⚠️ 纵向偏移的**符号必须取反**。
-       原因：裁剪框 y 向**上**（旋转框坐标，和图片坐标一致，
-       y 大 = 画面靠上），而 shader 里采样的 v 是纹理坐标，
-       上传后 v=0 对应**画面底部** —— 两者方向相反。
+       ⚠️⚠️ 这里原来是错的，而且是全功能里最难发现的一处：
+       原先用 `s = ins.w / box.W` 一个标量同时管 x 和 y。
+       取景框等于整个内接矩形时它恰好蒙对，但用户一旦把取景框拖小，
+       采样区间就被**放大**了 —— 实测取景框取上/下半（h=0.5）时，
+       只有 1/4 画面是红的，其余采到了相邻区块的内容。
 
-       踩过的现象：不取反的话，裁剪区域整体上下颠倒
-       （取景框选上半，画面上出来的是翻转过的下半）。
-       横向没有这个问题：x 两套都是向右。 */
-    /* ⚠️ 纵向偏移**不取反**。实测：取反会让预览直接采到相反的一半
-       （裁画面上半却采到下半）。而且因为烘焙走的是同一套 uniform、
-       行序又翻了一次，两处错误会互相掩盖 —— 表现是
-       "预览和应用后一致，但两个都是反的"，只看"一致"发现不了。
+       正确推导（以 y 为例）：
+         输出框占原图的比例 = viewH / H0
+                            = (r.h * box.H) * (ins.h / box.H) / H0
+         采样区间应该正好等于这个比例，所以
+           sY = r.h * ins.h / H0
+         0° 时 box = 原图、ins = 原图 → sY = r.h。
 
-       所以判断依据不能是"预览==应用"，必须有**已知答案**：
-       裁画面上半（红+绿）就该整块只有红和绿，出现蓝/白就是反了。 */
-    const offY = (r.y + r.h / 2 - 0.5) * box.H * s / H0;
+       x / y 必须分开：旋转是在"外接矩形"里做的，
+       两轴的比例因子不同，共用一个必然有一边错。 */
+    const sX = r.w * ins.w / W0;
+    const sY = r.h * ins.h / H0;
+
+    /* 偏移：让采样区间的**中心**落在裁剪框中心上。
+       0°、取景框取上半时裁剪框中心在旋转框 y=0.75，
+       换算成采样坐标也是 0.75 —— 和实测一致。 */
+    const offX = (r.x + r.w / 2 - 0.5) * sX;
+    const offY = (r.y + r.h / 2 - 0.5) * sY;
 
     if (forExport) {
       return {
-        outW: Math.max(1, Math.round(viewW * s)),
-        outH: Math.max(1, Math.round(viewH * s)),
-        s, rot: phi, offX, offY, W0, H0
+        outW: Math.max(1, Math.round(viewW * (ins.w / box.W))),
+        outH: Math.max(1, Math.round(viewH * (ins.h / box.H))),
+        sX, sY, rot: phi, offX, offY, W0, H0
       };
     }
 
@@ -1256,21 +1261,21 @@
     return {
       outW: Math.max(1, Math.round(w * dpr)),
       outH: Math.max(1, Math.round(h * dpr)),
-      s, rot: phi, offX, offY, W0, H0
+      sX, sY, rot: phi, offX, offY, W0, H0
     };
   }
 
   /** 把几何参数喂给 shader */
   function applyGeometryUniforms(plan) {
     gl.uniform1f(uniforms.uRot, plan.rot);
-    gl.uniform1f(uniforms.uUvScale, plan.s);
+    gl.uniform2f(uniforms.uUvScale, plan.sX, plan.sY);
     gl.uniform2f(uniforms.uCropOffset, plan.offX, plan.offY);
   }
 
   /** 没有裁剪时必须是恒等变换，否则正常编辑会被莫名缩放/旋转 */
   function resetGeometryUniforms() {
     gl.uniform1f(uniforms.uRot, 0);
-    gl.uniform1f(uniforms.uUvScale, 1);
+    gl.uniform2f(uniforms.uUvScale, 1, 1);
     gl.uniform2f(uniforms.uCropOffset, 0, 0);
   }
 
