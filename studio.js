@@ -708,6 +708,8 @@
 
     busy(true, '正在识别…');
     try {
+      // 先把百度密钥取好交给主进程（有 10 分钟缓存，通常不打请求）
+      await getKeys('baidu').catch(() => {});
       // 先把当前图缩到长边 1024 再传 —— 百度接口对分辨率没那么敏感，
       // 但传原图(4000px)会让请求体变成好几 MB，白等好几秒。
       const long = Math.max(img.width, img.height);
@@ -764,6 +766,59 @@
     const opts2 = $('stBrushOpts2');
     if (opts) opts.hidden = !on;
     if (opts2) opts2.hidden = !on;
+  }
+
+  /* ================================================================
+     密钥保险箱（客户端侧）
+     ----------------------------------------------------------------
+     密钥存在服务端（加密），客户端按需取，本地缓存 10 分钟。
+
+     取的动作必须在**页面**里做：密钥接口要登录，而 Cookie 是
+     httpOnly 的，Electron 主进程读不到 —— 只有页面能发这个请求。
+
+     取到之后做两件事：
+       ① 自己缓存 10 分钟（省掉重复请求）
+       ② prime 给主进程（它才是真正发 AI 请求的那一方）
+     ================================================================ */
+  const VAULT_TTL = 10 * 60 * 1000;
+  const vaultCache = new Map();       // provider → { secret, at }
+
+  async function getKeys(provider, force) {
+    const now = Date.now();
+    if (!force) {
+      const hit = vaultCache.get(provider);
+      if (hit && now - hit.at < VAULT_TTL) return hit.secret;
+    }
+
+    const r = await fetch(`${API_BASE}/api/vault/${provider}`, {
+      credentials: 'include'
+    });
+
+    if (r.status === 401) throw new Error('没登录，取不到密钥。请先在相册里登录。');
+    if (r.status === 404) {
+      throw new Error(`服务端还没配置 ${provider} 的密钥`);
+    }
+    if (!r.ok) throw new Error(`取密钥失败 HTTP ${r.status}`);
+
+    const body = await r.json();
+    if (!body || !body.secret) throw new Error('密钥接口返回了空内容');
+
+    vaultCache.set(provider, { secret: body.secret, at: Date.now() });
+
+    // 交给主进程缓存。失败也不阻断 —— 主进程那边会自己回退到本地文件
+    if (hasDesktop() && window.albumStudio.vaultPrime) {
+      await window.albumStudio.vaultPrime(provider, body.secret, API_BASE).catch(() => {});
+    }
+    return body.secret;
+  }
+
+  /** 改了密钥之后要清两边缓存，否则要等 10 分钟才生效 */
+  async function invalidateKeys(provider) {
+    if (provider) vaultCache.delete(provider);
+    else vaultCache.clear();
+    if (hasDesktop() && window.albumStudio.vaultInvalidate) {
+      await window.albumStudio.vaultInvalidate(provider).catch(() => {});
+    }
   }
 
   /* ================================================================
@@ -850,7 +905,7 @@
     const intent = await askIntent();
     if (intent === null) return;      // 用户取消
 
-    busy(true, '正在上传…');
+    busy(true, '正在准备…');
     let up = null;
     const offProgress = hasInpaint()
       ? window.albumStudio.onInpaintProgress(p => {
@@ -863,6 +918,9 @@
       : null;
 
     try {
+      // 取火山密钥交给主进程（有缓存，通常不打请求）
+      await getKeys('volcengine');
+
       const blob = await imageBlob();
       up = await uploadForAI(blob);
 
@@ -1343,6 +1401,8 @@
     // —— 去物 ——
     hasInpaint,
     removeObject,
+    getKeys,
+    invalidateKeys,
     maskStats,
     uploadForAI,
     imageBlob,
