@@ -10,7 +10,7 @@
 // 版本号改了才会重新拉取整个 shell。
 // 加文件进来（比如 mask.js）也必须升版本，否则老客户端永远拿不到它 ——
 // 表现是「本地测好的功能，线上用起来没反应」。
-const SHELL = 'shell-v5';
+const SHELL = 'shell-v6';
 const ASSETS = [
   '/',
   '/index.html',

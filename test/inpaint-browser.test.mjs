@@ -18,8 +18,17 @@ import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 
-const HARNESS = '/tmp/dsh-browser.mjs';
+const HARNESS = process.env.DSH_BROWSER || '/tmp/dsh-browser.mjs';
 const URL = process.env.STUDIO_URL || 'https://muyaya.world/studio.html';
+
+// ⚠️ 同 mask-browser.test.mjs：这个老测试依赖一个不在仓库里的临时 harness。
+// 缺它就明确跳过并说明，而不是抛一个看不懂的 ENOENT。
+if (!fs.existsSync(HARNESS)) {
+  console.log('\n=== 跳过：找不到 CDP harness ===\n');
+  console.log(`  ${HARNESS} 不存在（原来在 macOS 的 /tmp 下）。`);
+  console.log('  仓库自带的 test/cdp.mjs 是新测试在用的 harness。\n');
+  process.exit(0);
+}
 
 let pass = 0, fail = 0;
 const results = [];

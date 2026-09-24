@@ -1,0 +1,11 @@
+{
+  "name": "xiaobubuya-github-io",
+  "private": true,
+  "version": "1.0.0",
+  "description": "婚纱照相册前端（纯静态，GitHub Pages）",
+  "scripts": {
+    "test": "node test/run-all.mjs",
+    "test:fast": "node test/run-all.mjs --fast",
+    "test:browser": "node test/run-all.mjs --browser"
+  }
+}

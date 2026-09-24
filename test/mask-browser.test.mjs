@@ -15,8 +15,20 @@ import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 
-const HARNESS = '/tmp/dsh-browser.mjs';
+const HARNESS = process.env.DSH_BROWSER || '/tmp/dsh-browser.mjs';
 const URL = process.env.STUDIO_URL || 'https://muyaya.world/studio.html';
+
+// ⚠️ 这个测试依赖 /tmp/dsh-browser.mjs —— 那是个**不在仓库里**的临时
+// harness（原来是 macOS 上的）。换电脑就没有了。
+// 仓库里现在有 test/cdp.mjs（自带 Chrome 启动、零依赖），
+// 新的浏览器测试都用它。这个老测试还没迁过去，缺 harness 时给出明确提示。
+if (!fs.existsSync(HARNESS)) {
+  console.log('\n=== 跳过：找不到 CDP harness ===\n');
+  console.log(`  ${HARNESS} 不存在。`);
+  console.log('  这个测试还没有迁到仓库自带的 test/cdp.mjs。');
+  console.log('  想看等价覆盖，跑：node test/adjust-browser.test.mjs\n');
+  process.exit(0);
+}
 
 let pass = 0, fail = 0;
 const results = [];

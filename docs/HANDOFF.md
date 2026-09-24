@@ -200,6 +200,10 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 - WebGL 实时调色：曝光 / 对比度 / 高光 / 阴影 / 饱和度 / 色温
   - 曝光、高光、阴影在**线性空间**算；对比度、饱和度在 sRGB 空间
   - 单趟 fragment shader，拖滑块只更新 uniform，60fps
+- **质感三件套：锐化 / 暗角 / 颗粒**（阶段 5.1 补的）
+  - 锐化用 USM，作用在源图上、步长取原图 texel（不随窗口变）
+  - 暗角正值压暗、负值提亮；颗粒用哈希噪声 + 亮度调制
+  - 暗角和颗粒放在蒙版混合**之后**（它们是整张照片的收尾处理）
 - 蒙版引擎（`mask.js`）：矢量描边 + 撤销 + 反选 + 从位图导入
 - 局部调整（蒙版控制调整范围，线性空间混合）
 - 导出（原分辨率重绘，`原名-edit.jpg`）
@@ -223,15 +227,21 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 
 ### 1. 更多本地修图工具 ⭐ 建议先做
 
-云 AI 三家都接完了，再往上加就只剩本地工具。
+云 AI 三家都接完了，本地工具也已经开了头（锐化/暗角/颗粒 ✅）。
+再往上加：
 
-- 锐化 / 暗角 / 颗粒（纯 shader，加 uniform 就行，最容易）
-- 曲线 / HSL
-- 裁剪 / 旋转 / 透视校正 / 液化
-- 局部调整的**渐变蒙版**和**径向蒙版**（现在只有画笔）
+- **曲线 / HSL**（中）—— 曲线需要 LUT 或分段函数
+- **裁剪 / 旋转**（中）—— 几何变换，要改 canvas 逻辑
+- **液化 / 透视校正**（高）—— 需要网格变形或独立 shader pass
+- 局部调整的**渐变蒙版**和**径向蒙版**（现在只有画笔）——
+  复用现有蒙版引擎，只是换个方式往位图里填内容
 
 好处是**零成本、实时、照片不出设备** —— 和云 AI 打个来回 20 秒比，
 这些更值得日常用。
+
+> 加新调整项时**务必**先读 `docs/ROADMAP.md` 5.1 的「实现要点」和
+> 「测试分工」。有两类错误静态测试**一定**抓不到（方向、幅度），
+> 必须靠 `test/adjust-browser.test.mjs` 那样读真实像素。
 
 ### 2. 修图结果回存相册
 
@@ -400,15 +410,23 @@ JS 里是两个完全不同的变量。preload 暴露大写，页面读小写，
 ## 八、测试怎么跑
 
 ```bash
+# 一把梭（推荐）
+cd xiaobubuya-github-io && node test/run-all.mjs          # 全部，含浏览器
+cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 跳过浏览器，秒出
+cd album-studio && npm test                               # 桌面
+cd album-api && npm test                                  # 后端
+
+# 或者单独跑
 # 前端（在 xiaobubuya-github-io/）
 node test/autolayout.test.mjs      # 62 项 · 自动排版几何
 node test/upload.test.mjs          # 20 项 · 上传流程
 node test/mask.test.mjs            # 21 项 · 蒙版引擎
 node test/contract.test.mjs        #  9 项 · 跨仓库契约（改接口后必跑）
+node test/adjustments.test.mjs     # 22 项 · 调整项 ↔ shader uniform 一致性
+node test/adjustments-negative.test.mjs  # 8 项 · 断言有效性（变异测试）
 
-# 浏览器测试（需要 CDP harness，见下）
-STUDIO_URL=http://127.0.0.1:8899/studio.html node test/mask-browser.test.mjs      # 18 项
-STUDIO_URL=http://127.0.0.1:8899/studio.html node test/inpaint-browser.test.mjs   # 13 项
+# 浏览器测试（自带 harness，见下）
+node test/adjust-browser.test.mjs  # 16 项 · 锐化/暗角/颗粒，读真实像素
 
 # 桌面（在 album-studio/）
 node test/inpaint.test.js          # 20 项 · 提示词生成 + 坐标
@@ -420,6 +438,31 @@ node test/smoke.mjs                # 193 项 · 全接口
 ```
 
 ### 浏览器测试怎么跑
+
+**新测试（推荐）：`test/cdp.mjs` 是仓库自带的 CDP harness**，
+零依赖（WebSocket 客户端也是手写的），自己起 Chrome、自己起静态服务：
+
+```bash
+cd xiaobubuya-github-io
+node test/adjust-browser.test.mjs     # 锐化/暗角/颗粒，读真实像素
+```
+
+它自己会起 `127.0.0.1:8898` 的静态服务，不需要你先开 http.server。
+
+两个要注意的点（都写进 cdp.mjs 的注释了）：
+- **Chrome 136+ 拒绝在默认 profile 上开远程调试端口**，必须给独立
+  `--user-data-dir`，否则调试端口一直连不上
+- 无头环境没有真 GPU，要 `--use-angle=swiftshader` +
+  `--enable-unsafe-swiftshader`，否则 `getContext('webgl')` 返回 null
+- 站点注册了 Service Worker，首次访问会被 `clients.claim()` 触发一次
+  重载 → `Execution context was destroyed`。harness 里做了就绪等待 + 重试
+
+**老测试（`mask-browser` / `inpaint-browser`）还没迁过来**，
+它们依赖 `/tmp/dsh-browser.mjs` —— 那是个**不在仓库里**的临时文件
+（原来是 macOS 上的）。没有它时这两个测试会明确跳过并提示，不报 ENOENT。
+
+> 这就是「浏览器测试不该依赖一个不在仓库里的东西」的教训：
+> 换台电脑就全跑不了了。要跑它们得先把 harness 迁到 `test/cdp.mjs`。
 
 需要在 `/tmp/dsh-browser.mjs` 有一个 CDP harness（用无头 Chrome 驱动）：
 
@@ -443,10 +486,21 @@ harness 需要 `/tmp/session.txt` 存登录 Cookie，启动 Chrome 时加
 
 ```
 autolayout 62 · upload 20 · mask 21 · contract 9       = 112
+adjustments 22 · adjustments-negative 8                 =  30
+adjust-browser 16                                       =  16
 mask-browser 18 · inpaint-browser 13                    =  31
 inpaint（桌面）20 · beautify（桌面）43                    =  63
 smoke（后端）193                                         = 193
-                                                合计    368
+                                                合计    414
+```
+
+前端和桌面都有统一入口：
+
+```bash
+cd xiaobubuya-github-io && node test/run-all.mjs          # 全部
+cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 跳过浏览器，秒出
+cd album-studio && npm test
+cd album-api && npm test
 ```
 
 ---
@@ -487,10 +541,11 @@ smoke（后端）193                                         = 193
 
 ```
 ✅ 能用：上传、相册排版、翻页阅读、分享、WebGL 调色、
-        蒙版局部调整、AI 抠人、AI 去物、AI 美颜、导出
-📋 没做：更多本地修图工具、修图结果回存、火山任务持久化
+        锐化/暗角/颗粒、蒙版局部调整、AI 抠人、AI 去物、AI 美颜、导出
+📋 没做：曲线/HSL/裁剪旋转/液化、渐变与径向蒙版、
+        修图结果回存、火山任务持久化
 🔑 密钥：已全部迁到保险箱，本地文件已删
-🧪 测试：368 项全绿（368 = 前端 112 + 桌面 63 + 后端 193）
+🧪 测试：414 项全绿（前端 158 + 桌面 63 + 后端 193）
 ⚠️ 没真人验证过：旷视美颜的实际出图效果、美颜面板的手感、
-                  Windows 安装包
+                 新加的三个调整项的手感、Windows 安装包
 ```

@@ -30,8 +30,18 @@
   /* ================================================================
      调整项定义
      ----------------------------------------------------------------
-     key 对应 shader 里的 uniform，范围统一 -1 ~ 1（除了曝光用 EV）。
-     默认值 0 = 不改变。
+     key 对应 shader 里的 uniform，默认值 0 = 不改变。
+
+     ⚠️ 加一个新调整项要同步改四处，漏掉任何一处都是**静默失效**：
+       ① 这里加定义
+       ② FRAG 里加 `uniform float uXxx;`
+       ③ FRAG 的 main() 里真的用上它
+       ④ draw() 会自动遍历赋值（用 ADJUSTMENTS 循环，不用手加）
+     test/adjustments.test.mjs 静态比对①③之间的一致性，
+     加完记得把 test/adjust-browser.test.mjs 里的调整项**数量**也改掉
+     （那里有个硬编码的 9）。
+
+     范围不强行统一：曝光 ±2 EV，质感类各自定义（见下方注释）。
      ================================================================ */
   const ADJUSTMENTS = [
     { key: 'uExposure',   name: '曝光',   min: -2,  max: 2,  step: 0.01, def: 0, unit: ' EV' },
@@ -40,6 +50,15 @@
     { key: 'uShadows',    name: '阴影',   min: -1,  max: 1,  step: 0.01, def: 0 },
     { key: 'uSaturation', name: '饱和度', min: -1,  max: 1,  step: 0.01, def: 0 },
     { key: 'uTemp',       name: '色温',   min: -1,  max: 1,  step: 0.01, def: 0 },
+
+    // —— 质感类 ——
+    // 范围刻意不统一：这三个的「满格」含义不同。
+    // 锐化 1.0 已经能看出白边（内部再乘 1.5），所以上限就 1；
+    // 暗角 1.0 是很重的压角，但正常用会在 -0.5~0.5；
+    // 颗粒 1.0 是明显的胶片感，婚纱照一般 0.2~0.4 就够。
+    { key: 'uSharpness',  name: '锐化',   min: 0,   max: 1,  step: 0.01, def: 0 },
+    { key: 'uVignette',   name: '暗角',   min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uGrain',      name: '颗粒',   min: 0,   max: 1,  step: 0.01, def: 0 },
   ];
 
   const values = {};
@@ -86,9 +105,12 @@
     uniform sampler2D uImage;
     uniform sampler2D uMask;
     uniform float uExposure, uContrast, uHighlights, uShadows, uSaturation, uTemp;
+    uniform float uSharpness, uVignette, uGrain;
     uniform float uOriginal;   // 1 = 显示原图（对比用）
     uniform float uUseMask;    // 1 = 调整只作用在蒙版内
     uniform float uMaskOverlay; // 1 = 显示蒙版本身（红色叠加）
+    uniform vec2 uTexel;       // 1/图片宽高，锐化取邻居用
+    uniform float uAspect;     // 图片宽高比，暗角要按比例算才不变形
 
     // sRGB <-> 线性。这两个函数是「正确调色」的地基：
     // 曝光/高光/阴影必须在线性空间里做，否则会发灰发闷
@@ -141,6 +163,90 @@
       return mix(vec3(g), c, 1.0 + uSaturation);
     }
 
+    /* ================================================================
+       锐化（USM）—— 在**原始分辨率**的源图上做，不在 grade() 里
+       ----------------------------------------------------------------
+       为什么不能放进 grade()：grade 在局部调整时会被调用两次，
+       而锐化每多调一次就多采样 9 次纹理。放在外面只做一次。
+       更要紧的是 grade() 是逐像素的纯颜色运算，塞邻域采样进去
+       会把它变成"有状态的函数"，后面再加局部调整就会出错。
+
+       ⚠️ 步长必须用**原图**的 1/宽高，不能用当前画布的。
+       预览画布是按屏幕尺寸渲染的（见 layoutCanvas），用画布尺寸的话
+       拖一下窗口锐化半径就变了，预览和导出也对不上。
+       用原图 texel 的代价是屏幕预览时看着比导出略轻 ——
+       这是两者不一致里代价最小的取舍。
+       ================================================================ */
+    vec3 sharpen(vec3 src) {
+      if (uSharpness == 0.0) return src;
+      vec3 blur = vec3(0.0);
+      // 3x3 均值。用均值而不是高斯，是为了省采样 ——
+      // 锐化对模糊核的形状不敏感，对半径敏感
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          blur += texture2D(uImage, vUv + vec2(float(x), float(y)) * uTexel).rgb;
+        }
+      }
+      blur /= 9.0;
+      // USM：原图 + 幅度 ×（原图 - 模糊）。幅度上限 1.5，
+      // 再高暗部会出现明显的白边
+      return clamp(src + (src - blur) * uSharpness * 1.5, 0.0, 1.0);
+    }
+
+    /* ================================================================
+       颗粒 —— 用便宜的哈希噪声，不是真的胶片颗粒
+       ----------------------------------------------------------------
+       用 hash 而不是预生成噪声图：省一张纹理，而且不用管平铺接缝。
+
+       ⚠️ 强度必须按亮度调制。均匀叠加的话暗部会浮出一层灰雾
+       （暗部本来就没多少余量），而亮部完全看不出来 ——
+       这是"数码噪点"和"胶片颗粒"的区别。
+       ================================================================ */
+    float hash21(vec2 p) {
+      p = fract(p * vec2(123.34, 456.21));
+      p += dot(p, p + 45.32);
+      return fract(p.x * p.y);
+    }
+
+    vec3 grain(vec3 c) {
+      if (uGrain == 0.0) return c;
+      // 按像素坐标取噪声，保证每个像素固定不变（不然一动就闪）
+      float n = hash21(gl_FragCoord.xy) - 0.5;
+      // 中间调给满，暗部和亮部收敛
+      float mid = 1.0 - abs(luma(c) - 0.5) * 2.0;
+      mid = mid * mid;                 // 让收窄更明显一点
+      return c + n * uGrain * 0.12 * (0.35 + 0.65 * mid);
+    }
+
+    /* ================================================================
+       暗角
+       ----------------------------------------------------------------
+       ⚠️ 用 uAspect 修正后再量距离，否则圆形暗角在宽图上会变成
+       上下先暗。除以 max(1.0, uAspect) 是为了让系数不随图片比例变化 ——
+       否则同一张图裁成正方形，"暗角 -0.5"的强度会跳变。
+
+       ⚠️ 符号：**正值压暗、负值提亮**。
+       第一版写成 c * (1.0 + amt) 且 amt 直接取 uVignette，
+       结果 0.9 把四角从 128 抬到了 216 —— 越大越亮，方向反了。
+       正确是 1 - amt：正值减小系数（压暗），负值增大系数（提亮）。
+
+       两种幅度要分开收敛：提亮时收敛一点，免得四角糊成一片白。
+       ================================================================ */
+    vec3 vignette(vec3 c) {
+      if (uVignette == 0.0) return c;
+      vec2 d = (vUv - 0.5) * vec2(uAspect, 1.0) / max(1.0, uAspect);
+      float r = length(d) * 1.414;      // 归一化：角上约等于 1
+      // 从中心向外开始压，中心 1/3 完全不碰（否则人脸先暗下去）
+      float w = smoothstep(0.35, 1.05, r);
+
+      // 把符号揉进 amt 里：正值 → 正 amt → 乘 (1-amt) 压暗；
+      // 负值 → 负 amt → (1-amt) 大于 1 → 提亮。
+      // 一个表达式同时表达「压暗/提亮」和「提亮时收敛到 0.6」，
+      // 比写成两个返回分支更难把符号搞反。
+      float amt = uVignette * w * (uVignette > 0.0 ? 1.0 : 0.6);
+      return c * (1.0 - amt);
+    }
+
     void main() {
       vec3 src = texture2D(uImage, vUv).rgb;
 
@@ -149,7 +255,13 @@
         return;
       }
 
-      vec3 c = grade(src);
+      // 锐化在调色之前，而且作用在源图上
+      vec3 sharp = sharpen(src);
+
+      // ⚠️ 局部调整时混的也是 sharp 而不是 src ——
+      // 混 src 的话，涂了蒙版之后锐化会在蒙版内被"混掉"，
+      // 表现是「涂哪哪变糊」，正好和预期相反
+      vec3 c = grade(sharp);
 
       // 局部调整：按蒙版权重把「调过的」和「原图」混合回来。
       //
@@ -158,9 +270,15 @@
       // 两个颜色的中间值不等于中间亮度。线性空间里混才是物理正确的。
       if (uUseMask > 0.5) {
         float m = texture2D(uMask, vUv).r;
-        c = mix(toLinear(src), toLinear(c), m);
+        c = mix(toLinear(sharp), toLinear(c), m);
         c = toSrgb(c);
       }
+
+      // 暗角和颗粒放在蒙版混合**之后**：它们是"整张照片的收尾处理"，
+      // 不是"某个区域的调整"。放进蒙版里的话，涂一小块区域会让
+      // 那块的暗角被抹掉，看起来像破了个洞。
+      c = vignette(c);
+      c = grain(c);
 
       c = clamp(c, 0.0, 1.0);
 
@@ -228,6 +346,8 @@
     uniforms.uOriginal = gl.getUniformLocation(program, 'uOriginal');
     uniforms.uUseMask = gl.getUniformLocation(program, 'uUseMask');
     uniforms.uMaskOverlay = gl.getUniformLocation(program, 'uMaskOverlay');
+    uniforms.uTexel = gl.getUniformLocation(program, 'uTexel');
+    uniforms.uAspect = gl.getUniformLocation(program, 'uAspect');
 
     // 纹理：非 2 的幂也要能重复/夹取
     imageTex = gl.createTexture();
@@ -310,6 +430,13 @@
     // 所以空蒙版一律按全局处理，不管开关状态。
     gl.uniform1f(uniforms.uUseMask, (useMask && !mask.isEmpty) ? 1 : 0);
     gl.uniform1f(uniforms.uMaskOverlay, (showMask && !mask.isEmpty) ? 1 : 0);
+
+    // 锐化取邻居的步长用**原图**的 1/宽高，不是当前画布的 ——
+    // 用画布尺寸的话，拖一下窗口锐化半径就变了（预览和导出也不一致）。
+    // 代价是屏幕预览时看着比导出略轻，取舍写在 shader 的 sharpen 注释里。
+    gl.uniform2f(uniforms.uTexel, 1 / img.width, 1 / img.height);
+    gl.uniform1f(uniforms.uAspect, img.width / img.height);
+
     for (const a of ADJUSTMENTS) gl.uniform1f(uniforms[a.key], values[a.key]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -1713,6 +1840,45 @@
     _syncMaskUI: syncMaskUI,
     /** 给测试读像素用（导出和预览共用同一块画布） */
     _canvas() { return canvas; },
-    _mask() { return mask; }
+    _mask() { return mask; },
+    /**
+     * 临时缩放**渲染尺寸**（模拟拖窗口），在缩放状态下调用 measure()，
+     * 然后自动还原。给测试验「锐化步长不随画布变化」用。
+     *
+     * 为什么把「测量」当回调传进来：第一版是直接返回缩放后的画布宽度，
+     * 但它在返回之前就把样式还原了 —— 调用方拿到宽度后再去 readPixels，
+     * 读到的已经是还原后那一帧。必须"在缩放状态下测完再还"。
+     *
+     * ⚠️ 也不要在外面直接改 canvas.width：那样 viewport 会留在旧尺寸上、
+     * CSS 尺寸和后备缓冲不一致，readPixels 拿到的是垃圾。
+     */
+    _atScale(scale, measure) {
+      if (!img) return measure();
+      const stage = $('stStage');
+      const prevW = stage.style.width;
+      const prevFlex = stage.style.flex;
+      const prevMax = stage.style.maxWidth;
+      const base = stage.clientWidth || document.documentElement.clientWidth || 1000;
+
+      // ⚠️ 只写 style.width 是**没用的**：#stStage 在 .st-main 这个 flex 容器里，
+      // flex 布局会忽略 inline width，clientWidth 仍是旧值。
+      // （测试里踩过：改完画布宽度一点没变，断言直接报"没测到东西"。）
+      // 必须同时把 flex 收掉，再给 min/max-width 钉死。
+      const target = Math.max(80, Math.round(base * scale));
+      stage.style.flex = 'none';
+      stage.style.width = target + 'px';
+      stage.style.maxWidth = target + 'px';
+      void stage.offsetWidth;          // 强制同步布局，别让 clientWidth 还是旧值
+      render();
+      try {
+        return measure();
+      } finally {
+        stage.style.width = prevW;
+        stage.style.flex = prevFlex;
+        stage.style.maxWidth = prevMax;
+        void stage.offsetWidth;
+        render();
+      }
+    }
   };
 })();

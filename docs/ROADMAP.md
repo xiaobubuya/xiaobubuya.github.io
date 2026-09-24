@@ -49,22 +49,49 @@
 
 ## 阶段 5 · 体验打磨（进行中）
 
-### 5.1 更多本地修图工具 ⭐ 下一个任务
+### 5.1 更多本地修图工具
 
-按实现难度排序，建议这个顺序：
+| 工具 | 难度 | 说明 | 状态 |
+|---|---|---|---|
+| 锐化 | 低 | USM，需要邻域采样 | ✅ 完成 |
+| 暗角 | 低 | 按距离压暗，可用负值提亮 | ✅ 完成 |
+| 颗粒 | 低 | 哈希噪声 + 亮度调制 | ✅ 完成 |
+| 曲线 | 中 | 需要 LUT 或分段函数 | 待做 |
+| HSL | 中 | 分通道调整，shader 里做 | 待做 |
+| 裁剪 / 旋转 | 中 | 几何变换，要改 canvas 逻辑 | 待做 |
+| 液化 | 高 | 需要网格变形，可能要独立 shader pass | 待做 |
+| 透视校正 | 高 | 同上 | 待做 |
 
-| 工具 | 难度 | 说明 |
+**已完成的三个（锐化 / 暗角 / 颗粒）—— 值得记住的实现要点：**
+
+1. **锐化必须在原始像素上做，而且不能放进 `grade()`。**
+   `grade()` 在局部调整时会被调用两次，塞邻域采样进去既浪费
+   又会让局部调整的效果变怪。所以它作用在 `main()` 里的源图上。
+
+2. **锐化的步长用原图 texel，不用画布 texel。**
+   用画布的话，拖一下窗口锐化半径就变了，预览和导出也对不上。
+   代价是屏幕预览时看着比导出略轻 —— 这是两者不一致里代价最小的取舍。
+
+3. **暗角/颗粒放在蒙版混合之后。**
+   它们是「整张照片的收尾处理」，不是「某个区域的调整」。
+   放进蒙版里的话，涂一小块会让那块的暗角被抹掉，看起来像破了个洞。
+
+4. **暗角的符号：正值压暗（乘 `1 - amt`）。**
+   第一版写成 `1 + amt`，结果 0.9 把四角从 128 抬到 **216** —— 越大越亮。
+   ⚠️ 这个错误**静态测试抓不到**（它只看有没有 `1.0 - amt` 这个子串），
+   是浏览器测试读像素抓出来的。见 5.1 下面的「测试分工」。
+
+5. **颗粒要按亮度调制**，否则暗部会浮出一层灰雾（暗部本来就没余量）。
+
+#### 测试分工（这次验证出来的经验）
+
+| 类型 | 手段 | 能抓什么 |
 |---|---|---|
-| 锐化 / 暗角 / 颗粒 | 低 | 纯 shader，加几个 uniform 就行 |
-| 曲线 | 中 | 需要 LUT 或分段函数 |
-| HSL | 中 | 分通道调整，shader 里做 |
-| 裁剪 / 旋转 | 中 | 几何变换，要改 canvas 逻辑 |
-| 液化 | 高 | 需要网格变形，可能要独立 shader pass |
-| 透视校正 | 高 | 同上 |
+| 接线 | `test/adjustments.test.mjs`（静态比对） | uniform 名对不对、顺序对不对、有没有赋值 |
+| 断言有效性 | `test/adjustments-negative.test.mjs`（变异测试） | 上面那些断言是不是装饰品 |
+| 算得对不对 | `test/adjust-browser.test.mjs`（真 Chrome 读像素） | 方向、幅度、边界 —— **静态一律验不出来** |
 
-**为什么它排在 AI 之后**：这三家云 AI 的链路都通了，能做的都做了。
-再往上加就只能堆本地工具 —— 而且这些是**零成本、实时、照片不出设备**的，
-比云 AI 更值得日常用。
+实测：把暗角的符号取反，静态测试 22 项仍然全绿，只有读像素的那条红了。
 
 ### 5.2 局部调整增强
 
@@ -139,29 +166,39 @@ API_PASS=你的口令 node tools/vault-import.mjs
 ## 快速验证清单（改完代码后跑）
 
 ```bash
+# 0. 一把梭（前端两个仓库都有统一入口）
+cd xiaobubuya-github-io && node test/run-all.mjs      # 158 项（含浏览器）
+cd xiaobubuya-github-io && node test/run-all.mjs --fast  # 只跑静态，秒出
+cd ../album-studio && npm test                        # 63 项
+
 # 1. 后端
 cd album-api && node test/smoke.mjs                    # 193 项
 
 # 2. 跨仓库契约（改接口必跑）
 cd ../xiaobubuya-github-io && node test/contract.test.mjs   # 9 项
 
-# 3. 前端单元
-for f in autolayout upload mask; do node test/$f.test.mjs; done   # 103 项
+# 3. 前端静态
+node test/adjustments.test.mjs          # 22 项 · uniform 一致性
+node test/adjustments-negative.test.mjs #  8 项 · 断言有效性（变异测试）
 
-# 4. 桌面
-cd ../album-studio && node test/inpaint.test.js        # 20 项（去物）
-cd ../album-studio && node test/beautify.test.js       # 43 项（美颜，会真等 3 秒）
+# 4. 浏览器（自己起 Chrome，零依赖）
+node test/adjust-browser.test.mjs       # 16 项 · 锐化/暗角/颗粒读像素
 
 # 5. AI 接口还通不通（真实调用，会产生少量费用）
-node tools/ai-probe.mjs
+cd ../album-studio && node tools/ai-probe.mjs
 
 # 6. App 端到端（真实调用火山）
 ALBUM_URL=https://muyaya.world/studio.html \
 ALBUM_SMOKE_AI=inpaint ALBUM_SMOKE_USER=yuge ALBUM_SMOKE_PASS=你的口令 \
   npx electron . --user-data-dir=/tmp/albumstudio-test
+
+# 6b. 修图页自检（不联网、不需要密钥，验 shader 能不能编译）
+ALBUM_URL=https://muyaya.world/studio.html ALBUM_SMOKE_STUDIO=1 npx electron .
 ```
 
-合计 **368 项**。`beautify.test.js` 里有一段会真等 3 秒，属正常 ——
+合计 **414 项**（前端 158 + 桌面 63 + 后端 193）。
+
+`beautify.test.js` 里有一段会真等 3 秒，属正常 ——
 测的是旷视并发限流下的串行间隔。
 
-浏览器测试见 `HANDOFF.md` 第八节。
+浏览器测试见 `HANDOFF.md` 第八节（含自带的 CDP harness 说明）。
