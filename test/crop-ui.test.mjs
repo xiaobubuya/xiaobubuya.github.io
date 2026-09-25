@@ -114,9 +114,8 @@ try {
     await new Promise(r => setTimeout(r, 150));
     out.push(snap('拖到 30°'));
 
-    // 90° 快转：内部会旋转并重新进入裁剪。
-    // ⚠️ 它**故意保留**细调角度（keepRot = crop.rot）——
-    //    用户先调 30° 拉直、再转 90°，不应该把拉直丢掉。
+    // 90° 快转：细调角度会被**一起烘进图里**（见 studio.js 里 rotateQuarter
+    // 的长注释），所以转完滑杆归零。要守的是三者一致 + 画面没丢角度。
     await S.rotateQuarter(1);
     await new Promise(r => setTimeout(r, 400));
     out.push(snap('转 90° 之后'));
@@ -176,18 +175,23 @@ t('⭐ 重新进入裁剪时旋转角度归零（滑杆不能停在上次的值�
   assert.equal(enter.label, 0, `重进后标签应该是 0，实际 ${enter.label}`);
 });
 
-t('⭐ 90° 快转后保留细调角度（不能把拉直丢掉）', () => {
+t('⭐ 90° 快转后角度归零（细调已经被烘进图里，不是丢了）', () => {
   const after = steps.find(s => s.tag === '转 90° 之后');
   assert.ok(after, '没拿到"转 90° 之后"的快照');
-  /* ⚠️ 这条断言我一开始写反了：以为快转后应该归零，报
-     "crop.rot 应该是 0，实际 30"。其实 rotateQuarter 是
-     `keepRot = crop.rot` —— **故意保留**的：
-     先调 30° 拉直、再转 90°，把拉直丢掉才是 bug。
-     真正要守的是"滑杆/标签/状态三者一致"（见第一条）。 */
-  assert.equal(after.state, 30,
-    `快转后应该保留细调角度 30°，实际 ${after.state}`);
-  assert.equal(after.slider, 30, `滑杆应该跟着是 30，实际 ${after.slider}`);
-  assert.equal(after.label, 30, `标签应该跟着是 30，实际 ${after.label}`);
+  /* ⚠️⚠️ 这条断言**反过来了**，说清楚为什么。
+     旧版快转走"2D canvas 转 90° + 重新进裁剪"，于是把 crop.rot 留着
+     （"先拉直 30° 再转 90°，不该把拉直丢掉"），当时断言的是 30。
+     现在改成**把细调一起烘进图里**：总角度 = 90° + 30° 直接烧进像素，
+     转完 rot 归零。视觉结果完全一样（甚至更对 —— 旧写法里细调的方向
+     会跟着 90° 一起转，用户的拉直量会莫名其妙变），
+     而且滑杆/标签/状态天然一致。
+
+     所以真正要守的是**画面没丢角度**，不是"滑杆还停在 30"。
+     画面层面由 test/rotate-invariant.test.mjs 用真像素验。 */
+  assert.equal(after.state, 0,
+    `快转后角度应该归零（细调已烘进图），实际 ${after.state}`);
+  assert.equal(after.slider, 0, `滑杆应该跟着归零，实际 ${after.slider}`);
+  assert.equal(after.label, 0, `标签应该跟着归零，实际 ${after.label}`);
 });
 
 t('⭐ 超出滑杆量程的角度要被钳制（否则滑杆和标签会不一致）', () => {

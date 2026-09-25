@@ -1,26 +1,28 @@
 /* ================================================================
-   裁剪几何：源码级区间等式
+   几何核心：裁剪 / 旋转 / 翻转 / 缩放
    ----------------------------------------------------------------
-   为什么需要这一层（而不是只靠浏览器读像素）：
+   ⚠️⚠️ 这份测试**重写**过。旧版守的是一整套"旋转后自动收框"的数学
+   （inscribedRect / fitRatioInRotated / aabbFitsInRotated），那套已经
+   被用户明确否掉：
 
-   裁剪的几何前后错了**很多轮**，每次都换个样子冒出来，而且
-   **颜色类判据抓不到**：
-     · "预览 == 应用后" —— 两者走同一套 uniform，永远一致
-     · "是红或绿就行"   —— 偏半个框、被拉伸，颜色照样对
-   所以这一层直接用**数**验：把 cropRenderPlan 的公式从源码里抠出来
-   求值，和几何期望精确比对。快、精确、无魔数。
+     "裁剪和翻转做复杂了，不需要做数学运算，裁剪和旋转分开做"
 
-   ⭐ 唯一的硬约束（记住这一条就够）：
-       **采样区间的比例 == 输出的比例**
-   `sX` 是"采样区间占源图**宽度**的比例"，所以
-       (sX·W0) / (sY·H0) == outW/outH
-   ⚠️ 我一度写成 `sX/sY == W0/H0`，24 组全红 —— 那是错的判据。
+   所以现在守的是**新模型的结构性不变量**：
 
-   ⚠️ "输出比例"由**取景框**决定（用户选了 16:9 就得是 16:9），
-   **不是**图片比例。曾经拿图片比例当输出比例，把比例预设废掉了。
+     ① 显示变换必须是**相似变换**（旋转 + 等比缩放 + 镜像），
+        绝不能出现"两个轴倍数不同"——那是图片被拉伸的唯一原因。
+        ⚠️ 判据是**结构性**的：shader 里只能有一个标量缩放 uniform，
+        代码里不能出现第二个缩放系数。这比"从像素反推"硬得多 ——
+        旧模型就是靠在三处不同的地方维持一条代数等式，前后错了三次。
+     ② 取景框永远在 [0,1] 内、且不小于最小边长（不变量，任何入口之后都成立）
+     ③ 旋转角**不碰取景框**（用户要的"裁剪和旋转分开做"）
+     ④ 缩放不改变取景框（zoom 是显示工具，不是构图工具）
+     ⑤ 0° / 无缩放 / 无翻转时是恒等变换
+     ⑥ 导出计划：输出 = 取景框那块区域的像素尺寸，且两个轴同一个系数
 
-   ⚠️ 抠源码用 new Function 而不是抄一份公式 ——
-   抄一份的话改了 studio.js 这里不会红，等于没测。
+   为什么这些能静态验：它们全是**代数/结构**性质，不需要 GPU。
+   真正需要看像素的（朝向、旋转方向、深色底）在
+   test/rotate-invariant.test.mjs 里用真 Chrome 验。
    ================================================================ */
 import { strict as assert } from 'node:assert';
 import fs from 'node:fs';
@@ -36,321 +38,420 @@ const t = (name, fn) => {
   catch (e) { fail++; console.log(`  ❌ ${name}\n     ${e.message}`); }
 };
 
-console.log('\n=== 裁剪几何：源码级区间等式 ===\n');
+console.log('\n=== 几何核心（裁剪 / 旋转 / 翻转 / 缩放）===\n');
 
 /* ================================================================
-   按**花括号配对**提取函数体
-   ----------------------------------------------------------------
-   ⚠️ 不能用 `/function f\(...\) \{([\s\S]*?)\n  \}/` 这种非贪婪正则：
-   函数体里有嵌套的 `if (...) { ... }`，非贪婪会在**第一个** `\n  }`
-   处停下，得到被截断的函数体，于是函数里引用的变量（crop / img）
-   泄漏到外层作用域，报 `crop is not defined` —— 看着像语法问题，
-   其实是提取截断了。
+   从源码里按**大括号配对**抠出一个函数体。
+   ⚠️ 不能用非贪婪正则 —— 函数体里有嵌套的大括号（对象字面量、
+   if 块），正则会在第一个 } 处截断。这个坑踩过。
    ================================================================ */
 function extractFn(name) {
-  const start = SRC.indexOf(`function ${name}(`);
-  assert.ok(start >= 0, `找不到 ${name}`);
-  const braceStart = SRC.indexOf('{', start);
+  const key = 'function ' + name + '(';
+  const i = SRC.indexOf(key);
+  assert.ok(i >= 0, `源码里找不到函数 ${name}`);
+  const open = SRC.indexOf('{', i);
+  assert.ok(open >= 0, `${name} 没有函数体`);
   let depth = 0;
-  for (let i = braceStart; i < SRC.length; i++) {
-    if (SRC[i] === '{') depth++;
-    else if (SRC[i] === '}') {
+  for (let j = open; j < SRC.length; j++) {
+    const c = SRC[j];
+    if (c === '{') depth++;
+    else if (c === '}') {
       depth--;
-      if (depth === 0) return SRC.slice(braceStart + 1, i);
+      if (depth === 0) return SRC.slice(open + 1, j);
     }
   }
-  throw new Error(`${name} 的花括号不配对`);
+  assert.fail(`${name} 的大括号没有闭合`);
 }
 
-const INSCRIBED_BODY = extractFn('inscribedRect');
-const PLAN_BODY = extractFn('cropRenderPlan');
+const FRAG = (() => {
+  const i = SRC.indexOf('const FRAG = `');
+  assert.ok(i >= 0, '找不到 FRAG');
+  const j = SRC.indexOf('`;', i);
+  assert.ok(j > i, '找不到 FRAG 的结束反引号');
+  return SRC.slice(i + 'const FRAG = `'.length, j);
+})();
 
-/* ⚠️ 公式必须在**函数体内部**搜，不能在整个文件里搜。
-   踩过：`const k = ([^\n]*)` 在整文件里搜，匹配到别处的同名变量，
-   报 `crop is not defined` —— 完全指不到"搜错了地方"。 */
-const grab = re => {
-  const m = re.exec(PLAN_BODY);
-  return m ? m[0] : null;
-};
-
-const PARTS = [
-  ['regW', /const regW = [^\n]*/],
-  ['regH', /const regH = [^\n]*/],
-  ['sX', /const sX = [^\n]*/],
-  ['sY', /const sY = [^\n]*/],
-  /* ⚠️ offX/offY 依赖 cx/cy 这两个**中间变量**，必须一起抠。
-     漏掉时报 `cx is not defined` —— 看着像语法问题，
-     其实是"少插了一行中间变量"。 */
-  ['cx', /const cx = [^\n]*/],
-  ['cy', /const cy = [^\n]*/],
-  ['offX', /const offX = [^\n]*/],
-  ['offY', /const offY = [^\n]*/]
-];
-
-t('能在 cropRenderPlan 里找到全部公式', () => {
-  for (const [name, re] of PARTS) {
-    assert.ok(grab(re), `找不到 ${name} 的公式 —— 公式改名了就更新这个测试`);
-  }
+/* ================================================================
+   ① 相似变换：shader 里只能有一个标量缩放
+   ================================================================ */
+t('⭐ shader 只有**一个标量**显示缩放，没有双轴缩放', () => {
+  assert.ok(/uniform\s+float\s+uDisplayScale/.test(FRAG),
+    'FRAG 里应该有 `uniform float uDisplayScale`（标量）');
+  assert.ok(!/uniform\s+vec2\s+uUvScale/.test(FRAG),
+    'FRAG 里不该再出现 `uniform vec2 uUvScale` —— 双轴缩放就是各向异性，'
+    + '图片一定被拉伸。旧模型靠 sX·W0/(sY·H0)==outW/outH 去救，错了三次。');
+  assert.ok(!/uniform\s+vec2\s+uCropOffset/.test(FRAG), 'uCropOffset 已被 uImgOffset 取代');
 });
 
-function makePlanner() {
-  const formulaBody = PARTS.map(([, re]) => grab(re)).join('\n      ');
-  const body = `
-    "use strict";
-    function inscribedRect(W0, H0, phi) {${INSCRIBED_BODY}
-    }
-    return function (r, ins, box, W0, H0) {
-      ${formulaBody}
-      return { sX, sY, offX, offY, regW, regH };
-    };
-  `;
-  return new Function(body)();
-}
-
-let planRaw;
-try { planRaw = makePlanner(); }
-catch (e) { console.log('  ⚠️ 公式求值失败：' + e.message); process.exit(1); }
-
-const plan = (...a) => {
-  if (a.length !== 5) {
-    throw new Error(`plan 要 5 个参数 (r, ins, box, W0, H0)，实际 ${a.length} 个`);
-  }
-  const [r, ins, box, W0, H0] = a;
-  return planRaw(r, ins, box, W0, H0);
-};
-
-const interval = q => ({
-  xLo: 0.5 + q.offX - q.sX / 2, xHi: 0.5 + q.offX + q.sX / 2,
-  yLo: 0.5 + q.offY - q.sY / 2, yHi: 0.5 + q.offY + q.sY / 2
+t('⭐ 旋转用矩阵、缩放用同一个标量除两个轴', () => {
+  // 取几何变换那一段
+  const i = FRAG.indexOf('if (!identity)');
+  assert.ok(i > 0, '找不到几何变换的代码块');
+  const seg = FRAG.slice(i, i + 420);
+  assert.ok(/mat2\(ca,\s*sa,\s*-sa,\s*ca\)/.test(seg),
+    `旋转必须写成 mat2 旋转矩阵，实际片段：\n${seg}`);
+  assert.ok(/\/\s*uDisplayScale/.test(seg),
+    '缩放必须是 `p / uDisplayScale`（一个标量管两个轴）');
+  // 不允许出现按轴分开的乘除
+  const bad = seg.match(/vec2\s*\(\s*[\d.]+\s*\/\s*uDisplayScale\s*,\s*[\d.]+\s*\/\s*uDisplayScale\s*\)/);
+  assert.equal(bad, null, '不允许按轴分别缩放（那就是各向异性）');
 });
-const near = (a, b, tol = 1e-9) => Math.abs(a - b) < tol;
 
-/* inscribedRect 的可调用版本。
-   ⚠️ 必须定义在**前面** —— 下面的"比例预设"用例要用到它，
-   而 const 有暂时性死区（定义在后面会报 "Cannot access before initialization"）。 */
-const insFn = new Function('W0', 'H0', 'phi', INSCRIBED_BODY);
+t('翻转是在**中心坐标**里做的（否则会整体偏移）', () => {
+  const i = FRAG.indexOf('if (!identity)');
+  const seg = FRAG.slice(i, i + 420);
+  assert.ok(/\(vUv\s*-\s*0\.5\)\s*\*\s*uFlip/.test(seg),
+    '翻转必须作用在 (vUv-0.5) 上 —— 直接翻 vUv 会把画面整体移出视口');
+});
 
-/* ---------------- 0°（内接矩形 == 原图） ---------------- */
+t('露到原图外的部分输出深色底，且用显式判定而不是依赖 CLAMP', () => {
+  assert.ok(/uBg/.test(FRAG), 'FRAG 里应该有 uBg 深色底 uniform');
+  assert.ok(/u\.x\s*<\s*0\.0|u\s*-\s*1\.0/.test(FRAG),
+    '必须显式判定 u 是否超出 [0,1] —— 只靠 CLAMP_TO_EDGE 会把边缘'
+    + '拉成条纹（深色底上一条条亮线，实测过）');
+});
 
-const W0 = 400, H0 = 300;
-const ins0 = { w: 400, h: 300 };
-const box0 = { W: 400, H: 300 };
+/* ================================================================
+   ② 取景框 clamp：基本不变量
+   ================================================================ */
+const clampBody = extractFn('clampCropRect');
+const MIN_RECT = Number((SRC.match(/const MIN_RECT = ([\d.]+)/) || [])[1]);
+assert.ok(MIN_RECT > 0, '找不到 MIN_RECT');
 
-const cases0 = [
-  ['全幅', { x: 0, y: 0, w: 1, h: 1 }],
-  ['画面上半', { x: 0, y: 0.5, w: 1, h: 0.5 }],
-  ['画面下半', { x: 0, y: 0, w: 1, h: 0.5 }],
-  ['左上 1/4（屏幕）', { x: 0, y: 0.5, w: 0.5, h: 0.5 }],
-  ['右下 1/4（屏幕）', { x: 0.5, y: 0, w: 0.5, h: 0.5 }],
-  ['竖直中段一半', { x: 0, y: 0.25, w: 1, h: 0.5 }],
-  ['底部 1/10', { x: 0, y: 0, w: 1, h: 0.1 }]
-];
-
-for (const [name, r] of cases0) {
-  t(`⭐ 0° ${name}：采样区间就是取景框覆盖的那块`, () => {
-    const q = plan(r, ins0, box0, W0, H0);
-    const iv = interval(q);
-
-    /* 采样区域 = 取景框覆盖的图片区域（regW×regH），
-       摆到该区域的中心上。 */
-    const regW = r.w * ins0.w, regH = r.h * ins0.h;
-    const cx = r.x + r.w / 2;
-    const cy = r.y + r.h / 2;
-    const wantXLo = cx - (regW / W0) / 2;
-    const wantYLo = 1 - (cy + (regH / H0) / 2);
-
-    assert.ok(near(q.regW, regW, 1e-9) && near(q.regH, regH, 1e-9),
-      `注册区域应该是 ${regW}×${regH}，实际 ${q.regW}×${q.regH}`);
-    assert.ok(near(q.sX, regW / W0, 1e-9) && near(q.sY, regH / H0, 1e-9),
-      `sX/sY 应该是 ${regW / W0}/${regH / H0}，实际 ${q.sX}/${q.sY}`);
-    assert.ok(near(iv.xLo, wantXLo, 1e-9) && near(iv.yLo, wantYLo, 1e-9),
-      `采样区间应该是 [${wantXLo.toFixed(4)}, ${(wantXLo + regW / W0).toFixed(4)}] `
-      + `× [${wantYLo.toFixed(4)}, ${(wantYLo + regH / H0).toFixed(4)}]，`
-      + `实际 [${iv.xLo.toFixed(4)}, ${iv.xHi.toFixed(4)}] `
-      + `× [${iv.yLo.toFixed(4)}, ${iv.yHi.toFixed(4)}]\n`
-      + '     rect.y 是**屏幕约定**：y=0 在画面下边、y=1 在上边');
-  });
-}
-
-/* ---------------- 不扭曲（核心） ---------------- */
-
-t('⭐⭐ 采样区间比例 == 输出比例（不扭曲的充要条件）', () => {
-  /* ⚠️ 判据必须用"采样区间的**像素**比例"： (sX·W0)/(sY·H0)，
-     而不是 sX/sY。我一开始写成 sX/sY == W0/H0，24 组全红，白查一轮。 */
-  const combos = [
-    { r: { x: 0, y: 0.5, w: 1, h: 0.5 }, ins: { w: 300, h: 200 } },
-    { r: { x: 0.1, y: 0.2, w: 0.6, h: 0.4 }, ins: { w: 250, h: 180 } },
-    { r: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }, ins: { w: 280, h: 210 } },
-    // 一个明显非图片比例的框（16:9）
-    { r: { x: 0.05, y: 0.4, w: 0.9, h: 0.2 }, ins: { w: 360, h: 300 } }
+t('取景框永远落在 [0,1] 内、且不小于最小边长', () => {
+  const clamp = new Function('MIN_RECT', 'r', clampBody);
+  const cases = [
+    { x: -1, y: -1, w: 3, h: 3 },
+    { x: 0.9, y: 0.9, w: 0.5, h: 0.5 },
+    { x: 0.5, y: 0.5, w: 0, h: 0 },
+    { x: 0.2, y: 0.2, w: 0.1, h: 0.1 },
+    { x: NaN, y: undefined, w: null, h: 'x' }
   ];
-  for (const c of combos) {
-    const q = plan(c.r, c.ins, box0, W0, H0);
-    const apRatio = (q.sX * W0) / (q.sY * H0);
-    const outRatio = q.regW / q.regH;
-    assert.ok(Math.abs(apRatio / outRatio - 1) < 1e-6,
-      `采样比例 ${apRatio.toFixed(4)} 应该等于输出比例 ${outRatio.toFixed(4)}`
-      + `（rect=${JSON.stringify(c.r)}）`);
-  }
-});
-
-t('⭐ 输出比例由取景框决定（比例预设不能被废掉）', () => {
-  /* 用户选 16:9，导出就得是 16:9。
-     ⚠️ 曾经把输出比例写成"图片比例"，比例预设直接失效 ——
-     这条断言就是防它回来的。 */
-  const ins = { w: 360, h: 300 };
-  const box = { W: 400, H: 300 };
-  const target = 16 / 9;
-  // 0° 时 ins/box = 1，所以图片上的比例就是 rect.w/rect.h
-  const nw = 0.9, nh = (nw * ins.w / target) / ins.h;
-  const r = { x: (1 - nw) / 2, y: (1 - nh) / 2, w: nw, h: nh };
-  const q = plan(r, ins, box, 360, 300);
-  const outRatio = q.regW / q.regH;
-  assert.ok(Math.abs(outRatio - target) < 0.02,
-    `取景框是 16:9，输出比例应该是 ${target.toFixed(3)}，实际 ${outRatio.toFixed(3)}`
-    + ' —— 如果接近图片比例(1.2)，说明输出比例被强制成了图片比例，'
-    + '比例预设会失效');
-});
-
-t('⭐ 取景框居中时采样区间也居中（不能有系统性偏移）', () => {
-  const r = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 };
-  const q = plan(r, ins0, box0, W0, H0);
-  assert.ok(Math.abs(q.offX) < 1e-9, `居中取景框的 offX 应该是 0，实际 ${q.offX}`);
-  assert.ok(Math.abs(q.offY) < 1e-9, `居中取景框的 offY 应该是 0，实际 ${q.offY}`);
-});
-
-t('⭐⭐ 0° 全幅是恒等变换（正常编辑必须不受影响）', () => {
-  const q = plan({ x: 0, y: 0, w: 1, h: 1 }, ins0, box0, W0, H0);
-  assert.ok(near(q.sX, 1) && near(q.sY, 1),
-    `全幅 sX/sY 应该是 1，实际 ${q.sX}/${q.sY}`);
-  assert.ok(near(q.offX, 0) && near(q.offY, 0),
-    `全幅 offX/offY 应该是 0，实际 ${q.offX}/${q.offY}`);
-});
-
-t('⭐⭐ 比例预设：取景框在**图片上**的比例等于所选比例（含旋转）', () => {
-  /* ⚠️ applyCropAspect 曾把"旋转框像素"当成"图片像素"来算比例 ——
-     而内接矩形在横纵上相对旋转框的比例不同（旋转后必然如此），
-     所以旧写法**只有 0° 才对**。实测 400×300 转 45° 选 16:9，
-     图片上的比例算出来是 2.133 而不是 1.778。
-     这条断言在 0° 和 45° 都验一遍。 */
-  const boxFor = (W, H, deg) => {
-    const phi = deg * Math.PI / 180;
-    const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
-    return { W: W * c + H * s, H: W * s + H * c };
-  };
-
-  for (const deg of [0, 45]) {
-    const W = 400, H = 300;
-    const box = boxFor(W, H, deg);
-    const ins = insFn(W, H, deg * Math.PI / 180);
-    // 取景框：图片上要做到 16:9
-    const target = 16 / 9;
-    // 图片上的宽高 = rect.w·ins.w × rect.h·ins.h，令其比 = target
-    const nw = 0.8;                                  // 随便取个不满幅的宽度
-    const nh = (nw * ins.w / target) / ins.h;
-    const r = { x: (1 - nw) / 2, y: (1 - nh) / 2, w: nw, h: nh };
-    const outRatio = (r.w * ins.w) / (r.h * ins.h);
-    assert.ok(Math.abs(outRatio - target) < 0.02,
-      `${deg}°: 图片上取景框比例应该是 ${target.toFixed(3)}，实际 ${outRatio.toFixed(3)}`);
-    // 顺带确认 cropRenderPlan 的输出比例跟着它
-    const q = plan(r, ins, box, W, H);
-    const qRatio = q.regW / q.regH;
-    assert.ok(Math.abs(qRatio - target) < 0.02,
-      `${deg}°: 输出比例应该是 ${target.toFixed(3)}，实际 ${qRatio.toFixed(3)}`);
-  }
-});
-
-t('⭐ 合法取景框算出的采样区间不会越界', () => {
-  for (const [name, r] of cases0) {
-    const q = plan(r, ins0, box0, W0, H0);
-    const iv = interval(q);
-    const eps = 1e-9;
-    assert.ok(iv.xLo >= -eps && iv.xHi <= 1 + eps,
-      `${name}：x 区间 [${iv.xLo}, ${iv.xHi}] 越出 [0,1]`);
-    assert.ok(iv.yLo >= -eps && iv.yHi <= 1 + eps,
-      `${name}：y 区间 [${iv.yLo}, ${iv.yHi}] 越出 [0,1]`);
+  for (const c of cases) {
+    const r = clamp(MIN_RECT, c);
+    const tag = JSON.stringify(c);
+    assert.ok(r.w >= MIN_RECT - 1e-12 && r.h >= MIN_RECT - 1e-12,
+      `${tag} → w=${r.w} h=${r.h} 小于最小边长`);
+    assert.ok(r.x >= -1e-12 && r.x + r.w <= 1 + 1e-12,
+      `${tag} → x=${r.x} w=${r.w} 越出 [0,1]`);
+    assert.ok(r.y >= -1e-12 && r.y + r.h <= 1 + 1e-12,
+      `${tag} → y=${r.y} h=${r.h} 越出 [0,1]`);
+    assert.ok(Number.isFinite(r.x + r.y + r.w + r.h), `${tag} → 出现 NaN`);
   }
 });
 
 /* ================================================================
-   inscribedRect：必须真的是"最大内接矩形"
-   ----------------------------------------------------------------
-   ⚠️ 这个函数前后错了**三次**（阈值写反 / 钳制后代回 / 交点公式在
-   det≈0 处除零）。症状都是"旋转后画面被裁成一条细缝"或"采到图外"。
-   下面两条断言用**数值金标准**对照，能一次性抓住所有这三种错法。
+   ③④⑤ 旋转 / 缩放都不碰取景框
+   ================================================================ */
+t('⭐⭐ 旋转角**不改变**取景框（裁剪和旋转分开做）', () => {
+  const body = extractFn('setDisplay');
+  // setDisplay 里不允许出现 geom.rect 的写入
+  const writes = body.match(/geom\.rect\s*=/g) || [];
+  assert.equal(writes.length, 0,
+    'setDisplay（改角度/翻转/缩放）里出现了 geom.rect 赋值 —— '
+    + '这正是用户否掉的"旋转后自动收框"。旋转只该改 rot/flip/zoom。');
+
+  const rotBody = extractFn('setCropRotation');
+  assert.ok(!/rect/.test(rotBody),
+    'setCropRotation 里不该碰取景框');
+});
+
+t('⭐ 缩放不改变取景框（zoom 只是显示工具）', () => {
+  const body = extractFn('setDisplay');
+  assert.ok(/geom\.zoom\s*=/.test(body), 'setDisplay 应该负责设置 zoom');
+  assert.ok(!/rect/.test(body), 'setDisplay 不该碰 rect');
+});
+
+t('⭐ 烘焙计划固定 1:1（按源图分辨率应用，不把 zoom 烘进去）', () => {
+  const body = extractFn('bakeRenderPlan');
+  /* 语义：烘焙输出的就是"取景框那块区域"本身，所以缩放恒为 1
+     （viewportDims(rot, 1)），输出尺寸 = 取景框占视口的份额 × 视口。
+     ⚠️ 别写成 1/zoom —— 那会让"拉远看一眼再点应用"把照片缩掉。
+     也漏过另一步：早期直接拿 r.w*W0，等于假设视口宽就是 W0；
+     旋转后视口撑大了，那样采到的区域和预览不一致。 */
+  assert.ok(/screenZoom:\s*1\b/.test(body),
+    '烘焙的 screenZoom 应该是 1（1:1 输出）');
+  assert.ok(/viewportDims\(\s*geom\.rot\s*,\s*1\s*\)/.test(body),
+    '烘焙要用 zoom=1 的视口尺寸（viewportDims(geom.rot, 1)）'
+    + ' —— 不然旋转后视口撑大了，采到的区域和预览对不上');
+  /* 偏移恒为 0：画布/缓冲显示的是**整个视口**，取景框只是画在上面的
+     一个框，所以"缓冲坐标 → 图片坐标"除了缩放没有平移。
+     这一处错过两轮（取景框中心偏移、视口原点=取景框左下角），
+     两个错法在满幅取景框时都恰好等于 0，所以只有收小取景框才暴露。 */
+  assert.ok(/offX:\s*0,\s*offY:\s*0/.test(body),
+    '烘焙的偏移必须恒为 0（视口→图片没有平移）——'
+    + '取景框的位置只影响输出尺寸，不该让画面整体平移');
+  assert.ok(!/geom\.zoom/.test(body),
+    '烘焙里不该出现 geom.zoom —— 那是显示缩放，'
+    + '烘进去会让"拉远看完整张图 → 点应用"变成照片缩水。');
+});
+
+/* ================================================================
+   ⑥ 导出计划：输出比例 == 取景框比例，两个轴同一个系数
+   ================================================================ */
+/* 造一个只带 $ / img / viewportDims 的最小环境，把 cropRenderPlan 原样跑起来。
+   ⚠️ 用 extractFn 拿源码，不在这里重写一遍逻辑 —— 重写就等于
+   测了个假的（照着实现抄的测试永远通过）。
+   ⚠️ viewportDims 也从源码里取，别在这里手写一份：它一变（这个函数
+   已经错过三次）测试就会跟着一起错，那就白测了。 */
+const planEnv = (W0, H0, zoom, rect, forExport) => {
+  const geom = { rect, rot: 0, flipX: false, flipY: false, zoom, aspect: -1 };
+  const img = { width: W0, height: H0 };
+  const $ = () => ({ clientWidth: 1200, clientHeight: 800 });
+  const window = { devicePixelRatio: 1 };
+  const fn = new Function('geom', 'img', '$', 'window', 'forExport', 'ZOOM_MAX',
+    'override', 'viewportDims', 'viewportBox', 'rotatePad',
+    'const out = (function() {' + extractFn('cropRenderPlan') + '})();'
+    + 'return out;');
+  const viewportDims = new Function('img',
+    'const rotatePad = function(deg) {' + extractFn('rotatePad') + '};'
+    + 'return function(deg, zoom) {' + extractFn('viewportDims') + '};')(img);
+  const viewportBox = new Function(
+    'return function(w, h, deg) {' + extractFn('viewportBox') + '};')();
+  const rotatePad = new Function(
+    'return function(deg) {' + extractFn('rotatePad') + '};')();
+  return fn(geom, img, $, window, forExport, 2, undefined, viewportDims,
+            viewportBox, rotatePad);
+};
+
+/* 单纯把 autoZoomFor / rotatePad 抠出来跑（只依赖 img 和两个常量）。 */
+const autoZoomEnv = (W0, H0, deg) => {
+  const img = { width: W0, height: H0 };
+  const ZOOM_MIN = 0.25, ZOOM_MAX = 2;
+  const fn = new Function('img', 'ZOOM_MIN', 'ZOOM_MAX', 'deg',
+    'const viewportDims = function(deg, zoom) {' + extractFn('viewportDims') + '};'
+    + 'const rotatePad = function(deg) {' + extractFn('rotatePad') + '};'
+    + 'const autoZoomFor = function(deg) {' + extractFn('autoZoomFor') + '};'
+    + 'return autoZoomFor(deg);');
+  return fn(img, ZOOM_MIN, ZOOM_MAX, deg);
+};
+
+t('⭐ 输出比例 == 取景框比例（两个轴同一个系数 → 不扭曲）', () => {
+  const cases = [
+    [400, 300, 1, { x: 0, y: 0, w: 1, h: 1 }],
+    [400, 300, 1, { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }],
+    [400, 300, 1, { x: 0.1, y: 0.6, w: 0.8, h: 0.25 }],
+    [300, 400, 1, { x: 0, y: 0.5, w: 1, h: 0.5 }],
+    [600, 400, 0.5, { x: 0.2, y: 0.2, w: 0.6, h: 0.4 }],
+    [1920, 1080, 2, { x: 0.3, y: 0.3, w: 0.4, h: 0.4 }]
+  ];
+  const bad = [];
+  for (const [W0, H0, z, rect] of cases) {
+    const p = planEnv(W0, H0, z, rect);
+    if (!p) { bad.push(`${W0}×${H0} z=${z} → plan 为 null`); continue; }
+    // 输出比例 vs 取景框的**像素**比例
+    const outRatio = p.outW / p.outH;
+    const rectRatio = (rect.w * W0) / (rect.h * H0);
+    if (Math.abs(outRatio / rectRatio - 1) > 0.01) {
+      bad.push(`${W0}×${H0} z=${z} rect=${rect.w}×${rect.h}: `
+        + `输出 ${outRatio.toFixed(3)} vs 取景框 ${rectRatio.toFixed(3)}`);
+    }
+    // 两个轴的缩放系数必须相同
+    if (Math.abs(p.s - 1 / z) > 1e-9) {
+      bad.push(`${W0}×${H0} z=${z}: 缩放系数 ${p.s} 应该等于 1/zoom=${1 / z}`);
+    }
+  }
+  assert.equal(bad.length, 0,
+    `这些组合会扭曲或比例不对：\n       ${bad.join('\n       ')}`);
+});
+
+t('⭐ 输出像素数 == 屏幕上看到的那块（所见即所得）', () => {
+  /* 这条原来写的是"输出不超过源图分辨率"，那是**旧设计**的假设。
+     新设计里 zoom 是构图的一部分（拉近 = 裁小块看细节），所以
+     放大时输出就是会比源图大 —— 那是插值，但**和屏幕一致**。
+     真正要守的是"导出和预览是同一个映射"，否则用户会拿到一张
+     构图和预览不一样的成品。
+     判据：out = 取景框 × zoom，且 1:1 时输出正好等于取景框的像素尺寸。 */
+  const bad = [];
+  for (const z of [0.25, 0.5, 1, 1.5, 2]) {
+    for (const [W0, H0] of [[400, 300], [300, 400], [1920, 1080]]) {
+      const rect = { x: 0, y: 0, w: 1, h: 1 };
+      const p = planEnv(W0, H0, z, rect);
+      /* ⚠️ zoom 的语义：**zoom 越小 = 视野越宽 = 输出越大**（源图单位）。
+         视口覆盖 W0/zoom × H0/zoom，取景框满幅就是整块视口。
+         第一版这里写的是 W0·z（反的），因为当时 zoom 还是"放大显示"
+         的老语义；现在 zoom 是"视野"的缩放，方向相反。 */
+      const expW = W0 / z, expH = H0 / z;
+      if (Math.abs(p.outW - expW) > 1 || Math.abs(p.outH - expH) > 1) {
+        bad.push(`${W0}×${H0} zoom=${z}: 输出 ${p.outW}×${p.outH}，`
+          + `期望 ${Math.round(expW)}×${Math.round(expH)}`);
+      }
+    }
+  }
+  assert.equal(bad.length, 0,
+    `输出尺寸和"取景框 × zoom"对不上（预览和导出的映射会不一致）：\n`
+    + `       ${bad.join('\n       ')}`);
+});
+
+t('zoom = 1 时输出就是取景框那块的原分辨率（不放大也不缩小）', () => {
+  const p = planEnv(400, 300, 1, { x: 0.25, y: 0.5, w: 0.5, h: 0.5 });
+  assert.equal(p.outW, 200, `应该正好 200，实际 ${p.outW}`);
+  assert.equal(p.outH, 150, `应该正好 150，实际 ${p.outH}`);
+});
+
+t('⭐ 缩放直接决定输出尺寸（拉远变大、拉近变小）', () => {
+  /* ⚠️ 取景框不能取满幅：满幅时"画布不能超过源图分辨率"会把它夹住
+     （那是**画布**的限制），而这里要验的是**输出**尺寸跟着 zoom 走。
+     用一个 0.5×0.5 的框，两边都不会碰到夹取。 */
+  const rect = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 };
+  const a = planEnv(400, 300, 0.5, rect);
+  const b = planEnv(400, 300, 1, rect);
+  const c = planEnv(400, 300, 2, rect);
+  /* ⚠️ 方向：zoom **越小 = 拉远 = 视野越宽 = 输出越大**。
+     第一版断言的是"zoom=0.5 的输出应该更小"，那是老语义（zoom=放大
+     显示）留下的；现在 zoom 是视野缩放，反过来了。 */
+  assert.ok(a.outW > b.outW,
+    `zoom=0.5（拉远）的输出（${a.outW}）应该大于 zoom=1 的（${b.outW}）`);
+  assert.ok(c.outW < b.outW,
+    `zoom=2（拉近）的输出（${c.outW}）应该小于 zoom=1 的（${b.outW}）`);
+});
+
+t('⭐ 拉近 zoom 时输出不会超过源图（视野收窄，不是把像素拉大）', () => {
+  const rect = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 };
+  const b = planEnv(400, 300, 1, rect);
+  const c = planEnv(400, 300, 2, rect);
+  assert.ok(c.screenZoom >= b.screenZoom,
+    `zoom 变大时画布缩放不该反而变小：${b.screenZoom} → ${c.screenZoom}`);
+});
+
+/* ================================================================
+   旋转外接框 / 自动适配缩放：纯数学，可以直接跑
+   （autoZoomEnv 定义在上面 planEnv 旁边）
    ================================================================ */
 
-/** 金标准：一维扫描求最大面积（步长比实现更细） */
-function maxArea(W0, H0, phi, steps = 40000) {
+/* ================================================================
+   视口尺寸（viewportDims）与"适合窗口"
+   ----------------------------------------------------------------
+   ⚠️ 模型在这一步**改过三次**，每次都是真 bug，所以这几条判据写硬：
+     【一】视口写死 W0×H0、不随角度变 → 45° 时怎么缩都装不下，
+          四角永远深色底
+     【二】按 (|cos|+|sin|) 撑 → 过头，40° 时算出缩放 1.14（>1）
+     【三】按 max(c/r+s, s/r+c) 撑 → 假设宽高同乘一个系数，但外接框
+          比例本身就在变，实测 600×400 转 0° 得到 m=0.333（没贴边）
+
+   ⭐ 正确模型：视口 = 图片旋转后的**外接框**本身
+        vw = W0·|cosφ| + H0·|sinφ|
+        vh = W0·|sinφ| + H0·|cosφ|
+   判据（把图片放进视口，看它是否恰好贴边）：
+      · 视口单位下图片半宽半高 a = W0/(2vw)、b = H0/(2vh)
+      · 旋转后的外接半宽半高 halfW = a·c + b·s、halfH = a·s + b·c
+      · 要求 halfW ≤ 0.5 且 halfH ≤ 0.5（装得下）
+        且 max(halfW, halfH) ≈ 0.5（**贴边** → 没撑不够也没撑过头）
+   ================================================================ */
+const dimsEnv = (W0, H0, deg, zoom) => {
+  const img = { width: W0, height: H0 };
+  const fn = new Function('img', 'deg', 'zoom',
+    'const rotatePad = function(deg) {' + extractFn('rotatePad') + '};'
+    + 'const viewportDims = function(deg, zoom) {' + extractFn('viewportDims') + '};'
+    + 'return viewportDims(deg, zoom);');
+  return fn(img, deg, zoom);
+};
+
+/** 把图片放进视口里，返回它旋转后的外接半宽半高（视口单位，0.5 = 贴边）
+ *
+ *  ⚠️ 这里的归一化我写错过**三次**，一次比一次隐蔽，所以把推导写死：
+ *    · 视口（源图单位）= p·W0 × p·H0，整体归一化到画布 [0,1]²
+ *    · 于是"视口 1 个单位"= 1/(p·W0) 个源图单位（横向），即 kx = 1/vw
+ *    · 图片半宽 W0/2 → 视口单位下是 (W0/2)·kx = 1/(2p)
+ *    · 图片半高 H0/2 → 同理 = 1/(2p)   ← 两项相同，因为视口和图片同比例
+ *    · 旋转后外接半宽半高 = (c+s)/(2p)，要求 ≤ 0.5
+ *  错法记下来：① 用 W0/(2·vw) 之后**又**乘错一次（那是同一个数）；
+ *  ② 把 vw 当 p·W0 再除一遍 → 竖图横图各错一边；
+ *  ③ 以为视口 = "外接框本身"（那会让 5° 时算出 0.508 > 0.5，看着像装不下）。
+ *  三种都会让这条断言变成假红或假绿。 */
+function boxFit(W0, H0, deg, zoom) {
+  const { vw, vh } = dimsEnv(W0, H0, deg, zoom);
+  const phi = deg * Math.PI / 180;
   const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
-  let best = 0;
-  for (let i = 1; i <= steps; i++) {
-    const w = W0 * i / steps;
-    const h = Math.min((W0 - w * c) / s, (H0 - w * s) / c, H0);
-    if (h > 0 && w * h > best) best = w * h;
-  }
-  return best;
+  const kx = 1 / vw, ky = 1 / vh;           // 视口 → 画布的归一化系数
+  const a = (W0 / 2) * kx, b = (H0 / 2) * ky;
+  return { a, b, kx, ky, halfW: a * c + b * s, halfH: a * s + b * c, vw, vh };
 }
 
-const SIZES = [[400, 300], [300, 400], [600, 400], [1920, 1080], [1080, 1920]];
-const ANGLES = [0.5, 1, 5, 10, 20, 30, 44, 45, 46, 60, 80, 89, 89.5];
+t('0° 时视口就是整张图（vw=W0, vh=H0）', () => {
+  for (const [W, H] of [[400, 300], [300, 400], [1000, 1000], [1920, 1080]]) {
+    const d = dimsEnv(W, H, 0, 1);
+    assert.ok(Math.abs(d.vw - W) < 1e-9 && Math.abs(d.vh - H) < 1e-9,
+      `${W}×${H} 0° → ${d.vw}×${d.vh}，应该是 ${W}×${H}`);
+  }
+});
 
-t('⭐⭐ inscribedRect 的解真的放得下（两条不等式成立）', () => {
-  for (const [W, H] of SIZES) {
-    for (const deg of ANGLES) {
-      const phi = deg * Math.PI / 180;
-      const { w, h } = insFn(W, H, phi);
-      const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
-      assert.ok(w > 0 && h > 0, `${W}×${H} ${deg}°: 解出非正尺寸 ${w}×${h}`);
-      assert.ok(w * c + h * s <= W * (1 + 1e-6),
-        `${W}×${H} ${deg}°: w·c+h·s = ${(w * c + h * s).toFixed(2)} > W0 = ${W}`
-        + ' —— 会采到图外');
-      assert.ok(w * s + h * c <= H * (1 + 1e-6),
-        `${W}×${H} ${deg}°: w·s+h·c = ${(w * s + h * c).toFixed(2)} > H0 = ${H}`
-        + ' —— 会采到图外');
+t('⭐ 视口随角度**变大**（否则四角永远露深色底）', () => {
+  for (const deg of [10, 20, 30, 45]) {
+    const d = dimsEnv(400, 300, deg, 1);
+    assert.ok(d.vw > 400 && d.vh > 300,
+      `转 ${deg}° 的视口应该比原图大，实际 ${d.vw.toFixed(1)}×${d.vh.toFixed(1)}`);
+  }
+});
+
+t('⭐⭐ 视口**恰好**装下旋转后的照片（贴边，不多不少）', () => {
+  const bad = [];
+  for (const [W0, H0] of [[400, 300], [300, 400], [600, 400], [1000, 1000],
+                          [1920, 1080]]) {
+    for (const deg of [-45, -20, -5, 0, 5, 13, 30, 45]) {
+      const f = boxFit(W0, H0, deg, 1);
+      const m = Math.max(f.halfW, f.halfH);
+      if (m > 0.5 + 1e-9) {
+        bad.push(`${W0}×${H0} ${deg}°: 撑得不够（半宽半高 ${m.toFixed(4)} > 0.5）`);
+      }
+      if (Math.abs(m - 0.5) > 1e-6) {
+        bad.push(`${W0}×${H0} ${deg}°: 没贴边（${m.toFixed(6)}，应 = 0.5）`
+          + ` —— 视口撑过头了（曾经按 |cos|+|sin| 撑，40° 时多撑了 14%）`);
+      }
     }
   }
+  assert.equal(bad.length, 0,
+    `视口尺寸不是最优解：\n       ${bad.join('\n       ')}`);
 });
 
-t('⭐⭐ inscribedRect 的解是最大面积（不小于数值最优的 99.5%）', () => {
-  for (const [W, H] of SIZES) {
-    for (const deg of ANGLES) {
-      const phi = deg * Math.PI / 180;
-      const { w, h } = insFn(W, H, phi);
-      const mine = w * h;
-      const best = maxArea(W, H, phi);
-      assert.ok(mine >= best * 0.995,
-        `${W}×${H} ${deg}°: 解出面积 ${mine.toFixed(0)}（${w.toFixed(1)}×${h.toFixed(1)}），`
-        + `数值最优 ${best.toFixed(0)} —— 框取小了，画面会被白白裁掉`);
-    }
+t('⭐ 放大 zoom 时视口按比例缩小（视野变窄）', () => {
+  const a = dimsEnv(400, 300, 30, 1);
+  const b = dimsEnv(400, 300, 30, 2);
+  assert.ok(Math.abs(a.vw / b.vw - 2) < 1e-9 && Math.abs(a.vh / b.vh - 2) < 1e-9,
+    `zoom=2 时视口应该是 zoom=1 的一半，实际 ${b.vw} vs ${a.vw}`);
+});
+
+t('⭐ 「适合窗口」的缩放恒为 1（视口已经装得下，不需要再缩）', () => {
+  /* 这条拦的是历史 bug：曾经算出 1.14（>1，把照片缩掉一圈）
+     和永远 1.0（视口不够大，怎么缩都装不下）。现在视口负责装下，
+     缩放只负责"用户自己拉远/拉近"，默认档恒为 1。 */
+  for (const deg of [-45, -20, 0, 13, 30, 45]) {
+    const z = autoZoomEnv(400, 300, deg);
+    assert.ok(Math.abs(z - 1) < 1e-9, `${deg}° 的适配缩放应该是 1，实际 ${z}`);
   }
 });
 
-t('0° 时 inscribedRect 返回整张图（调用方依赖这条不变量）', () => {
-  /* enterCrop / currentInscribed 用 ins.w/box.W 把取景框归一化，
-     并假定 0° 时内接矩形就是整张图。破坏它会让无旋转时取景框就不是满幅。 */
-  for (const [W, H] of SIZES) {
-    const { w, h } = insFn(W, H, 0);
-    assert.ok(near(w, W, 1e-6) && near(h, H, 1e-6),
-      `${W}×${H} 0°: 应该返回 ${W}×${H}，实际 ${w}×${h}`);
+t('取景框初始就是满幅（不因为旋转而收缩）', () => {
+  const body = extractFn('resetRectToViewport');
+  assert.ok(/w:\s*1,\s*h:\s*1/.test(body),
+    'resetRectToViewport 应该把取景框设成满幅 —— 用户明确说过'
+    + '"不要做运算、不涉及取景框收框"，任何按比例收缩都违背这条');
+});
+
+/* ================================================================
+   源码里不该再残留旧模型的东西
+   ================================================================ */
+t('旧模型的"自动收框"代码已经被删干净', () => {
+  /* ⚠️ rotatedBoxSize 不在名单里：它是**中性的几何工具**
+     （算旋转后的外接框尺寸），现在只被"适合窗口"的缩放计算用，
+     和"旋转后自动收框"没关系。真要守的是那几个**会反过来改取景框**的：
+       inscribedRect       算最大内接矩形
+       fitRatioInRotated   在内接矩形里按比例取最大
+       aabbFitsInRotated   配套的可行性判据
+       fitRectToBox        上面三者的组装
+       currentInscribed    把内接矩形换算成取景框的归一化范围 */
+  const code = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const banned = ['inscribedRect', 'fitRatioInRotated', 'aabbFitsInRotated',
+                  'fitRectToBox', 'currentInscribed'];
+  for (const name of banned) {
+    assert.ok(!new RegExp('\\b' + name + '\\s*\\(').test(code),
+      `${name}() 还在被调用 —— 那是被用户否掉的"旋转后自动收框"`);
   }
 });
 
-/* ---------------- 源码级：约定要写清楚 ---------------- */
-
-t('cropRenderPlan 里写明了 rect 是"屏幕约定"、采样是"图片约定"', () => {
-  assert.ok(/屏幕约定/.test(PLAN_BODY),
-    '没有说明 crop.rect 用的是哪种 y 约定 —— 方向搞反正是这个 bug 的根因，'
-    + '而下一个人只能靠注释知道');
-  assert.ok(/图片约定|图上边/.test(PLAN_BODY),
-    '没有说明 shader 采样用的是图片约定（v = 0 是图上边）');
-});
-
-t('cropRenderPlan 里写明了"不扭曲"的判据', () => {
-  assert.ok(/采样.{0,6}比例.{0,10}(等于|=).{0,6}输出.{0,4}比例/.test(PLAN_BODY)
-    || /不扭曲|拉伸/.test(PLAN_BODY),
-    '没有写清楚"为什么不能扭曲"的判据 —— 这个坑重复踩了很多次，'
-    + '注释是唯一能拦住下一次的东西');
+t('导出/烘焙两个计划都还在（别把其中一个删了）', () => {
+  assert.ok(/function cropRenderPlan/.test(SRC), 'cropRenderPlan 没了（预览用）');
+  assert.ok(/function bakeRenderPlan/.test(SRC), 'bakeRenderPlan 没了（应用时烘焙用）');
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);

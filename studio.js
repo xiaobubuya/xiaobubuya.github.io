@@ -134,9 +134,35 @@
     uniform float uMaskOverlay; // 1 = 显示蒙版本身（红色叠加）
     uniform vec2 uTexel;       // 1/图片宽高，锐化取邻居用
     uniform float uAspect;     // 图片宽高比，暗角要按比例算才不变形
-    uniform float uRot;        // 旋转角（弧度，逆时针）
-    uniform vec2 uUvScale;     // 采样缩放 x/y（分开：旋转后两轴比例不同）
-    uniform vec2 uCropOffset;  // 裁剪中心在原图中的偏移（相对 0.5 中心的归一化值）
+    /* ---------------- 几何变换（视口 + 显示变换） ----------------
+       ⚠️ 这一版是**重写**过的（旧版有 uUvScale 双轴缩放 + uCropOffset），
+       旧版把"旋转"和"裁剪"耦合成了一堆数学：要让旋转后画面不露白，
+       就得算"旋转矩形的最大内接矩形"、再把取景框收进去。
+       用户明确否掉了那套（"不需要做数学运算"）。现在只有三件事：
+
+         uDisplayScale  显示缩放（标量）。**必须是一个标量** ——
+                        两轴各一个缩放就是各向异性，图片会被拉伸。
+                        这是整块几何里唯一的硬不变量。
+         uRot           绕**视口中心**的旋转角（弧度）
+         uFlip          1 = 该轴翻转
+
+       输出缓冲 u 坐标 → 图片 uv 的映射（相似变换，顺序不能换）：
+           p = vUv - 0.5            ① 移到中心
+           翻转                      ② 在中心坐标里翻（镜像）
+           逆旋转 R(-rot)·(1/scale)  ③ 转回图片的轴、并缩放到图片尺度
+           + 0.5 + uImgOffset        ④ 移到图片上、再平移到视口原点
+
+       ⚠️⚠️ uImgOffset 是**视口左下角**在图片归一化坐标里的位置，
+       不是"取景框中心相对图片中心的偏移"。按中心算会让画面整体偏，
+       偏的量正好是取景框尺寸的一半 —— 满幅取景框时**看不出来**，
+       一旦收小取景框就露馅（实测 0.5×0.5 的框：中心应该读到原图中心，
+       实际读到 0.75 处）。
+       ================================================================ */
+    uniform float uRot;          // 旋转角（弧度）
+    uniform vec2 uFlip;          // (1,-1) = 只翻水平；( -1,1) = 只翻垂直
+    uniform float uDisplayScale; // 显示缩放（标量！）
+    uniform vec2 uImgOffset;     // 视口原点在图片归一化坐标里的位置
+    uniform vec3 uBg;            // 视口露到图片外的填色（深色底）
 
     // sRGB <-> 线性。这两个函数是「正确调色」的地基：
     // 曝光/高光/阴影必须在线性空间里做，否则会发灰发闷
@@ -405,25 +431,53 @@
 
     void main() {
       /* ================================================================
-         几何变换：裁剪 + 旋转
+         几何变换：显示缩放 + 旋转 + 翻转 + 视口
          ----------------------------------------------------------------
          先算出「画布上这个像素对应原图的哪个位置」，后面的采样/锐化/蒙版
          全都用这个 u。这样只需改一处，整条管线自动跟着走。
 
-         ⚠️ 用 u 而不是就地改 vUv：蒙版是按**原图坐标**存的
-         （mask.js 写的是图片坐标，和 vUv 同一套语义），
-         所以蒙版必须继续用 vUv 采样 —— 用 u 的话蒙版会跟着一起转，
-         涂了人脸结果局部调整跑到别处去了。
+         ⚠️ 和旧版的根本区别：
+           · 视口（取景框所在的坐标系）就在**画布归一化空间**里，不是
+             "旋转矩形的归一化空间"。所以旋转角变了**取景框不用重算**
+             —— 这正是用户要的"裁剪和旋转分开做"。
+           · 旋转后原图外面那部分（四个角）**不去拟合、不去收框**，
+             直接按露出来的范围显示深色底。用户明确接受了这一点
+             （"超出取景框范围展示上就是截断即可"）。
+           · 想看到完整的一张歪照片，视口会按角度自动撑大
+             （见 viewportDims），用户也可以自己拉远。
 
-         ⚠️ 只有「非恒等」时才启用。crop 模式下必然非恒等；
-         正常编辑时 rot=0 且 uvScale=1 且 offset=0，是恒等变换。
+         ⚠️ 蒙版/分屏仍然用 vUv 采样：它们在**视口**空间里，
+         和照片一起转（涂在人脸上的选区要跟着脸走）。
          ================================================================ */
       vec2 u = vUv;
-      if (uRot != 0.0 || uUvScale != vec2(1.0) || uCropOffset != vec2(0.0)) {
-        vec2 p = (vUv - 0.5) * uUvScale + uCropOffset;
+      bool identity = (uRot == 0.0 && uDisplayScale == 1.0
+                       && uFlip == vec2(1.0) && uImgOffset == vec2(0.0));
+      if (!identity) {
+        vec2 p = (vUv - 0.5) * uFlip;
         float ca = cos(uRot), sa = sin(uRot);
-        p = mat2(ca, sa, -sa, ca) * p;
-        u = p + 0.5;
+        p = mat2(ca, sa, -sa, ca) * (p / uDisplayScale);
+        u = p + 0.5 + uImgOffset;
+      }
+
+      /* 视口露到原图外面的部分 → 深色底。
+         ----------------------------------------------------------------
+         ⚠️ 判定要在**采样之前**，且必须用"是否在 [0,1] 内"这个条件，
+         不能靠 CLAMP_TO_EDGE 的副作用 —— 夹取会把边缘像素拉成条纹，
+         看起来像画面被抹开了（实测过，深色底上一条条亮线）。
+         ⚠️ 边缘做一点抗锯齿（按超出 0/1 的距离过渡），否则旋转后的
+         图片边缘有硬锯齿。 */
+      if (!identity) {
+        vec2 aa = max(vec2(0.0), max(-u, u - 1.0)) / max(uTexel, vec2(1e-6));
+        float cover = 1.0 - clamp(max(aa.x, aa.y), 0.0, 1.0);
+        if (cover <= 0.0) {
+          gl_FragColor = vec4(uBg, 1.0);
+          return;
+        }
+        if (cover < 1.0) {
+          vec3 inside = texture2D(uImage, clamp(u, 0.0, 1.0)).rgb;
+          gl_FragColor = vec4(mix(uBg, inside, cover), 1.0);
+          return;
+        }
       }
 
       vec3 src = texture2D(uImage, u).rgb;
@@ -700,8 +754,10 @@
     uniforms.uTexel = gl.getUniformLocation(program, 'uTexel');
     uniforms.uAspect = gl.getUniformLocation(program, 'uAspect');
     uniforms.uRot = gl.getUniformLocation(program, 'uRot');
-    uniforms.uUvScale = gl.getUniformLocation(program, 'uUvScale');
-    uniforms.uCropOffset = gl.getUniformLocation(program, 'uCropOffset');
+    uniforms.uFlip = gl.getUniformLocation(program, 'uFlip');
+    uniforms.uDisplayScale = gl.getUniformLocation(program, 'uDisplayScale');
+    uniforms.uImgOffset = gl.getUniformLocation(program, 'uImgOffset');
+    uniforms.uBg = gl.getUniformLocation(program, 'uBg');
     uniforms.uCurve = gl.getUniformLocation(program, 'uCurve');
 
     // 纹理：非 2 的幂也要能重复/夹取
@@ -810,7 +866,7 @@
   /* ================================================================
      渲染
      ================================================================ */
-  function draw() {
+  function draw(planOverride) {
     if (!img) return;
     gl.useProgram(program);
 
@@ -847,10 +903,17 @@
     gl.uniform2f(uniforms.uTexel, 1 / img.width, 1 / img.height);
     gl.uniform1f(uniforms.uAspect, img.width / img.height);
 
-    // 几何变换：有裁剪就喂裁剪参数，没有就走恒等 ——
-    // ⚠️ 恒等分支不能省：uniform 是**全局状态**，上一次裁剪留下的值
-    // 会一直生效，表现是"取消裁剪之后照片还是歪的"。
-    if (crop) {
+    /* 几何变换。`planOverride` 是给"烘焙/整转"用的：那两条路要按一个
+       **和当前 geom 不同**的计划画一帧（临时角度、临时取景框），
+       不能让它再去 cropRenderPlan() 重算一遍 —— 重算就把临时参数丢了。
+       ⚠️ 这个坑真踩过：烘焙时先 applyGeometryUniforms(plan) 再 draw()，
+       而 draw() 内部又按 geom 重算了一次，于是"90° 整转"出来的图
+       一点没转（尺寸对了、内容没转）。
+       ⚠️ 恒等分支不能省：uniform 是**全局状态**，上一次留下的值会一直
+       生效，表现是"取消裁剪之后照片还是歪的"。 */
+    if (planOverride) {
+      applyGeometryUniforms(planOverride);
+    } else if (geom) {
       const plan = cropRenderPlan(false);
       if (plan) applyGeometryUniforms(plan);
       else resetGeometryUniforms();
@@ -873,19 +936,23 @@
     // ⚠️ 用 _trace 而不是 console.log：页面日志经 CDP 不会传回测试侧
     // （harness 只取 Runtime.evaluate 的返回值），排查时看不到。
     // 写成数组由测试读出来才看得见。踩过这个坑。
-    _trace('layoutCanvas', img.width + 'x' + img.height + ' crop=' + !!crop
+    _trace('layoutCanvas', img.width + 'x' + img.height + ' geom=' + !!geom
       + ' stageW=' + ($('stStage') || {}).clientWidth);
 
-    // 裁剪模式下画布尺寸由「取景框比例」决定，不是原图比例
-    if (crop) {
+    /* 几何编辑时画布尺寸由**视口**决定（视口随角度撑大，见 viewportDims），
+       不是原图比例 —— 旋转时视口比例会变，画布跟着变，画面才不会被裁。 */
+    if (geom) {
       const plan = cropRenderPlan(false);
       if (plan) {
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = plan.outW;
-        canvas.height = plan.outH;
-        canvas.style.width = Math.round(plan.outW / dpr) + 'px';
-        canvas.style.height = Math.round(plan.outH / dpr) + 'px';
+        canvas.width = plan.bufW;
+        canvas.height = plan.bufH;
+        canvas.style.width = Math.round(plan.dispW) + 'px';
+        canvas.style.height = Math.round(plan.dispH) + 'px';
         gl.viewport(0, 0, canvas.width, canvas.height);
+        _trace('layoutGeom', 'buf=' + canvas.width + 'x' + canvas.height
+          + ' out=' + plan.outW + 'x' + plan.outH
+          + ' s=' + plan.screenZoom + ' off=' + plan.offX.toFixed(4)
+          + ',' + plan.offY.toFixed(4));
         return;
       }
     }
@@ -911,49 +978,61 @@
     draw();
     updateInfo();
   }
-
   /* ================================================================
-     裁剪 + 旋转
+     裁剪 / 旋转 / 翻转
      ================================================================
-     这是本项目里第一组**几何**变换，和之前的像素级调整完全不同：
-     它会改变输出尺寸和坐标系。所以做法上刻意保守：
+     ⚠️⚠️ 这一整段是**重写**的。旧版把"旋转"做成了会反过来改取景框的
+     自动数学（旋转框 → 最大内接矩形 → 取景框收进去，见 crop-geometry
+     那套 inscribedRect / fitRatioInRotated）。用户明确否掉了：
 
-       · 参数化（不是累积变换）：只存「旋转角 + 裁剪框」两个状态，
-         每次渲染从零算一遍。累积矩阵一旦出错会越滚越离谱，
-         而且没法"重置"。
-       · **应用时烘焙**成新图，不长期挂着变换。
+       "裁剪和翻转做复杂了，不需要做数学运算，裁剪和旋转分开做"
+       "不要做运算，就是单纯的度数旋转，不涉及取景框收框，
+        超出取景框范围展示上就是截断即可，
+        把图片缩小后可以正常展示完整"
 
-     ⚠️ 为什么不把变换长期挂在渲染链上（像 Lightroom 那样非破坏）：
-     我们整个坐标系建立在「画布像素 ↔ 原图归一化坐标」这个恒等关系上
-     —— 画笔、蒙版、AI 的 bbox、暗角的 uAspect 全都依赖它。
-     长期挂变换意味着要把这条关系改成复合映射，改动面覆盖
-     蒙版引擎、画笔、去物、美颜、导出，而且每一处都要单独验证。
-     烘焙的代价是「应用后不能撤销到变换前的调整」，
-     收益是其余所有功能完全不用动 —— 这个取舍是划算的。
+     所以现在的模型只有两件**互不相干**的事：
+
+       · 取景框（geom.rect）—— 画布归一化坐标 [0,1]，轴对齐。
+         只由用户拖动/比例预设改变；**旋转角变了它不动**。
+       · 显示变换 —— 角度 rot、翻转 flip、缩放 zoom。
+         只由旋转滑杆/翻转按钮/缩放滑杆改变；**取景框不动**。
+
+     导出 = 取景框那块区域，套上显示变换之后的样子。
+     旋转后原图外面露出来的角**不拟合、不收框**，直接是深色底。
 
      ----------------------------------------------------------------
-     坐标系（这是最容易搞错的地方，先讲清楚）
+     坐标与符号（这块最容易被绕进去，一次写清楚）
      ----------------------------------------------------------------
-     三个空间：
+     canvas 归一化： (0,0) 在左下、(1,1) 在右上（WebGL 默认）
+     shader 的 u ： 0 = 图片上边（VERT 里 vUv.y = 0.5 - aPos.y*0.5）
+     用户看的角度： **正值 = 逆时针**（和"向左歪了就 +2° 拉直"的直觉一致）
 
-       ① 原图空间 (W0,H0)      照片本身
-       ② 旋转框空间 (W,H)      原图绕中心旋转 φ 之后的**外接**矩形
-                                （裁剪框固定为轴对齐，就在这个空间里）
-       ③ 画布空间              屏幕上看到的那块
+     一个屏幕点 → 图片 uv：
+        p  = (uv - 0.5)                       屏幕中心坐标
+        p *= flip                             （在中心坐标里翻，镜像）
+        p  = R(-rot) · p / zoom               转到图片的轴上、缩放
+        u  = p + 0.5 + offset                 移到图片上、再平移到要保留的区域
+     R(-rot) 的两个轴都是 1/zoom，所以**相似变换、绝不等比失真** ——
+     这是整块几何唯一的硬不变量（测试 test/crop-geometry.test.mjs 守它）。
 
-     旋转角 φ 一确定，②就定了。取景框（裁剪框）在②里是轴对齐矩形，
-     用户可以拖、可以按比例约束。
-
-     ⚠️ 旋转后四角会露白，所以裁剪框必须落在「旋转后的**内接**矩形」
-     里 —— 这就是 inscribedRect() 的作用。它保证任何合法裁剪框
-     都完全落在图片内容内。
-
-     裁剪框不确定时**不给变换**（恒等），正常编辑就完全不受影响。
+     ⚠️ offset 的推导（别再从渲染结果反推，反推错过很多次）：
+       取景框左上角在图片里的位置 = (rect.x, 1 - rect.y - rect.h)
+       （crop rect 的 y 是屏幕约定：y=0 在下边；图片 v 是 0 在上边）
+       视口原点就在取景框左上角，所以
+           dx = rect.x,  dy = (1 - rect.y - rect.h)
+           offset = (dx, dy) / zoom
      ================================================================ */
 
-  /** 旋转/裁剪状态（null = 没有裁剪，走恒等变换） */
-  let crop = null;
+  /**
+   * 几何状态。
+   * ⚠️ 用**一个对象**而不是几个零散变量：取消（exitCrop(false)）时要
+   * 整块丢掉，散着写迟早漏掉一个（旧版就漏过 crop.aspect）。
+   */
+  let geom = null;
 
+  /** 取景框的最小边长（归一化）与缩放范围 */
+  const MIN_RECT = 0.04;
+  const ZOOM_MIN = 0.25, ZOOM_MAX = 2;
 
   /**
    * 诊断追踪。页面里的 console.log 经 CDP **不会**传回测试侧
@@ -967,19 +1046,14 @@
     if (_traceLog.length > 60) _traceLog.shift();
   }
 
-  /* 每次旋转角度变化都要重算「内接矩形」，裁剪框也随之 rebase。
-     ⚠️ 用归一化坐标（相对旋转框 W×H）而不是像素：
-     这样旋转角度一变，只要把归一化值 clamp 回新的内接矩形就行，
-     不用做像素换算。 */
   /* ================================================================
      裁剪比例预设
-     ----------------------------------------------------------------
-     ⚠️ 第一项原来叫「自由」，但它其实**不是**自由 ——
-     点它走的是"把取景框收进内接矩形"，也就是**原图比例**。
-     叫自由会让人以为"点它之后拖动不受约束"，而实际上受约束。
-
-     更重要的是：这一项是用户要的「旋转后自动保持原图比例、绝不裁切」
-     的**唯一出口** —— 从 16:9 点回来时必须真的回到原图比例。
+     ================================================================
+     ⚠️ 语义变了（旧版「原图」走的是"收进内接矩形"，那套已经删掉）：
+       · 原图   = 取景框按原图比例，尽可能大（在视口里）
+       · 自由   = 不约束，用户随便拖
+       · N:M    = 取景框按这个比例，尽可能大
+     所有档位都只改取景框的形状/大小，**不碰旋转角**。
      ================================================================ */
   const ASPECTS = [
     { name: '原图', v: 0 },
@@ -991,288 +1065,164 @@
     { name: '9:16', v: 9 / 16 }
   ];
 
-  /**
-   * 旋转后图片的**内接矩形**（归一化，0~1，相对旋转框 W×H）。
-   *
-   * 推导：旋转框里放一个居中的轴对齐矩形 (w,h)，要求它旋转 φ 之后
-   * 仍在原图 (W0,H0) 内。四个角里只有两个独立约束：
-   *     w·cosφ + h·sinφ ≤ W0      ……(A)
-   *     w·sinφ + h·cosφ ≤ H0      ……(B)
-   * 最大面积解一定在 A 或 B 的边界上，所以**算两个候选、取面积大的那个**：
-   *     候选1（贴着 A）：w = W0/c，h = (H0 - w·s)/c
-   *     候选2（贴着 B）：h = H0/c，w = (W0 - h·s)/c
-   * 两个都算出来，只要另一条不等式也满足就是合法解；取面积大的。
-   *
-   * ⚠️⚠️ 这个函数错过两次，把两次都记下来：
-   *
-   * 【错法一】用 `critical = max(H0/W0, W0/H0)` 当阈值分两种情形，
-   * 横图和竖图各写一遍 —— 阈值判断反了。症状：
-   *   400×300 转 30° 输出 322×14（一条 14px 细缝），
-   *   转 45° 输出 358×253（**超出旋转边界**，会画出原图外的区域）。
-   *
-   * 【错法二】改成单阈值之后，仍然先算一个再 `min(W0, w)` 钳制 ——
-   * 而**钳过的 w 又被代回 h 的公式**，等于破坏了自己刚写的方程。
-   * 实测 30° 给出 400×79.7（面积只有正确值的 1/8）。
-   *
-   * ⚠️ 还有一条隐含契约必须守住：**φ = 0 时必须返回 (W0, H0)**。
-   * 调用方（enterCrop / currentInscribed）用 ins.w/box.W 把取景框
-   * 归一化到旋转框，并假定 0° 时内接矩形就是整张图。
-   * 破坏它会让 crop.rect 在无旋转时就不是满幅。
-   *
-   * 正确性由 test/crop-geometry.test.mjs 里的"数值最优性"断言守住：
-   * 候选解必须真的满足两条不等式，且面积不小于"数值求出的最大值×0.99"。
-   * 那种断言能一次性抓住上面两种错法。
-   */
-  function inscribedRect(W0, H0, phi) {
-    const c = Math.abs(Math.cos(phi));
-    const s = Math.abs(Math.sin(phi));
-    if (c < 1e-9) return { w: 1, h: 1 };          // 90°：退化，由整转处理
-    if (s < 1e-9) return { w: W0, h: H0 };        // 0°：就是整张图
-
-    /* ================================================================
-       求"旋转后仍整块在原图内"的**最大**轴对齐矩形
-       ----------------------------------------------------------------
-       约束（两个角顶到边界）：
-         (A)  w·c + h·s ≤ W0
-         (B)  w·s + h·c ≤ H0
-       面积 w·h 的最大值在可行域边界上。
-
-       ⚠️⚠️ 这个函数前后错了**三次**，每次症状都不同，别再走回头路：
-         【一】按 `max(H0/W0, W0/H0)` 分横竖图，阈值写反 →
-              30° 给出 322×14（一条细缝），45° 给出**越界**的矩形。
-         【二】固定公式算一个再 min 钳制，钳过的值又代回另一条公式 →
-              越界约 12%。
-         【三】枚举"两条约束线上的点 + 交点"取面积最大 ——
-              交点公式在 det = c²−s² ≈ 0（45° 附近）时**除以零**，
-              给出 600×1.0 这种既越界又无意义的解。
-              而且多数角度还不是最优（45° 只拿到最优的 22%）。
-
-       ⭐ 最后结论：这是**一维约束优化**，解析解要分情况讨论、
-       还带奇点，不如直接扫。
-       对每个 w，满足两条约束的最大 h 是
-           h(w) = min( (W0 − w·c)/s , (H0 − w·s)/c , H0 )
-       在 w ∈ (0, W0] 上取 w·h(w) 最大的点。
-       1600 步足够精确（步长 0.06%）；
-       只在"旋转角/取景框变化"时算一次，不在每帧的热路径上，
-       所以这点计算量完全可以接受 —— 换来的是**不会再有奇点**。
-
-       正确性由 test/crop-geometry.test.mjs 的"合法性 + 最优性"两条断言
-       守住（用同口径的数值金标准对照，误差 < 0.5%）。
-       ================================================================ */
-    const hAt = w => Math.min((W0 - w * c) / s, (H0 - w * s) / c, H0);
-
-    const STEPS = 1600;
-    let bw = W0, bh = hAt(W0);
-    let best = bw > 0 && bh > 0 ? bw * bh : -1;
-
-    for (let i = 1; i <= STEPS; i++) {
-      const w = W0 * i / STEPS;
-      const h = hAt(w);
-      if (!(h > 0)) continue;
-      const area = w * h;
-      if (area > best) { best = area; bw = w; bh = h; }
-    }
-
-    if (!(best > 0)) return { w: W0 * c, h: H0 * c };   // 兜底（正常到不了）
-
-    // 只做防御性钳制，且**不改变可行性**
-    let w = Math.max(1, Math.min(W0, bw));
-    let h = Math.max(1, Math.min(H0, bh));
-    if (w * c + h * s > W0) h = Math.max(1, (W0 - w * c) / s);
-    if (w * s + h * c > H0) w = Math.max(1, (H0 - h * c) / s);
-
-    return { w, h };
+  /** 取景框的**实际像素比例**（宽:高）。
+   *  ⚠️ 取景框是归一化的，而画布像素是 W0×H0，所以
+   *  rect.w/rect.h 并不等于像素比例 —— 中间要乘 W0/H0。
+   *  旧版 applyCropAspect 就是在这里把"旋转框像素"当成"图片像素"，
+   *  只有 0° 才对。 */
+  function rectPixelAspect(r) {
+    if (!img || !(r.h > 0)) return 1;
+    return (r.w * img.width) / (r.h * img.height);
   }
 
-  /** 旋转框（外接矩形）的尺寸 */
-  function rotatedBoxSize(W0, H0, phi) {
-    const c = Math.abs(Math.cos(phi));
-    const s = Math.abs(Math.sin(phi));
-    return { W: W0 * c + H0 * s, H: W0 * s + H0 * c };
-  }
-
-  /**
-   * 把裁剪框 clamp 回合法范围（内接矩形内，且不小于最小尺寸）。
-   * 旋转角一变就要调一次 —— 内接矩形缩小了，原来的框可能已经越界。
-   */
-  function clampCropRect(cr, inW, inH) {
-    // 内接矩形在旋转框里的位置（居中）
-    const ix = (1 - inW) / 2, iy = (1 - inH) / 2;
-    const minSide = 0.08;
-
-    let w = Math.min(Math.max(cr.w, minSide), inW);
-    let h = Math.min(Math.max(cr.h, minSide), inH);
-    let x = Math.min(Math.max(cr.x, ix), ix + inW - w);
-    let y = Math.min(Math.max(cr.y, iy), iy + inH - h);
+  function clampCropRect(r) {
+    const w = Math.min(Math.max(Number(r.w) || MIN_RECT, MIN_RECT), 1);
+    const h = Math.min(Math.max(Number(r.h) || MIN_RECT, MIN_RECT), 1);
+    const x = Math.min(Math.max(Number(r.x) || 0, 0), 1 - w);
+    const y = Math.min(Math.max(Number(r.y) || 0, 0), 1 - h);
     return { x, y, w, h };
   }
 
-  /** 把取景框设成"原图比例的最大可放矩形"（旋转后自动收框用） */
-  function fitCropToImageRatio() {
-    const r = fitRectToBox(0);
-    if (r) crop.rect = r;
+  /** 等比缩放取景框到指定像素比例（保持中心） */
+  function sizeRectToAspect(r, aspect) {
+    const H0 = img.height, W0 = img.width;
+    // 像素比例 aspect = (w·W0)/(h·H0) → w/h = aspect·H0/W0
+    const k = aspect * H0 / W0;
+    let w = r.w, h = w / k;
+    if (h > 1) { h = 1; w = h * k; }
+    if (w > 1) { w = 1; h = w / k; }
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+  }
+
+  /** 视口里能放下的最大某比例矩形（居中），归一化 */
+  function maxRectForAspect(aspect) {
+    const H0 = img.height, W0 = img.width;
+    const k = aspect * H0 / W0;              // w/h
+    let w = 1, h = w / k;
+    if (h > 1) { h = 1; w = h * k; }
+    return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
   }
 
   /* ================================================================
-     "按某个比例最大可放"的取景框 —— 旋转后收框的公共逻辑
-     ----------------------------------------------------------------
-     用户要的行为：**旋转后保持原图比例、绝不裁切出空白**。
+     视口（viewport）与"适合窗口"
+     ================================================================
+     用户要的"把图片缩小后可以正常展示完整"就是这个视口 + zoom。
+     视口 = 画布上显示的那块**源图区域**，它必须随旋转角变大，
+     否则旋转后的照片必然伸出视口 → 四角永远露深色底，
+     而且"适合窗口"也救不了（那是视口不够大，不是缩放的事）。 */
 
-     数学上这件事有唯一答案：旋转后的图片是一块斜着的矩形，
-     要放一个"和原图同比例"的轴对齐矩形进去、且完全落在图片内，
-     最大的那个就是 `inscribedRect` —— 它按构造满足
-         w / h == W0 / H0
-     （比值恒等于原图比：w/h = (k·W0)/(k·H0)，见 inscribedRect 推导）。
-
-     所以"保持原图比例 + 不露白" = 取景框填满内接矩形。
-     旋转角越大内接矩形越小 → 输出分辨率随之下降，
-     这是旋转裁切的必然代价（想不裁切就只能露白边）。
-
-     ⚠️ 通用化到一个函数里（targetRatio 传 0 表示"原图比例"），
-     是为了让 enterCrop / setCropRotation / 比例按钮三处**共用同一套
-     逻辑** —— 各写一份迟早不一致（这个文件里已经栽过好几次）。
-     ================================================================ */
-  function fitRectToBox(targetRatio) {
-    if (!img) return null;
-    const phi = (crop ? crop.rot : 0) * Math.PI / 180;
-    const ins = inscribedRect(img.width, img.height, phi);
-
-    // 目标比例（图片上的比例）：0 → 原图比例
-    const ratio = (targetRatio && Number(targetRatio) > 0)
-      ? Number(targetRatio)
-      : img.width / img.height;
-
-    /* ⚠️ 注意：**不能**直接拿内接矩形当"原图比例的最大矩形" ——
-       内接矩形是"塞进旋转矩形里的最大轴对齐矩形"，它的比例
-       (ins.w/ins.h) 一般**不等于**原图比例（旋转把它压扁/拉长了）。
-       实测 400×300 转 5°：ins = 378×268.1（比例 1.410），而原图是 1.333。
-
-       所以要单独解一次：在旋转矩形里放一个**指定比例**的轴对齐矩形。 */
-    const dim = fitRatioInRotated(img.width, img.height, phi, ratio);
-
-    /* ⚠️⚠️ 单位！归一化的基准是**内接矩形**，不是旋转框。
-       因为取值的地方是 `regW = r.w * ins.w`（见 cropRenderPlan）——
-       也就是"rect 的 1 单位 = ins.w 图片像素"。
-
-       我一开始写成 `dim.w / box.W`（旋转框），两者差 ins/box 倍：
-       实测 5° 时拟合出 359.5（正确的 4:3 宽），除以 box.W 得 0.84663，
-       再乘回 ins.w 只有 320 —— 于是 4:3 变成了 1.478，**画面被拉变形**。
-       ⚠️ 0° 时 ins == box，这个错误**完全看不出来** —— 典型的
-       "只有旋转后才暴露"，和这一整轮的 bug 同一个套路。 */
-    const nw = dim.w / ins.w, nh = dim.h / ins.h;
-    return { x: (1 - nw) / 2, y: (1 - nh) / 2, w: nw, h: nh };
+  /**
+   * 视口比例尺 p：图片旋转 φ 后，视口要**恰好**装下它所需的放大倍数。
+   *
+   * 模型：
+   *   视口（源图单位）= p·W0 × p·H0，整体归一化到画布 [0,1]²
+   *   图片缩放到视口后，半宽半高 a = (W0/2)/(p·W0) = 1/(2p)，b = 1/(2p)
+   *   （两项一样是**因为视口和图片同比例**）
+   *   旋转后的外接半宽半高 ≤ 0.5：  (c+s)/(2p) ≤ 0.5  →  p ≥ c+s
+   *   取等号就是"恰好装下"，也就是 p = |cosφ| + |sinφ|。
+   *   φ=0 → 1（视口 = 整张图）；φ=45° → 1.414（正方形正好放斜的它）。
+   *
+   * ⚠️⚠️ 这个值我错了**四次**，全是真 bug，全记下来 —— 它同时踩了
+   * "公式看着对"和"从渲染结果反推"两个坑：
+   *   【一】写死 p = 1（视口不随角度变）→ 45° 时怎么缩都装不下，
+   *        四角永远是深色底
+   *   【二】p = (|cos|+|sin|) 但归一化基准搞错 → 400×300 转 40°
+   *        算出缩放 1.14（>1，把照片缩掉一圈）
+   *   【三】p = max(c/r+s, s/r+c)（r = H0/W0）→ 假设视口宽高同乘一个
+   *        系数，可外接框比例本身在变
+   *   【四】视口 = "外接框 W0c+H0s × W0s+H0c" → 直觉上对，但归一化到
+   *        画布时两个轴的系数不同，实测 400×300 转 5° 得到 0.5084 > 0.5
+   *        （**装不下**）
+   *
+   * ⭐ 最后不靠"推导看着对"收敛，而是靠 test/crop-geometry.test.mjs 里
+   * 那条不变量守住：**把图片放进视口、旋转后必须恰好贴边
+   * （halfW = halfH = 0.5）**。那条断言对 p 是单调的 —— p 小一点就
+   * >0.5（装不下）、大一点就 <0.5（白缩一圈），所以它一次就能把上面
+   * 四种错法全抓出来。
+   */
+  function rotatePad(deg) {
+    const phi = Math.abs(Number(deg) || 0) * Math.PI / 180;
+    return Math.abs(Math.cos(phi)) + Math.abs(Math.sin(phi));
   }
 
-  /* ================================================================
-     ⭐ 唯一的几何判据：矩形是否整块落在"旋转后的图片"里
-     ----------------------------------------------------------------
-     这个判据必须和 `inscribedRect` 用**同一套不等式** —— 后者是
-     用数值金标准验过的（5 尺寸 × 13 角度，0 越界 0 非最优）。
+  /** 视口尺寸（源图单位）。zoom 越小 = 视野越宽 = 输出越大 */
+  function viewportDims(deg, zoom) {
+    const p = rotatePad(deg);
+    const z = Number(zoom) || 1;
+    return { vw: p * img.width / z, vh: p * img.height / z };
+  }
 
-     ⚠️⚠️ 我在这一轮里把这个判据的旋转方向写错了**五次**，
-     而且每次"推导看起来都对"。最后一次的教训：
-     不要再自己推旋转矩阵的符号，直接复用 inscribedRect 那两条：
+  /** 把一块 w×h 绕中心转 deg 之后的外接框尺寸（画布要用它，否则转
+   *  45°/90° 时画面会被裁掉两头） */
+  function viewportBox(w, h, deg) {
+    const phi = Math.abs(Number(deg) || 0) * Math.PI / 180;
+    const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
+    return { W: w * c + h * s, H: w * s + h * c };
+  }
 
-         a·c + b·s ≤ W0/2
-         a·s + b·c ≤ H0/2
+  /** 图片旋转后的外接框（源图单位） */
+  function rotatedBoxSize(W0, H0, deg) {
+    return viewportBox(W0, H0, deg);
+  }
 
-     （a、b 是矩形半宽半高）。`inscribedRect` 里就是
-     `w·c + h·s ≤ W0` 和 `w·s + h·c ≤ H0`，除以 2 即得。
-     两者一致之后，"按原图比例取最大"就只是同一个可行域上多一个
-     w/h = ratio 的约束，不会再互相打架。
-     ================================================================ */
-  function aabbFitsInRotated(a, b, W0, H0, phi) {
-    const c = Math.abs(Math.cos(phi));
-    const s = Math.abs(Math.sin(phi));
-    const eps = 1e-6;
-    return a * c + b * s <= W0 / 2 + eps
-        && a * s + b * c <= H0 / 2 + eps;
+  /** 视口（= 取景框的初始形状）：整幅。
+   *  视口和图片**同比例**，所以取景框初始就是 (0,0,1,1) —— 不需要按
+   *  比例算，这也是新模型比旧模型简单的地方。 */
+  function resetRectToViewport() {
+    if (!img || !geom) return;
+    geom.rect = { x: 0, y: 0, w: 1, h: 1 };
   }
 
   /**
-   * 给定比例 ratio，求"落在旋转后图片里"的最大轴对齐矩形（图片像素）。
+   * 「适合窗口」的缩放值。
    *
-   * 令 t = 2a（半宽的两倍即宽），则 h = t/ratio。
-   * 两条不等式各自给出 t 的一个**区间**，取交集后取最大 t。
-   *
-   * ⚠️⚠️ 这里是本轮第 4 次写错的地方，务必看清：
-   * 我前几次都是"逐项取 min"，那是**错的** —— 这两条是**绝对值**不等式，
-   * 解出来是区间 [−lim, lim] 的交集，不是简单取小。
-   * 正确解法（令 k = s/c，把不等式拆开）：
-   *     |t·c/2 + t·s/(2·ratio)| ≤ W0/2
-   *         → t ≤ W0 / c / (1 + k/ratio)
-   *     |−t·s/2 + t·c/(2·ratio)| ≤ H0/2
-   *         → t ≤ H0 / |k − 1/ratio| , 且 k === 1/ratio 时无上界
-   * 取两者的较小值。
-   * 数值校验（test/crop-geometry.test.mjs 里那条"角点必须落在旋转图片内"）
-   * 覆盖 4 种尺寸 × 4 种比例 × 9 个角度。
+   * ⚠️ 恒为 1 是**推导的结果**：视口已经按 rotatePad 撑到"任何角度都
+   * 装得下整张旋转图"，所以角度本身不需要再额外缩放。
+   * 保留这个函数：① 按钮需要一个明确的值（把缩放恢复到默认那一档，
+   * 用户可能自己拉远过）；② 将来若要支持"超大图初始缩放"，改一处就够。
+   * 测试断言它 = 1，正是为了拦住"又写出一个 >1 或 <1 的过头解"。
    */
-  function fitRatioInRotated(W0, H0, phi, ratio) {
-    const c = Math.abs(Math.cos(phi));
-    const s = Math.abs(Math.sin(phi));
-    if (!(ratio > 0)) ratio = W0 / H0;
-
-    // 0° / 90°：退化成整张图按比例取最大
-    if (c < 1e-9 || s < 1e-9) {
-      let w = W0, h = w / ratio;
-      if (h > H0) { h = H0; w = h * ratio; }
-      return { w, h };
-    }
-
-    /* ⚠️⚠️ 用**数值扫描**，不要试图写解析解。
-       这个约束是两条**带绝对值的**不等式：
-           |a·c + b·s| ≤ W0/2
-           |−a·s + b·c| ≤ H0/2      （a = w/2, b = h/2 = a/ratio）
-       我按"拆绝对值 → 解区间"的写法连续错了四遍：漏掉
-       r vs tanφ 的大小分支、把区间写成"逐项取 min"、
-       又在末尾加了个错误的 `min(t, W0, H0·ratio)` 保险把解砍小。
-       每次都是"看着推导没问题、数值一跑就错"。
-
-       而 `inscribedRect` 用数值扫描是**验证过**的（5 尺寸 × 13 角度，
-       0 越界 0 非最优）。同一个可行域、同一套判据（aabbFitsInRotated），
-       所以这里也用扫描 —— 一致、不可能写错、且不在热路径上
-       （只在换角度/换比例时算一次）。 */
-    const wCap = Math.min(W0, H0 * ratio);
-    const STEPS = 2000;
-    let best = -1, bw = 0, bh = 0;
-    for (let i = 1; i <= STEPS; i++) {
-      const w = wCap * i / STEPS;
-      const h = w / ratio;
-      if (!aabbFitsInRotated(w / 2, h / 2, W0, H0, phi)) continue;
-      const area = w * h;
-      if (area > best) { best = area; bw = w; bh = h; }
-    }
-
-    if (!(best > 0)) {
-      let w = W0, h = w / ratio;
-      if (h > H0) { h = H0; w = h * ratio; }
-      return { w, h };
-    }
-    return { w: bw, h: bh };
+  function autoZoomFor(deg) {
+    if (!img) return 1;
+    return 1;
   }
 
-  /** 当前旋转角对应的内接矩形（归一化到旋转框） */
-  function currentInscribed() {
-    if (!img) return { inW: 1, inH: 1 };
-    const phi = (crop ? crop.rot : 0) * Math.PI / 180;
-    const box = rotatedBoxSize(img.width, img.height, phi);
-    const ins = inscribedRect(img.width, img.height, phi);
-    return { inW: ins.w / box.W, inH: ins.h / box.H };
+  /**
+   * 旋转 / 翻转 / 缩放。
+   *
+   * ⚠️ 和旧版的根本区别：**不动取景框**。
+   * 旧版每改一次角度都要按比例换算取景框、再 clamp 回新的内接矩形 ——
+   * 那正是用户说的"取景框收框"。
+   */
+  function setDisplay(o) {
+    if (!img) return;
+    ensureGeom();
+    if (!geom) return;
+    if (o.rotate !== undefined) {
+      const r45 = v => Math.max(-45, Math.min(45, Number(v) || 0));
+      geom.rot = r45(o.rotate);
+    }
+    if (o.flipX !== undefined) geom.flipX = !!o.flipX;
+    if (o.flipY !== undefined) geom.flipY = !!o.flipY;
+    if (o.zoom !== undefined) {
+      geom.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(o.zoom) || 1));
+    }
+    syncCropRotUI(geom.rot);
+    syncFlipUI();
+    syncZoomUI();
+    layoutCanvas();
+    render();
+    drawCropOverlay();
   }
 
-  /* ================================================================
-     把旋转滑杆和度数标签同步到 crop.rot
-     ----------------------------------------------------------------
-     ⚠️⚠️ 滑杆（#stCropRot）和标签（#stCropRotVal）是**两个独立元素**，
-     没有 <output> 绑定 —— 只有显式同步才会一致。
-     实测踩到：进裁剪 → 拖到 30° → 按「⟲ 90°」快转（内部会旋转并
-     **重新进入裁剪**，crop.rot 归零）→ 滑杆和标签**仍停在 30°**。
-     显示 30° 而实际 0°，用户会以为旋转丢了，或者反过来以为没转。
-
-     所以规则是：**凡是有可能改变 crop.rot 的地方，都要调它一次**。
-     现在有三处：enterCrop（归零）、setCropRotation（拖滑杆）、
-     rotateQuarter 之后（重进裁剪）。
-     ================================================================ */
+  /**
+   * ⚠️⚠️ 滑杆（#stCropRot）和标签（#stCropRotVal）是**两个独立元素**，
+   * 没有 <output> 绑定 —— 只有显式同步才会一致。
+   * 实测踩到：进裁剪 → 拖到 30° → 按「⟲ 90°」快转 → 滑杆和标签
+   * 仍停在 30° 而实际是 0°，用户会以为旋转丢了。
+   * 规则：**凡是有可能改变 geom.rot 的地方，都要调它一次**。
+   */
   function syncCropRotUI(deg) {
     const d = Number.isFinite(deg) ? deg : 0;
     const slider = $('stCropRot');
@@ -1285,178 +1235,240 @@
     if (label) label.textContent = shown.toFixed(0) + '°';
   }
 
-  /** 打开裁剪模式 */
+  function syncFlipUI() {
+    const h = $('stFlipH'), v = $('stFlipV');
+    if (h) h.classList.toggle('on', !!(geom && geom.flipX));
+    if (v) v.classList.toggle('on', !!(geom && geom.flipY));
+  }
+
+  function syncZoomUI() {
+    const s = $('stZoom'), l = $('stZoomVal');
+    const z = geom ? geom.zoom : 1;
+    if (s) s.value = String(Math.round(z * 100));
+    if (l) l.textContent = Math.round(z * 100) + '%';
+  }
+
+  /** 保证 geom 存在（外部入口 / 测试可能直接调 setCropRotation） */
+  function ensureGeom() {
+    if (!geom && img) {
+      geom = { rect: { x: 0, y: 0, w: 1, h: 1 },
+               rot: 0, flipX: false, flipY: false, zoom: 1 };
+      resetRectToViewport();
+      geom.zoom = autoZoomFor(0);
+    }
+  }
+
+  /** 打开裁剪模式（只显示取景框，不改任何显示变换） */
   function enterCrop() {
     if (!img) return;
-    const phi = 0;
-    const box = rotatedBoxSize(img.width, img.height, phi);
-    const ins = inscribedRect(img.width, img.height, phi);
-    // 初始取景框 = 整个内接矩形
-    crop = {
-      rot: 0,
-      rect: { x: (1 - ins.w / box.W) / 2, y: (1 - ins.h / box.H) / 2,
-              w: ins.w / box.W, h: ins.h / box.H },
-      aspect: 0
-    };
+    ensureGeom();
+    showCropUI(true);
     setBrushMode(false);
     showMaskTool(false);
-    showCropUI(true);
-    // ⚠️ 必须重置滑杆：重新进入裁剪时 rot 归零了，
-    // 不重置就会显示上一次的角度（实测踩过）
-    syncCropRotUI(0);
     layoutCanvas();
     render();
     drawCropOverlay();
-    toast('拖动取景框选择要保留的部分，或调上面的旋转', 3600);
+    toast('拖动取景框选择要保留的部分', 3200);
   }
 
-  /** 退出裁剪模式。保留参数不应用（等于取消） */
+  /** 打开旋转 / 翻转 / 缩放。取景框保持原样，只是把工具区显示出来 */
+  function enterRotate() {
+    if (!img) return;
+    ensureGeom();
+    showRotateUI(true);
+    showCropUI(true);          // 旋转时要看得见取景框，才知道会保留哪一块
+    setBrushMode(false);
+    showMaskTool(false);
+    syncCropRotUI(geom.rot);
+    syncFlipUI();
+    syncZoomUI();
+    layoutCanvas();
+    render();
+    drawCropOverlay();
+  }
+
+  /** 取景框缩放到"整张旋转图都看得见"（一次计算，不是持续自动收框） */
+  function fitZoomToWindow() {
+    if (!geom) return;
+    geom.zoom = autoZoomFor(geom.rot);
+    syncZoomUI();
+    layoutCanvas();
+    render();
+    drawCropOverlay();
+  }
+
+  /** 按比例约束取景框（居中收缩到目标比例）。⚠️ 不碰旋转角 */
+  function applyCropAspect(ratio) {
+    if (!img || !ratio) return;
+    ensureGeom();
+    geom.rect = clampCropRect(sizeRectToAspect(geom.rect, Number(ratio)));
+  }
+
+  /** 「原图」档：取景框按原图比例取最大（居中） */
+  function fitCropToImageRatio() {
+    if (!img) return;
+    ensureGeom();
+    geom.rect = maxRectForAspect(img.width / img.height);
+  }
+
+  /** 退出几何编辑。apply=false 时整块丢掉（等于取消） */
   function exitCrop(apply) {
     showCropUI(false);
-    if (!apply) {
-      crop = null;
-    }
+    showRotateUI(false);
+    if (!apply) geom = null;
     render();
   }
 
-  /** 设置旋转角；内接矩形随之变化，裁剪框要 rebase */
+  /** 设置旋转角 */
   function setCropRotation(deg) {
-    if (!crop || !img) return;
-    /* ⚠️ 先把角度钳进滑杆量程（±45）。
-       不钳的话：给 input.value 赋超出 min/max 的值时**浏览器会夹到边界**，
-       于是"标签显示 80°、滑杆停在 45°"—— 显示值和实际值对不上。
-       钳住 crop.rot 本身，让"显示 == 实际"这条不变量恒成立。 */
-    const r45 = v => Math.max(-45, Math.min(45, Number(v) || 0));
-    deg = r45(deg);
-
-    // 归一化坐标是相对**旋转框**的，旋转角一变框就变了 ——
-    // 所以不能直接把旧的归一化值搬过来，要按比例换算
-    const oldBox = rotatedBoxSize(img.width, img.height,
-      crop.rot * Math.PI / 180);
-    const newBox = rotatedBoxSize(img.width, img.height, deg * Math.PI / 180);
-    const px = { x: crop.rect.x * oldBox.W, y: crop.rect.y * oldBox.H,
-                 w: crop.rect.w * oldBox.W, h: crop.rect.h * oldBox.H };
-
-    crop.rot = deg;
-    crop.rect = { x: px.x / newBox.W, y: px.y / newBox.H,
-                  w: px.w / newBox.W, h: px.h / newBox.H };
-
-    const { inW, inH } = currentInscribed();
-    crop.rect = clampCropRect(crop.rect, inW, inH);
-
-    /* ⭐ 旋转后的取景框处理（用户要的"保持原图比例、绝不裁切露白"）：
-         · crop.aspect === 0（「原图」）→ 收成原图比例的最大可放矩形
-         · crop.aspect > 0（选了固定比例）→ 保持那个比例
-         · crop.aspect < 0（「自由」）→ 不动，保留用户自己拖的框
-       ⚠️ 不处理"自由"这一档的话，用户拖小的框会在每次改角度时被弹回最大，
-       手感很差（而且他拖框的动作就白做了）。 */
-    if (crop.aspect > 0) applyCropAspect(crop.aspect);
-    else if (crop.aspect === 0) fitCropToImageRatio();
-
-    // 用同一个函数同步（别各写各的，否则滑杆和标签迟早不一致）
-    syncCropRotUI(deg);
-    layoutCanvas();
-    render();
-    drawCropOverlay();
+    setDisplay({ rotate: deg });
   }
 
-  /** 按比例约束裁剪框（居中收缩到目标比例） */
-  function applyCropAspect(ratio) {
-    if (!crop) return;
-    crop.aspect = ratio;
-    if (!ratio) return;
-    const { inW, inH } = currentInscribed();
-    const phi = crop.rot * Math.PI / 180;
-    const box = rotatedBoxSize(img.width, img.height, phi);
-    const ins = inscribedRect(img.width, img.height, phi);
+  /* ================================================================
+     由当前状态算出「输出尺寸 + 显示变换参数」
+     ================================================================
+     ⚠️⚠️ 唯一的硬约束：**显示变换必须是相似变换**
+     ----------------------------------------------------------------
+     输出缓冲上的 u 坐标 → 图片 uv 的映射是线性的：
+         u = R(-rot) · (uBuf - 0.5) · flip / zoom + 0.5 + offset
+     前面的线性部分两个轴都带同一个 1/zoom，所以是"旋转 + 等比缩放"，
+     形状绝不变形。**唯一的破坏方式就是让两个轴的系数不同**
+     （旧版的 uUvScale 就是分开的 sX/sY，所以必须靠
+       sX·W0 / (sY·H0) == outW/outH 这条等式去救，前后错了三次）。
 
-    /* ⚠️⚠️ 比例预设要的是**图片上的**宽高比，不是旋转框里的。
-       而 crop.rect 是"相对内接矩形"归一化的，内接矩形在横纵上
-       相对旋转框的比例不同（ins.w/box.W ≠ ins.h/box.H，旋转后必然如此）。
+     所以现在的判据是**结构性**的：代码里根本不存在第二个缩放系数。
+     测试 test/crop-geometry.test.mjs 直接读 shader uniform 断言这一点。
 
-       旧写法 `h = w / ratio`（w、h 都取旋转框像素）只在
-       ins.w/box.W == ins.h/box.H 时才等于图片比例 —— 也就是**只有 0°**
-       才对。旋转后选 16:9 实际得到的是别的比例。
-       反例（400×300 转 45°，选 16:9）：旧写法算出图片上 2.133 的框。
+     ⚠️⚠️ offset 的定义错过一次（真 bug），记清楚：
+       它是**视口左下角**在图片归一化坐标里的位置，就是取景框的
+       左下角。旧代码按"取景框中心相对图片中心的偏移"算：
+           offX = (cx - 0.5) * (ins.w / W0)
+       满幅取景框时 cx = 0.5，偏出来正好是 0，**看起来是对的**；
+       一旦把取景框收小（比如 0.5×0.5 居中），它就引入了一个
+       等于取景框尺寸一半的额外平移 —— 实测画面中心读到的是原图
+       0.75 处而不是中心。这种"只有非满幅才暴露"的错最难查。
+     ================================================================ */
+  function cropRenderPlan(forExport = false, override = null) {
+    if (!geom || !img) return null;
+    const W0 = img.width, H0 = img.height;
+    const r = geom.rect;
+    const zoom = geom.zoom;
+    // 只给 90° 整转用：临时换掉角度，不动 geom 本身
+    const rotDeg = override && override.rotDeg !== undefined
+      ? override.rotDeg : geom.rot;
+    if (!(r.w > 0) || !(r.h > 0)) return null;
 
-       正解：先在内接矩形里按目标比例取最大的框（内接矩形和图片同比例，
-       所以在它里面按 ratio 取就是图片上的 ratio），再换算回框单位。 */
-    const inPx = { w: inW * box.W, h: inH * box.H };
-    let w = inPx.w, h = w / ratio;
-    if (h > inPx.h) { h = inPx.h; w = h * ratio; }
+    const { vw, vh } = viewportDims(rotDeg, zoom);
 
-    // 归一化：横向除以 box.W、纵向除以 box.H（两者不同，所以不能共用一个数）
-    const nw = w / box.W, nh = h / box.H;
-    const cx = crop.rect.x + crop.rect.w / 2;
-    const cy = crop.rect.y + crop.rect.h / 2;
-    crop.rect = clampCropRect(
-      { x: cx - nw / 2, y: cy - nh / 2, w: nw, h: nh }, inW, inH);
+    /* ⚠️⚠️ offset 恒为 0 —— 这一处错了**两轮**，说清楚：
+     *
+     * 画布上显示的是**整个视口**（zoom=1 时就是整张图），取景框只是
+     * 画在上面的一个框。所以"画布归一化坐标 → 图片归一化坐标"除了
+     * 缩放之外**没有任何平移**：画布中心就是图片中心。
+     *
+     * 我先后写成过：
+     *   【一】(r.x + r.w/2 − 0.5)·… —— 取景框中心相对图片中心的偏移。
+     *        满幅取景框时中心就是 0.5，偏出来正好 0，**看着是对的**；
+     *        收小到 0.5×0.5 居中时就多移了 0.25，画面整体偏。
+     *   【二】(r.x, 1−r.y−r.h) —— "视口原点放在取景框左下角"。
+     *        那个前提本身不成立：视口是整张图的显示区域，不会因为
+     *        取景框挪动而挪动（否则拖框时照片会跟着滑走，很怪）。
+     *
+     * 判据（test/rotate-invariant.test.mjs）：取景框 0.5×0.5 居中时，
+     * 画面中心必须读到**原图中心** —— 这就是"画布中心 = 图片中心"
+     * 这条不变量，和取景框在哪无关。 */
+    const offX = 0;
+    const offY = 0;
+
+    /* ================================================================
+       输出尺寸 = **取景框那块区域**（源图像素）
+       ----------------------------------------------------------------
+       视口覆盖 vw × vh 源图像素，取景框占视口的 r.w × r.h，
+       所以输出 = r.w·vw × r.h·vh。
+       校验：两个轴都是同一个 1/zoom 的相似变换，输出比例
+            = (r.w·W0)/(r.h·H0) = 取景框的像素比例 ✓ 不扭曲。
+
+       zoom 的含义（**越小 = 拉远 = 视野越宽 = 输出越大**）：
+         · zoom = 1：输出就是取景框那块的原分辨率（1:1，不糊）
+         · zoom < 1：拉远看全图，输出相应变大（屏幕上看到什么就导出什么）
+       ================================================================ */
+    const outW = Math.max(1, Math.round(r.w * vw));
+    const outH = Math.max(1, Math.round(r.h * vh));
+
+    /* ⚠️⚠️ uDisplayScale 必须**等于**用户设的 zoom，不能"为了填满屏幕"
+     * 把它抬高。第一版写的是 max(needZoom, zoom)（needZoom = 让画布铺满
+     * 可用空间），那是个**真 bug**：画布放着大不大是 CSS 的事（见下面
+     * 的 dispW/dispH），而 uDisplayScale 决定的是**视口覆盖多大范围**。
+     * 抬高它 = 视野被压缩 = 用户拉远也看不到整张图。
+     * 实测症状：400×300 的图 zoom=0.7 时被抬到 2.08，画面只剩中心
+     * 48%，四角永远看不到深色底。 */
+    const screenZoom = zoom;
+
+    /* 画布要显示的是「视口旋转之后的外接框」，所以缓冲尺寸用 viewportBox
+       —— 否则转 45°/90° 时画面会被裁掉两头。
+       （offset 不受影响：它只由 rect 和 zoom 决定。）
+       0° 时外接框就是视口本身（cos=1, sin=0），自动退化。 */
+    const buf = viewportBox(vw, vh, rotDeg);
+    const bufW = Math.max(1, Math.round(buf.W));
+    const bufH = Math.max(1, Math.round(buf.H));
+
+    const stage = $('stStage');
+    const pad = 24;
+    const availW = Math.max(80, (stage ? stage.clientWidth : 800) - pad);
+    const availH = Math.max(80, (stage ? stage.clientHeight : 600) - pad);
+    const dispK = Math.min(1, availW / bufW, availH / bufH);
+
+    return {
+      W0, H0, zoom,
+      screenZoom,
+      rot: rotDeg * Math.PI / 180,
+      flipX: geom.flipX ? -1 : 1,
+      flipY: geom.flipY ? -1 : 1,
+      offX, offY,
+      s: 1 / zoom,
+      rect: { ...r },
+      outW, outH,
+      bufW, bufH,
+      vw, vh,
+      dispW: Math.max(1, bufW * dispK),
+      dispH: Math.max(1, bufH * dispK)
+    };
   }
 
   /**
-   * 应用裁剪 + 旋转：把结果烘焙成新图。
+   * 应用取景框 + 旋转 + 翻转：把结果烘焙成新图。
    *
    * 走「按目标尺寸重画一帧 → readPixels」这条路，而不是在 CPU 上
    * 重采样 —— 复用的是同一个 shader，所以**所见即所得**，
    * 而且不用再写一遍调色逻辑（写两遍必然漂移）。
+   *
+   * 副作用：旋转后露出的深色角会被烘进去。这是用户明确接受的
+   * （"超出取景框范围展示上就是截断即可"），而且他可以在应用前
+   * 把取景框收进图片内容里避开。
    */
-  async function applyCrop() {
-    if (!crop || !img) return;
-    const prevRect = crop.rect, prevRot = crop.rot;
+  async function applyGeometry() {
+    if (!geom || !img) return;
     busy(true, '正在应用…');
     try {
-      // ⚠️ 必须传 true 走**导出**分支。默认参数是预览模式，
-      // 返回的是屏幕尺寸（比如 832×624）—— 拿它当输出尺寸的话，
-      // 裁剪出来的图会变成屏幕分辨率，而且比原图还大。
-      // 这个 bug 实际发生过：400×300 的图"裁剪"完变成 832×624。
-      const plan = cropRenderPlan(true);
+      const plan = bakeRenderPlan();
       if (!plan) throw new Error('取景框太小');
 
-      // 切到目标分辨率重画
       const prevW = canvas.width, prevH = canvas.height;
       canvas.width = plan.outW;
       canvas.height = plan.outH;
       gl.viewport(0, 0, plan.outW, plan.outH);
-      applyGeometryUniforms(plan);
-      draw();
+      draw(plan);
 
       const pixels = new Uint8Array(plan.outW * plan.outH * 4);
       gl.readPixels(0, 0, plan.outW, plan.outH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      canvas.width = prevW; canvas.height = prevH;
 
-      /* 行序：**翻一次**。
-         ----------------------------------------------------------------
-         ⚠️ 这一处和 cropRenderPlan 里 offY 的公式是**两处独立的事**，
-         不要当成"配套约定"（我第一次就是这么误判的，把翻行删了，
-         结果烘焙出来的图整个上下颠倒 —— 预览是对的、应用完就反了）。
-
-         为什么必须翻（这次是量出来的，不是推理出来的）：
-         `gl.readPixels` 返回的行序是**自下而上** —— pixels 的第 0 行
-         对应 framebuffer 的**底部**（也就是画面的**下**边）。
-         而 `ImageData` 是按行**自上而下**解释的：它的第 0 行是图的**上**边。
-         两个约定不抵消，所以要把行序倒过来。
-
-         实测证据（test/_probe-crop-map.mjs，一行编码图）：
-           · 不翻：烘焙出的位图顶部 srcV=0.996、底部 srcV=0.004 → 上下反
-           · 翻一次：顶部/底部与预览一致 ✅
-
-         ⚠️ 上次留有"翻一次才对"的注释，结论是对的，
-         但当时 offY 也错着，两个错误互相抵消，于是这条注释的说服力
-         被后来的我低估了。教训：**注释里的"实测依据"要写清楚
-         当时还错着什么**，否则后人会把正确的部分一起推翻。 */
-      const flipped = new Uint8ClampedArray(pixels.length);
-      const rowBytes = plan.outW * 4;
-      for (let y = 0; y < plan.outH; y++) {
-        const src = (plan.outH - 1 - y) * rowBytes;
-        flipped.set(pixels.subarray(src, src + rowBytes), y * rowBytes);
-      }
-
-      const bmp = await createImageBitmap(new ImageData(flipped, plan.outW, plan.outH));
-
-      // 换图 + 重置一切跟尺寸相关的东西
+      const baked = await pixelsToBitmap(pixels, plan.outW, plan.outH);
       if (img && img.close) img.close();
-      img = bmp;
-      crop = null;
+      img = baked;
+      geom = null;
       showCropUI(false);
+      showRotateUI(false);
 
       mask.clear();
       mask.resize(img.width, img.height);
@@ -1466,189 +1478,104 @@
 
       gl.bindTexture(gl.TEXTURE_2D, imageTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
-      _trace('applyCrop:afterUpload', 'img=' + img.width + 'x' + img.height
-        + ' tex=' + gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WIDTH || 0x1000)
-        + 'x' + gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_HEIGHT || 0x1001)
-        + ' canvas=' + canvas.width + 'x' + canvas.height);
+      _trace('applyGeometry', 'img=' + img.width + 'x' + img.height
+        + ' out=' + plan.outW + 'x' + plan.outH);
 
+      layoutCanvas();
       render();
-      _trace('applyCrop:afterRender', 'canvas=' + canvas.width + 'x' + canvas.height
-        + ' img=' + img.width + 'x' + img.height + ' crop=' + !!crop);
-      /* ⚠️ 强制同步 GPU 管线。
-         不加这个的话，紧跟其后的 readPixels / 截图有时会拿到**上一帧**
-         的内容（表现是"应用了裁剪但画面还是旧的"）。
-         它是异步提交的，刚 texImage2D 上传的新纹理不一定已经生效。
-         代价只是一次同步等待 —— 这个操作本来就不在热路径上。 */
+      /* ⚠️ 强制同步 GPU 管线。不加这个的话，紧跟其后的 readPixels /
+         截图有时会拿到**上一帧**的内容（表现是"应用了但画面还是旧的"）。 */
       gl.finish();
-      toast(`已应用裁剪（${img.width}×${img.height}）`, 3000);
+      toast(`已应用（${img.width}×${img.height}）`, 3000);
     } catch (e) {
-      // 失败要把状态还原，否则用户会卡在一个半应用的状态里
-      crop.rect = prevRect; crop.rot = prevRot;
       canvas.width = canvas.width;   // 触发重新分配，避免半截缓冲
-      toast('应用裁剪失败：' + (e && e.message ? e.message : e));
+      toast('应用失败：' + (e && e.message ? e.message : e));
     } finally {
       busy(false);
     }
   }
 
   /**
-   * 由当前状态算出「输出尺寸 + UV 变换参数」。
+   * 把 readPixels 的结果变成位图。
    *
-   * ================================================================
-   * ⭐ 唯一的硬约束：**采样映射必须是相似变换**
-   * ================================================================
-   * 渲染就是"输出矩形 ← 采样源图里的某个矩形"，一个线性映射。
-   * 形状不扭曲的充要条件：
-   *
-   *     sX / sY == W0 / H0
-   *
-   * 而 sX 的定义就是 outW/W0、sY 是 outH/H0（见下），代入即：
-   *
-   *     outW / outH == W0 / H0          ← 输出比例必须等于图片比例
-   *
-   * ⚠️⚠️ 这一条**错过很多次**，每次都换个样子冒出来，务必记住：
-   *
-   * 【错法一】用一个标量 `s = ins.w/box.W` 同时管 x 和 y。
-   *   取景框正好等于内接矩形时蒙对，把框拖小就错。
-   *
-   * 【错法二】`sX = r.w*ins.w/W0; sY = r.h*ins.h/H0`。
-   *   看起来对，但它隐含假设"取景框比例 == 输出比例"。
-   *   实测（用户反馈"旋转明显不对，像扭曲"）：
-   *   400×300 转 10°，输出算成 267×184（比例 1.451），
-   *   而图是 1.333 → sX/sY = 1.091 ≠ 1.333 → **画面被压扁**。
-   *   45° 时两个比例碰巧相等，所以"有时看着是对的"，
-   *   极难从现象反推。
-   *
-   * 【错法三】预览画布按 `viewW/viewH`（取景框在旋转框里的比例）建，
-   *   而导出按 outW/outH —— 旋转后内接矩形缩小，两者分道扬镳。
-   *   表现是预览被拉伸、导出正常（或反过来）。
-   *
-   * ⭐ 正确做法（一次把三处都钉住）：
-   *   取景框在**旋转框**里归一化，而旋转框里 1 单位 = 图片空间里的
-   *   ins.w（横）/ ins.h（纵）。所以取景框覆盖的图片区域是：
-   *       regW = r.w · ins.w
-   *       regH = r.h · ins.h
-   *   规定输出比例恒等于图片比例，解出"覆盖比例 k"：
-   *       outW = k · W0,  outH = k · H0
-   *       k = min(regW / W0, regH / H0)
-   *   于是 sX = k、sY = k（**相等**，映射自然不扭曲）。
-   *   k 的含义是"输出的实际清晰度相对原图的比例"，
-   *   旋转 45° 时会掉到约 0.66 —— 这是旋转裁切的必然代价
-   *   （能覆盖的区域本来就变小了），不是 bug。
-   *
-   * ⚠️ 预览和导出共用同一个 k（只有像素尺寸的缩放不同），
-   * 否则会出现"预览好好的、导出构图偏了"。
-   *
-   * ⚠️⚠️ 两个坐标系的 y 方向**相反**（这是裁剪里最容易绕晕的地方）：
-   *   · `crop.rect` 是**屏幕约定**：y = 0 在画面**下**边、y = 1 在上边
-   *     （依据：cropRectOnCanvas() 里 r.y = 1 时框画在画布顶部）
-   *   · shader 采样的 `u.y` 是**图片约定**：0 = 图**上**边
-   *     （VERT 里 vUv.y = 0.5 - aPos.y*0.5，画面顶部 vUv.y = 0）
-   *   所以下面由 cy 算 offY 时必须**取负号**。
-   * ================================================================
+   * ⚠️ 行序**翻一次**，这是量出来的、不是推理出来的：
+   *   `gl.readPixels` 返回的行序是**自下而上** —— pixels 的第 0 行
+   *   对应 framebuffer 的**底部**（画面的下边）；而 `ImageData` 是按行
+   *   **自上而下**解释的（第 0 行是图的上边）。两个约定不抵消，所以要翻。
+   * 不翻的表现是"预览是对的、应用完整个上下颠倒"，历史上真的发生过。
+   * （这一处和 offset 的公式是**两件独立的事**，别当成配套约定。）
    */
-  function cropRenderPlan(forExport = false) {
-    if (!crop || !img) return null;
-    const W0 = img.width, H0 = img.height;
-    const phi = crop.rot * Math.PI / 180;
-    const box = rotatedBoxSize(W0, H0, phi);
-    const ins = inscribedRect(W0, H0, phi);
-
-    const r = crop.rect;
-    /* 取景框覆盖的图片区域（像素）。
-       ⚠️ 用 inset 换算，不能用 r.w*box.W —— 那得到的是"旋转框像素"，
-       而旋转框比图片大，直接拿来当图片区域会把画面放大。 */
-    const regW = r.w * ins.w;
-    const regH = r.h * ins.h;
-    if (regW < 2 || regH < 2) return null;
-
-    /* 采样缩放：**采样比例必须等于输出比例**（否则画面被拉伸）
-       ----------------------------------------------------------------
-       ⚠️⚠️ 这是裁剪里唯一真正重要的约束，也是前后错了三次的地方。
-
-       "输出比例"由**取景框**决定 —— 用户选了 16:9，导出就必须是 16:9
-       （比例预设是真实功能，见 applyCropAspect）。
-       所以**不能**拿"图片比例"当输出比例，那会把比例预设废掉。
-
-       取景框覆盖的图片区域是 regW×regH。采样区域是它的同形缩放，
-       所以直接用这块就行：
-           sX = regW / W0      （占源图宽度的比例）
-           sY = regH / H0
-           outW = regW, outH = regH
-       校验：sX/sY = regW/regH = outW/outH ✓
-       三个量（采样区间、输出、取景框）比例自然一致，不会扭曲。
-
-       ⚠️ 注意：**只有取景框比例恰好等于图片比例时**才是"原分辨率、
-       零缩放"；选了别的比例就是一次有意的裁切，这是用户要的行为，
-       不是 bug。旋转会让 ins 变小，于是 regW/regH 随之变小 ——
-       等价于"旋转后画面清晰度下降"，这是旋转裁切的必然代价。
-
-       ⚠️ 历史上错的三种写法（都记着，别再回去）：
-         【一】`s = ins.w/box.W` 一个标量管两轴 → 拖小取景框就错。
-         【二】先算注册区域再按**图片比例**取子窗口（k = min(regW/W0,
-              regH/H0)）→ 输出比例变成图片比例，**比例预设失效**，
-              而且预览画布跟着用图片比例 → 用户看到"旋转后画面被拉伸"。
-              实测 400×300 转 45°：画布 1.333 而内接矩形比例 1.775，
-              画面上有明显的横向拉伸。
-         【三】预览画布按 `viewW/viewH`（旋转框像素比例）建，
-              和导出比例不一致 → 预览与导出两个样。
-       ================================================================ */
-    const sX = regW / W0;
-    const sY = regH / H0;
-
-    /* 采样区间的中心 = 取景框中心，换算到图片坐标。
-       ⚠️ 两个坐标系的 y 方向**相反**，所以 y 的偏移要取**负号**：
-         · crop.rect 是**屏幕约定**：y = 0 在画面下边、y = 1 在上边
-         · shader 采样的 u.y 是**图片约定**：0 = 图**上**边
-           （VERT 里 vUv.y = 0.5 - aPos.y*0.5）
-       两者不一致，offY 不取负号画面就会上下颠倒。 */
-    const cx = r.x + r.w / 2;                    // 旋转框归一化（水平）
-    const cy = r.y + r.h / 2;                    // 旋转框归一化（屏幕约定）
-    /* 旋转框归一化 → 图片归一化的换算：
-       旋转框中心对应图片中心；0° 时旋转框就是图片，所以直接线性映射。 */
-    const offX = (cx - 0.5) * (ins.w / W0);
-    const offY = -(cy - 0.5) * (ins.h / H0);
-
-    if (forExport) {
-      return {
-        outW: Math.max(1, Math.round(regW)),
-        outH: Math.max(1, Math.round(regH)),
-        sX, sY, rot: phi, offX, offY, W0, H0
-      };
+  async function pixelsToBitmap(pixels, w, h) {
+    const flipped = new Uint8ClampedArray(pixels.length);
+    const rowBytes = w * 4;
+    for (let y = 0; y < h; y++) {
+      const s = (h - 1 - y) * rowBytes;
+      flipped.set(pixels.subarray(s, s + rowBytes), y * rowBytes);
     }
+    return createImageBitmap(new ImageData(flipped, w, h));
+  }
 
-    /* 预览：按屏幕可用空间放，**比例用取景框比例**（= 导出比例）。 */
-    const stage = $('stStage');
-    const pad = 24;
-    const availW = Math.max(80, stage.clientWidth - pad);
-    const availH = Math.max(80, stage.clientHeight - pad);
-    const outAspect = regW / regH;
-    let w = availW, h = w / outAspect;
-    if (h > availH) { h = availH; w = h * outAspect; }
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-
+  /**
+   * 烘焙用的计划：取景框那块区域，按**源图 1:1** 输出。
+   *
+   * ⚠️ 和 cropRenderPlan 的区别只有"视野"：
+   *   cropRenderPlan 跟着 zoom（用户看多大就输出多大），
+   *   bakeRenderPlan 固定 zoom = 1（取景框占视口多大就输出多少源图像素）。
+   * 两个都是相似变换 —— 这里两个轴共用 1/1，显然成立。
+   */
+  function bakeRenderPlan() {
+    if (!geom || !img) return null;
+    const W0 = img.width, H0 = img.height;
+    const r = geom.rect;
+    const { vw, vh } = viewportDims(geom.rot, 1);
+    const cw = r.w * vw, ch = r.h * vh;
+    if (!(cw >= 2) || !(ch >= 2)) return null;
     return {
-      outW: Math.max(1, Math.round(w * dpr)),
-      outH: Math.max(1, Math.round(h * dpr)),
-      sX, sY, rot: phi, offX, offY, W0, H0
+      W0, H0, zoom: 1,
+      screenZoom: 1,
+      rot: geom.rot * Math.PI / 180,
+      flipX: geom.flipX ? -1 : 1,
+      flipY: geom.flipY ? -1 : 1,
+      // ⚠️ 和 cropRenderPlan 同理：视口→图片没有平移，off 恒为 0。
+      // 输出尺寸由 r.w·vw / r.h·vh 决定（见上面 outW/outH）。
+      offX: 0, offY: 0,
+      s: 1,
+      vw, vh,
+      outW: Math.max(1, Math.round(cw)),
+      outH: Math.max(1, Math.round(ch))
     };
   }
 
-  /** 把几何参数喂给 shader */
+  /** 把几何参数喂给 shader。
+   *  ⚠️ 用 `screenZoom`（画布用的缩放）而不是 `zoom`（输出用的）——
+   *  两者在"取景框很大 + 屏幕很宽"时不一样，喂错会让预览和导出差一截。 */
   function applyGeometryUniforms(plan) {
     gl.uniform1f(uniforms.uRot, plan.rot);
-    gl.uniform2f(uniforms.uUvScale, plan.sX, plan.sY);
-    gl.uniform2f(uniforms.uCropOffset, plan.offX, plan.offY);
+    gl.uniform2f(uniforms.uFlip, plan.flipX, plan.flipY);
+    gl.uniform1f(uniforms.uDisplayScale,
+      plan.screenZoom !== undefined ? plan.screenZoom : plan.zoom);
+    gl.uniform2f(uniforms.uImgOffset, plan.offX, plan.offY);
+    gl.uniform3f(uniforms.uBg, 0.086, 0.082, 0.078);   // 深色底
+    // 诊断用：记下最后一次真正喂进 shader 的计划（测试读它排查几何问题）
+    _lastPlan = 'uniform rot=' + plan.rot.toFixed(4)
+      + ' s=' + (plan.screenZoom !== undefined ? plan.screenZoom : plan.zoom)
+      + ' off=' + plan.offX.toFixed(4) + ',' + plan.offY.toFixed(4)
+      + ' flip=' + plan.flipX + ',' + plan.flipY
+      + ' out=' + plan.outW + 'x' + plan.outH;
   }
+  let _lastPlan = null;
 
-  /** 没有裁剪时必须是恒等变换，否则正常编辑会被莫名缩放/旋转 */
+  /** 没有几何变换时必须是恒等变换，否则正常编辑会被莫名缩放/旋转 */
   function resetGeometryUniforms() {
     gl.uniform1f(uniforms.uRot, 0);
-    gl.uniform2f(uniforms.uUvScale, 1, 1);
-    gl.uniform2f(uniforms.uCropOffset, 0, 0);
+    gl.uniform2f(uniforms.uFlip, 1, 1);
+    gl.uniform1f(uniforms.uDisplayScale, 1);
+    gl.uniform2f(uniforms.uImgOffset, 0, 0);
+    gl.uniform3f(uniforms.uBg, 0.086, 0.082, 0.078);
   }
 
-  /* ---------------- 裁剪框 overlay ----------------
+
+  /* ---------------- 取景框 overlay ----------------
      用一个 2D canvas 画在 WebGL 画布上面：
        · 取景框外面压暗
        · 三分线
@@ -1669,22 +1596,20 @@
     return cropCanvas;
   }
 
-  /** 裁剪框在画布上的像素位置（canvas 坐标，y 向下） */
+  /**
+   * 取景框在**画布归一化坐标**里的位置（y = 0 在下边，和 geom.rect 同义）。
+   * ⚠️ 新模型下这是恒等映射 —— 取景框本来就定义在画布空间里。
+   * 旧版要在这里做一堆换算（取景框相对内接矩形归一化，画布又是旋转框），
+   * 那正是"做复杂了"的来源。
+   */
   function cropRectOnCanvas() {
-    if (!crop) return null;
-    const r = crop.rect;
-    const baseX = (1 - r.w) / 2, baseY = (1 - r.h) / 2;
-    return {
-      x: (r.x - baseX) / r.w,
-      y: (r.y - baseY) / r.h,
-      w: 1 / r.w,
-      h: 1 / r.h
-    };
+    if (!geom) return null;
+    return { ...geom.rect };
   }
 
   function drawCropOverlay() {
     const cv = ensureCropCanvas();
-    if (!crop || !img) { cv.hidden = true; return; }
+    if (!geom || !img) { cv.hidden = true; return; }
     cv.hidden = false;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1697,7 +1622,10 @@
     g.clearRect(0, 0, W, H);
 
     const br = cropRectOnCanvas();
-    const bx = br.x * W, by = br.y * H, bw = br.w * W, bh = br.h * H;
+    const bx = br.x * W, bw = br.w * W;
+    /* ⚠️ y 方向要翻：geom.rect 的 y = 0 在下边（WebGL/屏幕约定），
+       而 2D canvas 的 y = 0 在上边。不翻框会上下颠倒。 */
+    const by = (1 - br.y - br.h) * H, bh = br.h * H;
 
     // 框外压暗
     g.fillStyle = 'rgba(0,0,0,.55)';
@@ -1733,23 +1661,39 @@
     g.stroke();
   }
 
+  /**
+   * 取景框面板的开 / 关。
+   * ⚠️ 和旧版的区别：旧版里"裁剪"是一个**模式**（进出会重置状态），
+   * 现在它只是"看不看得见取景框"的开关。裁剪和旋转分成两块 UI，
+   * 共用同一个 geom —— 用户说的"只有蒙版这些是共用的"就是这个意思。
+   */
   function showCropUI(on) {
     const sec = $('stCropOpts');
     if (sec) sec.hidden = !on;
     const b = $('stCrop');
     if (b) {
       b.classList.toggle('on', on);
-      b.textContent = on ? '✓ 裁剪中…' : '裁剪 / 旋转';
+      b.textContent = on ? '✓ 正在裁剪…' : '裁剪';
     }
     const cv = ensureCropCanvas();
-    // ⚠️ 非裁剪模式下必须把 overlay 的 pointer-events 关掉，
+    // ⚠️ 不看取景框时必须把 overlay 的 pointer-events 关掉，
     // 否则它会盖住画布，画笔就涂不上了
     cv.style.pointerEvents = on ? 'auto' : 'none';
     if (!on) cv.hidden = true;
   }
 
+  function showRotateUI(on) {
+    const sec = $('stRotateOpts');
+    if (sec) sec.hidden = !on;
+    const b = $('stRotateBtn');
+    if (b) {
+      b.classList.toggle('on', on);
+      b.textContent = on ? '✓ 正在旋转…' : '旋转 / 翻转';
+    }
+  }
+
   /* ================================================================
-     裁剪 UI 初始化
+     取景框 UI 初始化（裁剪）
      ================================================================ */
   function initCropUI() {
     const seg = $('stCropAspect');
@@ -1760,26 +1704,20 @@
       const b = document.createElement('button');
       b.textContent = a.name;
       b.dataset.ratio = String(a.v);
-      // 默认高亮「原图」（v = 0）
-      if (a.v === 0) b.classList.add('on');
+      // 默认高亮「自由」：进裁剪时取景框就是整个视口，不该假装受了约束
+      if (a.v === -1) b.classList.add('on');
       b.addEventListener('click', () => {
-        if (!crop) return;
+        if (!geom) return;
         for (const el of seg.children) el.classList.remove('on');
         b.classList.add('on');
-        /* ⚠️ 先清掉当前比例再设新的：applyCropAspect 会按目标比例
-           重算尺寸，如果旧的 aspect 还留着，clampCropRect 会把它拉回去 */
-        crop.aspect = 0;
-
         if (a.v > 0) {
-          // 固定比例（1:1 / 16:9 …）
-          applyCropAspect(a.v);
+          applyCropAspect(a.v);          // 固定比例（1:1 / 16:9 …）
         } else if (a.v === 0) {
-          // 原图比例 + 不露白：把取景框收进内接矩形
-          fitCropToImageRatio();
+          fitCropToImageRatio();         // 原图比例，尽可能大
+        } else {
+          geom.aspect = -1;              // 「自由」：解除比例约束
         }
-        /* a.v < 0 的「自由」：什么都不做 —— 保留用户当前拖出的框，
-           之后拖动/缩放也不受比例约束。旋转时同样不强制收框，
-           否则用户辛苦拖出来的框会被弹回最大。 */
+        /* a.v < 0 的「自由」：什么都不做 —— 保留用户当前拖出的框 */
         render();
         drawCropOverlay();
       });
@@ -1787,16 +1725,27 @@
     }
 
     $('stCrop').addEventListener('click', () => {
-      if (crop) exitCrop(false);      // 再点一次 = 取消
+      const on = !!($('stCropOpts') && !$('stCropOpts').hidden);
+      if (on) exitCrop(false);           // 再点一次 = 取消
       else enterCrop();
+    });
+  }
+
+  /* ================================================================
+     旋转 / 翻转 / 缩放 UI
+     ================================================================ */
+  function initRotateUI() {
+    $('stRotateBtn').addEventListener('click', () => {
+      const on = !!($('stRotateOpts') && !$('stRotateOpts').hidden);
+      if (on) exitCrop(false);           // 再点一次 = 取消
+      else enterRotate();
     });
 
     $('stCropRot').addEventListener('input', e => {
       setCropRotation(parseFloat(e.target.value));
     });
 
-    // 90° 快转：超出 ±45 的范围，直接烘焙一次
-    // （滑块只到 ±45，90° 用按钮更顺手；走"应用 + 重新进入"这条路）
+    // 90° 快转：滑块只到 ±45，整转用按钮更顺手
     for (const [id, dir] of [['stCropRotL', -1], ['stCropRotR', 1]]) {
       const btn = $(id);
       if (!btn) continue;
@@ -1806,46 +1755,84 @@
       });
     }
 
-    $('stCropApply').addEventListener('click', () => applyCrop());
+    // 翻转：横竖各一个按钮，两个可以同时按（等于转 180°）
+    const fh = $('stFlipH'), fv = $('stFlipV');
+    if (fh) fh.addEventListener('click', () => setDisplay({ flipX: !geom.flipX }));
+    if (fv) fv.addEventListener('click', () => setDisplay({ flipY: !geom.flipY }));
+
+    const zs = $('stZoom');
+    if (zs) zs.addEventListener('input', e => {
+      setDisplay({ zoom: Number(e.target.value) / 100 });
+    });
+    const zf = $('stZoomFit');
+    if (zf) zf.addEventListener('click', fitZoomToWindow);
+
+    $('stCropApply').addEventListener('click', () => applyGeometry());
     $('stCropCancel').addEventListener('click', () => exitCrop(false));
 
     initCropDrag();
   }
 
+
   /**
-   * 90° 整转：直接用 canvas 的 2D 变换烘焙，不走 shader。
+   * 90° 整转。
    *
-   * 为什么不走 shader 的旋转：90° 是**精确置换**（行列互换），
-   * 用 2D drawImage 一步到位、零重采样误差；而走 shader 要经过
-   * 浮点三角函数，虽然也能对，但没必要。
+   * ⚠️⚠️ 两个设计点容易看错，先说清楚：
+   *
+   * 【一】为什么走 shader 而不是 2D canvas
+   *   要**同时**烘旋转 + 翻转 + 取景框，这三件事只有 shader 那条路
+   *   一次做完（而且和「应用」复用同一条管线 → 所见即所得）。
+   *   代价是 90° 要过一次三角函数，对 Q16 纹理来说误差在 1 个色阶以下。
+   *
+   * 【二】细调角度会被**一起烘进图里**
+   *   旧版是把图转 90° 之后保留 crop.rot（"先拉直 30° 再转 90°，
+   *   不该把拉直丢掉"）。但那样有两处很难受：细调方向会跟着 90° 一起
+   *   转（用户的拉直量会莫名其妙变），而且转完要重算视口 → 又要动
+   *   取景框（回到"旋转改取景框"那套）。
+   *   现在改成把总角度一次烧进像素：视觉结果一样，转完 rot 归零，
+   *   滑杆/标签/状态天然一致，取景框也不用重算。
+   *
+   * ⚠️⚠️ 角度符号在这里错过**两次**（真 bug），最后是**量出来的**，不再推：
+   *   · 界面里 `rot` 的约定是"正值 = 逆时针"（和滑杆一致）
+   *   · dir = +1 是界面上的「⟳ 顺时针 90°」，所以总角度是 **-90**
+   *   第一次写 -dir*90 其实是对的，但我按"符号推导"觉得该反，
+   *   改成 +dir*90 之后画面变成逆时针转 —— 四象限实测：
+   *     -dir*90 → 红从左上到**右上**（顺时针，对）
+   *     +dir*90 → 红从左上到**左下**（逆时针，错）
+   *   教训：这种"两个坐标系各转一次"的符号，推导容易自洽地错，
+   *   直接量一次最快。判据在 test/rotate-invariant.test.mjs 的
+   *   "画面顺时针转过去了"那条。
    */
   async function rotateQuarter(dir) {
-    const t0 = Date.now();
+    if (!img) return;
     busy(true, '正在旋转…');
     try {
-      // 先按当前参数渲染一帧（含已有的调色），再整体转
-      const src = document.createElement('canvas');
-      src.width = img.width; src.height = img.height;
-      const sg = src.getContext('2d');
-      // 用 WebGL 画布的内容：切到原分辨率重画一帧
+      ensureGeom();
+      const totalDeg = geom.rot - dir * 90;
+      /* ⚠️ 烘焙时临时把取景框当成整个视口：转 90° 的语义是"整张图转
+         过去"，用户之前拖小的取景框不该把旋转结果再裁掉一块。 */
+      const keepRect = { ...geom.rect };
+      geom.rect = { x: 0, y: 0, w: 1, h: 1 };
+      const plan = cropRenderPlan(true, { rotDeg: totalDeg });
+      geom.rect = keepRect;
+      if (!plan) throw new Error('拿不到旋转计划');
+
       const prevW = canvas.width, prevH = canvas.height;
-      canvas.width = img.width; canvas.height = img.height;
-      gl.viewport(0, 0, img.width, img.height);
-      resetGeometryUniforms();          // 90° 单独做，不带裁剪
-      draw();
-      sg.drawImage(canvas, 0, 0);
+      canvas.width = plan.bufW;
+      canvas.height = plan.bufH;
+      gl.viewport(0, 0, plan.bufW, plan.bufH);
+      draw(plan);
+
+      const pixels = new Uint8Array(plan.bufW * plan.bufH * 4);
+      gl.readPixels(0, 0, plan.bufW, plan.bufH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
       canvas.width = prevW; canvas.height = prevH;
 
-      const out = document.createElement('canvas');
-      out.width = img.height; out.height = img.width;
-      const og = out.getContext('2d');
-      og.translate(out.width / 2, out.height / 2);
-      og.rotate(dir * Math.PI / 2);
-      og.drawImage(src, -src.width / 2, -src.height / 2);
-
-      const bmp = await createImageBitmap(out);
+      _trace('rotateQuarter', 'rot=' + totalDeg + '° buf=' + plan.bufW + 'x'
+        + plan.bufH + ' off=' + plan.offX.toFixed(3) + ','
+        + plan.offY.toFixed(3) + ' s=' + plan.screenZoom);
+      const baked = await pixelsToBitmap(pixels, plan.bufW, plan.bufH);
       if (img && img.close) img.close();
-      img = bmp;
+      img = baked;
 
       // 尺寸变了，蒙版必须重建
       mask.clear();
@@ -1857,13 +1844,15 @@
       gl.bindTexture(gl.TEXTURE_2D, imageTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
 
-      if (crop) {
-        // 在裁剪模式里转 90°：重新算内接矩形和取景框
-        const keepRot = crop.rot;
-        crop = null;
-        enterCrop();
-        setCropRotation(keepRot);
+      if (geom) {
+        geom.rot = 0;                  // 已经烘进图里了
+        geom.zoom = 1;
+        resetRectToViewport();
+        syncCropRotUI(0);
+        syncFlipUI();
+        syncZoomUI();
       }
+      layoutCanvas();
       render();
       drawCropOverlay();
       toast(`已旋转 90°（${img.width}×${img.height}）`, 2200);
@@ -1873,7 +1862,6 @@
       busy(false);
     }
   }
-
   /** 开始拖拽：记录起点和当前框 */
   function initCropDrag() {
     const cv = ensureCropCanvas();
@@ -1888,59 +1876,64 @@
     };
 
     cv.addEventListener('pointerdown', e => {
-      if (!crop) return;
+      if (!geom) return;
       e.preventDefault();
       cv.setPointerCapture(e.pointerId);
       const p = pos(e);
       const br = cropRectOnCanvas();
+      /* ⚠️ 手柄位置要转成 **y 向上** 的坐标再比 —— 指针事件是屏幕
+         约定（y 向下），而 geom.rect 是画布约定（y 向上）。 */
+      const upY = 1 - br.y - br.h;
       // 判断抓到的是哪个手柄（离角点近就缩放，否则整体移动）
       const th = 0.06;
       const near = (ax, ay) => Math.abs(p.x - ax) < th && Math.abs(p.y - ay) < th;
       let mode = 'move';
-      if (near(br.x, br.y)) mode = 'nw';
-      else if (near(br.x + br.w, br.y)) mode = 'ne';
-      else if (near(br.x, br.y + br.h)) mode = 'sw';
-      else if (near(br.x + br.w, br.y + br.h)) mode = 'se';
-      drag = { mode, start: p, rect0: { ...crop.rect } };
+      if (near(br.x, upY)) mode = 'nw';
+      else if (near(br.x + br.w, upY)) mode = 'ne';
+      else if (near(br.x, upY + br.h)) mode = 'sw';
+      else if (near(br.x + br.w, upY + br.h)) mode = 'se';
+      drag = { mode, start: p, rect0: { ...geom.rect } };
     });
 
     cv.addEventListener('pointermove', e => {
-      if (!drag || !crop) return;
+      if (!drag || !geom) return;
       e.preventDefault();
       const p = pos(e);
       const br = cropRectOnCanvas();
-      // 画布归一化位移 → 裁剪框归一化位移
+      // 画布归一化位移 → 取景框归一化位移。
+      // ⚠️ y 取负：屏幕 y 向下、取景框 y 向上。
       const dx = (p.x - drag.start.x) / br.w;
-      const dy = (p.y - drag.start.y) / br.h;
+      const dy = -(p.y - drag.start.y) / br.h;
       const r0 = drag.rect0;
-      const { inW, inH } = currentInscribed();
 
       if (drag.mode === 'move') {
-        crop.rect = clampCropRect(
-          { x: r0.x + dx * r0.w, y: r0.y + dy * r0.h, w: r0.w, h: r0.h },
-          inW, inH);
+        geom.rect = clampCropRect(
+          { x: r0.x + dx * r0.w, y: r0.y + dy * r0.h, w: r0.w, h: r0.h });
       } else {
         // 角点缩放：改的是宽高，对角的那个角保持不动
         let w = r0.w + (drag.mode.includes('e') ? dx * r0.w : -dx * r0.w);
         let h = r0.h + (drag.mode.includes('s') ? dy * r0.h : -dy * r0.h);
-        w = Math.max(0.05, w); h = Math.max(0.05, h);
+        w = Math.max(MIN_RECT, w); h = Math.max(MIN_RECT, h);
 
-        if (crop.aspect) {
-          // 按比例：先定宽，再算高（宽是拖动的主轴）
-          const box = rotatedBoxSize(img.width, img.height, crop.rot * Math.PI / 180);
-          h = (w * box.W) / (crop.aspect * box.H);
+        /* 按比例约束：像素比例 aspect = (w·W0)/(h·H0) →
+           w/h = aspect·H0/W0。⚠️ 归一化坐标下**不是** w/h = aspect，
+           中间要乘 H0/W0（旧版这里直接把"旋转框像素"当图片像素，
+           只有 0° 才对）。 */
+        if (geom.aspect > 0) {
+          const k = geom.aspect * img.height / img.width;
+          h = w / k;
+          if (h > 1) { h = 1; w = h * k; }
         }
 
         const ax = drag.mode.includes('e') ? r0.x : r0.x + r0.w - w;
         const ay = drag.mode.includes('s') ? r0.y : r0.y + r0.h - h;
-        crop.rect = clampCropRect({ x: ax, y: ay, w, h }, inW, inH);
+        geom.rect = clampCropRect({ x: ax, y: ay, w, h });
       }
 
       layoutCanvas();
       render();
       drawCropOverlay();
     });
-
     const end = e => {
       if (!drag) return;
       drag = null;
@@ -2026,7 +2019,8 @@
     const cr = $('stCrop');
     if (cr) cr.disabled = !on;
     // 没图的时候裁剪状态必须清掉，否则"打开新图但还在裁剪模式里"
-    if (!on && crop) { crop = null; showCropUI(false); }
+    // 没图的时候几何状态必须清掉，否则"打开新图但还在裁剪模式里"
+    if (!on && geom) { geom = null; showCropUI(false); showRotateUI(false); }
     if (!on && typeof syncMaskUI === 'function') syncMaskUI();
   }
 
@@ -3385,7 +3379,7 @@
         render();
         // 裁剪框 overlay 是独立画布，尺寸跟着 WebGL 画布走，
         // 窗口一变必须重画 —— 忘了的话框会留在旧位置上
-        if (crop) drawCropOverlay();
+        if (geom) drawCropOverlay();
       }, 120);
     });
   }
@@ -3466,6 +3460,7 @@
       buildSliders();
       initEvents();
       initCropUI();
+      initRotateUI();
       updateInfo();
       // 美颜面板要等主进程回参数表，不能拖住启动 ——
       // 失败也只是那一块显示"用不了"，不影响其他功能
@@ -3588,34 +3583,40 @@
     maskStats,
     uploadForAI,
     imageBlob,
-    // —— 裁剪 / 旋转 ——
+    // —— 裁剪 / 旋转 / 翻转 ——
     // 暴露出来是为了能在浏览器里读像素验证「转的角度对不对、
     // 裁剪尺寸对不对、四角有没有露白」—— 这些静态一律验不出来。
     enterCrop,
+    enterRotate,
     exitCrop,
     setCropRotation,
-    applyCrop,
+    setDisplay,
+    applyGeometry,
+    applyCrop: applyGeometry,        // 旧名，别处还在用
     rotateQuarter,
+    fitZoomToWindow,
+    autoZoomFor,
     cropRenderPlan,
-    inscribedRect,
+    bakeRenderPlan,
+    clampCropRect,
+    sizeRectToAspect,
+    maxRectForAspect,
     rotatedBoxSize,
+    viewportDims,
+    rotatePad,
     applyCropAspect,
-    get crop() { return crop; },
-    /** 直接设裁剪框（归一化，相对旋转框），测试用 */
+    fitCropToImageRatio,
+    get geom() { return geom; },
+    get crop() { return geom; },     // 旧名（测试和文档里用过）
+    /** 直接设取景框（画布归一化坐标），测试用 */
     setCropRect(r) {
-      if (!crop) return false;
-      const { inW, inH } = currentInscribed();
-      crop.rect = clampCropRect(r, inW, inH);
+      ensureGeom();
+      if (!geom) return false;
+      geom.rect = clampCropRect(r);
       render();
       drawCropOverlay();
       return true;
     },
-    /* 暴露给测试：算"指定比例的最大可放取景框"（0 = 原图比例）。
-       ⚠️ 几何核心函数应该可测 —— 否则只能从渲染结果反推，
-       而反推在裁剪这块已经栽过很多次（颜色/包围盒都不够硬）。 */
-    fitRectToBox,
-    fitCropToImageRatio,
-    fitRatioInRotated,
     _drawCropOverlay: drawCropOverlay,
     _cropRectOnCanvas: cropRectOnCanvas,
     _applyGeometry: applyGeometryUniforms,
@@ -3623,14 +3624,20 @@
         所以关键步骤记在数组里由测试读出来。排查几何问题很有用。 */
     get _trace() { return [..._traceLog]; },
     _clearTrace() { _traceLog.length = 0; },
+    _lastPlan: () => _lastPlan,
     _draw: draw,
-    /** 读回当前 shader 上的几何 uniform —— 排查"裁剪没生效"用。
-        这一层是整块逻辑的最终落点，出问题时先看它对不对。 */
+    /** 读回当前 shader 上的几何 uniform —— 排查"几何没生效"用。
+        这一层是整块逻辑的最终落点，出问题时先看它对不对。
+        ⚠️ 这里刻意把**影响形状**的几个量都读出来：测试靠
+        "两个轴的缩放系数是不是同一个"来断言"不扭曲"，
+        而这是结构性判据，比从像素反推硬得多。 */
     _geometryUniforms() {
       return {
         rot: gl.getUniform(program, uniforms.uRot),
-        scale: gl.getUniform(program, uniforms.uUvScale),
-        offset: gl.getUniform(program, uniforms.uCropOffset),
+        flip: gl.getUniform(program, uniforms.uFlip),
+        scale: gl.getUniform(program, uniforms.uDisplayScale),
+        offset: gl.getUniform(program, uniforms.uImgOffset),
+        bg: gl.getUniform(program, uniforms.uBg),
         viewport: Array.from(gl.getParameter(gl.VIEWPORT)),
         canvas: [canvas.width, canvas.height]
       };
