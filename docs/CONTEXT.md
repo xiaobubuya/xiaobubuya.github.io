@@ -112,7 +112,7 @@ autolayout  62   前端几何
 upload      20   上传流程
 mask        21   蒙版引擎
 contract     9   跨仓库契约 ← 改任何接口后必跑
-crop-geometry 15 裁剪采样区间的**源码级等式**（抠公式求值，快且精确）
+crop-geometry 19 裁剪采样区间的**源码级等式**（抠公式求值，快且精确）
 sw-version   4   sw.js 外壳版本：改了 studio.* 必须升（借 git 判断）
 line-endings 4   行尾一致性（CRLF 会让多行变异假红，实测踩过）
 shader-guard 3   shader 模板字符串护栏（反引号会提前闭合模板）
@@ -125,7 +125,7 @@ crop-browser      16   裁剪几何 + 行编码图量**实际采到的源行**
 inpaint（桌面）    20   提示词 + 坐标
 beautify（桌面）   49   参数裁剪 + 密钥形状 + 串行限流 + 模板表校验（会真等 3 秒）
 smoke（后端）    212   全接口
-                                       前端小计 267
+                                       前端小计 276
 ```
 
 前端和桌面都有统一入口：`node test/run-all.mjs`（前端，`--fast` 跳过浏览器）

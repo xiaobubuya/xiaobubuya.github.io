@@ -25,6 +25,7 @@ const FAST = [
   ['line-endings', '行尾一致性（CRLF 会让多行变异假红）'],
   ['assets', '静态素材（og 绝对 URL / 图标存在且是一套）'],
   ['topbar', '修图页顶栏（窄窗口不溢出 / 不挤成一坨）'],
+  ['rotate-invariant', '旋转不变量（图片不能被拉伸）'],
   ['shader-guard', 'shader 模板字符串护栏'],
   ['adjustments', '调整项 ↔ shader 一致性'],
   ['curve', '色调曲线 LUT（单调性/串扰）'],

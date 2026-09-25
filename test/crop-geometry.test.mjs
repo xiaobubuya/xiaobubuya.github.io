@@ -3,21 +3,24 @@
    ----------------------------------------------------------------
    为什么需要这一层（而不是只靠浏览器读像素）：
 
-   裁剪的纵向朝向靠读像素查了很久才查出来，根因是**判据不够硬**：
-   原来的断言是"预览 == 应用后"和"是红或绿就行"。
-   这两条都**抓不到朝向错**：
-     · 预览和应用后走同一套 uniform，永远一致（一致性当判据没用）
-     · 翻转后是顶蓝底红，也是"红或绿"里的一半，宽松阈值能蒙过去
+   裁剪的几何前后错了**很多轮**，每次都换个样子冒出来，而且
+   **颜色类判据抓不到**：
+     · "预览 == 应用后" —— 两者走同一套 uniform，永远一致
+     · "是红或绿就行"   —— 偏半个框、被拉伸，颜色照样对
+   所以这一层直接用**数**验：把 cropRenderPlan 的公式从源码里抠出来
+   求值，和几何期望精确比对。快、精确、无魔数。
 
-   这一层换个判据：**直接检查采样区间的端点**。
-   不读像素、不断言颜色，而是从源码里把 cropRenderPlan 的公式
-   取出来，验证它算出的区间**精确等于**取景框对应的那块原图。
+   ⭐ 唯一的硬约束（记住这一条就够）：
+       **采样区间的比例 == 输出的比例**
+   `sX` 是"采样区间占源图**宽度**的比例"，所以
+       (sX·W0) / (sY·H0) == outW/outH
+   ⚠️ 我一度写成 `sX/sY == W0/H0`，24 组全红 —— 那是错的判据。
 
-   好处是判据是"算出来的唯一正确答案"，没有魔数、没有容差，
-   而且比浏览器测试快几千倍。
+   ⚠️ "输出比例"由**取景框**决定（用户选了 16:9 就得是 16:9），
+   **不是**图片比例。曾经拿图片比例当输出比例，把比例预设废掉了。
 
-   ⚠️ 它防不住"烘焙时行序翻错"（那是 applyCrop 里的另一段代码）——
-   那一条由 crop-browser.test.mjs 的行编码图断言守住。
+   ⚠️ 抠源码用 new Function 而不是抄一份公式 ——
+   抄一份的话改了 studio.js 这里不会红，等于没测。
    ================================================================ */
 import { strict as assert } from 'node:assert';
 import fs from 'node:fs';
@@ -35,54 +38,70 @@ const t = (name, fn) => {
 
 console.log('\n=== 裁剪几何：源码级区间等式 ===\n');
 
-/* ---------------- 从源码里抠出公式 ---------------- */
-
-const mSX = /const sX = ([^;]+);/.exec(SRC);
-const mSY = /const sY = ([^;]+);/.exec(SRC);
-const mOffX = /const offX = ([^;]+);/.exec(SRC);
-const mOffY = /const offY = ([^;]+);/.exec(SRC);
-
-t('能在 studio.js 里找到 sX / sY / offX / offY 四个公式', () => {
-  assert.ok(mSX, '找不到 `const sX = ...` —— 公式改名了就更新这个测试');
-  assert.ok(mSY, '找不到 `const sY = ...`');
-  assert.ok(mOffX, '找不到 `const offX = ...`');
-  assert.ok(mOffY, '找不到 `const offY = ...`');
-});
-
-/**
- * 把源码里的公式求值出来。
- * ⚠️ 用 new Function 而不是把公式抄一份到这个文件里 ——
- * 抄一份的话改了 studio.js 这里不会红，测的就是自己抄的那份，
- * 等于没测（这个坑在别处踩过）。
- *
- * ⚠️ sX 的公式引用了上游的 R / apW / apH，所以那几行也必须一起插进来，
- * 否则 new Function 里就是 ReferenceError（踩过：apW is not defined，
- * 报错完全指不到"少插了一行中间变量"）。
- * 这里直接把源码里 R..sY 那一整段搬过来。
- */
-function grab(re) {
-  const m = re.exec(SRC);
-  return m ? m[0] : null;
+/* ================================================================
+   按**花括号配对**提取函数体
+   ----------------------------------------------------------------
+   ⚠️ 不能用 `/function f\(...\) \{([\s\S]*?)\n  \}/` 这种非贪婪正则：
+   函数体里有嵌套的 `if (...) { ... }`，非贪婪会在**第一个** `\n  }`
+   处停下，得到被截断的函数体，于是函数里引用的变量（crop / img）
+   泄漏到外层作用域，报 `crop is not defined` —— 看着像语法问题，
+   其实是提取截断了。
+   ================================================================ */
+function extractFn(name) {
+  const start = SRC.indexOf(`function ${name}(`);
+  assert.ok(start >= 0, `找不到 ${name}`);
+  const braceStart = SRC.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < SRC.length; i++) {
+    if (SRC[i] === '{') depth++;
+    else if (SRC[i] === '}') {
+      depth--;
+      if (depth === 0) return SRC.slice(braceStart + 1, i);
+    }
+  }
+  throw new Error(`${name} 的花括号不配对`);
 }
 
-const MID = [
-  grab(/const R = [^\n]*/),
-  grab(/const apW = [^\n]*/),
-  grab(/const apH = [^\n]*/),
-  grab(/const insLeft = [^\n]*/),
-  grab(/const insBottom = [^\n]*/)
-].filter(Boolean);
+const INSCRIBED_BODY = extractFn('inscribedRect');
+const PLAN_BODY = extractFn('cropRenderPlan');
+
+/* ⚠️ 公式必须在**函数体内部**搜，不能在整个文件里搜。
+   踩过：`const k = ([^\n]*)` 在整文件里搜，匹配到别处的同名变量，
+   报 `crop is not defined` —— 完全指不到"搜错了地方"。 */
+const grab = re => {
+  const m = re.exec(PLAN_BODY);
+  return m ? m[0] : null;
+};
+
+const PARTS = [
+  ['regW', /const regW = [^\n]*/],
+  ['regH', /const regH = [^\n]*/],
+  ['sX', /const sX = [^\n]*/],
+  ['sY', /const sY = [^\n]*/],
+  /* ⚠️ offX/offY 依赖 cx/cy 这两个**中间变量**，必须一起抠。
+     漏掉时报 `cx is not defined` —— 看着像语法问题，
+     其实是"少插了一行中间变量"。 */
+  ['cx', /const cx = [^\n]*/],
+  ['cy', /const cy = [^\n]*/],
+  ['offX', /const offX = [^\n]*/],
+  ['offY', /const offY = [^\n]*/]
+];
+
+t('能在 cropRenderPlan 里找到全部公式', () => {
+  for (const [name, re] of PARTS) {
+    assert.ok(grab(re), `找不到 ${name} 的公式 —— 公式改名了就更新这个测试`);
+  }
+});
 
 function makePlanner() {
+  const formulaBody = PARTS.map(([, re]) => grab(re)).join('\n      ');
   const body = `
     "use strict";
+    function inscribedRect(W0, H0, phi) {${INSCRIBED_BODY}
+    }
     return function (r, ins, box, W0, H0) {
-      ${MID.join('\n      ')}
-      const sX = ${mSX[1]};
-      const sY = ${mSY[1]};
-      const offX = ${mOffX[1]};
-      const offY = ${mOffY[1]};
-      return { sX, sY, offX, offY };
+      ${formulaBody}
+      return { sX, sY, offX, offY, regW, regH };
     };
   `;
   return new Function(body)();
@@ -92,72 +111,24 @@ let planRaw;
 try { planRaw = makePlanner(); }
 catch (e) { console.log('  ⚠️ 公式求值失败：' + e.message); process.exit(1); }
 
-/**
- * 统一入口。
- * ⚠️ 参数顺序踩过一次坑：包装函数第一版写成 `(r, ins, boxW, boxH, W0, H0)`
- * 却转手调 `planRaw(r, ins, W0, H0)`，调用点又漏传 boxW/boxH，
- * 于是 W0/H0 落到了错的位置 —— 结果全是 NaN，
- * 报出来是"x 跨度应该是 1，实际 NaN"，完全指不到"参数传错"。
- * 现在只保留一个入口，且在入口处就把 box 拿掉，
- * 让调用点的参数个数和签名完全一致。
- */
-/* ⚠️ 用 rest 参数数个数，不要用 arguments —— 箭头函数里没有 arguments
-   （踩过：报 "arguments is not defined"，看着像语法问题）。 */
 const plan = (...a) => {
-  if (a.length !== 6) {
-    throw new Error('plan 要 6 个参数 (r, ins, boxW, boxH, W0, H0)，'
-      + `实际 ${a.length} 个 —— 调用点漏传了`);
+  if (a.length !== 5) {
+    throw new Error(`plan 要 5 个参数 (r, ins, box, W0, H0)，实际 ${a.length} 个`);
   }
-  const [r, ins, boxW, boxH, W0, H0] = a;
-  return planRaw(r, ins, { W: boxW, H: boxH }, W0, H0);
+  const [r, ins, box, W0, H0] = a;
+  return planRaw(r, ins, box, W0, H0);
 };
 
-/**
- * 期望的采样区间。
- * ----------------------------------------------------------------
- * 先把 crop.rect（**相对旋转框**的归一化坐标）折算成
- * 「在旋转框里占的比例」：
- *     xN = (1 - insW/boxW)/2 + r.x * (insW/boxW)
- *     wN = r.w * (insW/boxW)
- *
- * ⚠️ 这一步第一版写错了：忘了 rect 是相对**内接矩形**而不是相对**原图**。
- * 0° 时内接矩形 == 原图，看起来没事；但公式里的居中项写成 (1-w)/2
- * 而不是内接矩形的实际位置，全幅时就推出 x∈[1,2] 这种荒谬结果。
- *
- * ⚠️⚠️ 第二版又漏了一层：**目标宽高比**。
- * 取景框的比例不一定放得进内接矩形 —— 放不进时输出会被钳制
- * （`applyCropAspect` / `setCropRect` 都可能留下这种框），
- * 此时**采样区间的宽高比必须跟着输出走**，否则画面被拉长。
- * 所以这里先按目标比例把框"缩进去"，再折算：
- *     图上采样宽 = min(wN·insW, hN·insH·R)     R = 目标宽高比
- *     图上采样高 = 图上采样宽 / R
- *
- * x 方向：屏幕 x 和图片 u 同向
- * y 方向：crop.rect.y 是**屏幕约定**（0 = 画面下边、1 = 上边），
- *         图片 v 反向，所以区间要翻过来。
- */
-function expectedSample(r, ins, boxW, boxH) {
-  const xN = (1 - ins.w / boxW) / 2 + r.x * (ins.w / boxW);
-  const wN = r.w * (ins.w / boxW);
-  const yN = (1 - ins.h / boxH) / 2 + r.y * (ins.h / boxH);
-  const hN = r.h * (ins.h / boxH);
+const interval = q => ({
+  xLo: 0.5 + q.offX - q.sX / 2, xHi: 0.5 + q.offX + q.sX / 2,
+  yLo: 0.5 + q.offY - q.sY / 2, yHi: 0.5 + q.offY + q.sY / 2
+});
+const near = (a, b, tol = 1e-9) => Math.abs(a - b) < tol;
 
-  const wImg = wN * ins.w;          // 框在原图上的宽（像素）
-  const hImg = hN * ins.h;
-  const R = wImg / hImg;            // 目标宽高比
-  const apW = Math.min(wImg, hImg * R);
-  const apH = apW / R;
-
-  const fw = apW / ins.w;           // 折算回"占旋转框的比例"
-  const fh = apH / ins.h;
-  const xc = xN + wN / 2;
-  const yc = yN + hN / 2;           // 屏幕约定下的中心
-
-  return {
-    xLo: xc - fw / 2, xHi: xc + fw / 2, fw,
-    yLo: 1 - (yc + fh / 2), yHi: 1 - (yc - fh / 2), fh
-  };
-}
+/* inscribedRect 的可调用版本。
+   ⚠️ 必须定义在**前面** —— 下面的"比例预设"用例要用到它，
+   而 const 有暂时性死区（定义在后面会报 "Cannot access before initialization"）。 */
+const insFn = new Function('W0', 'H0', 'phi', INSCRIBED_BODY);
 
 /* ---------------- 0°（内接矩形 == 原图） ---------------- */
 
@@ -176,130 +147,210 @@ const cases0 = [
 ];
 
 for (const [name, r] of cases0) {
-  t(`⭐ 0° ${name}：采样区间精确等于取景框那块原图`, () => {
-    const q = plan(r, ins0, box0.W, box0.H, W0, H0);
-    const ex = expectedSample(r, ins0, box0.W, box0.H);
+  t(`⭐ 0° ${name}：采样区间就是取景框覆盖的那块`, () => {
+    const q = plan(r, ins0, box0, W0, H0);
+    const iv = interval(q);
 
-    // 采样区间 = [0.5 + off - s/2, 0.5 + off + s/2]
-    const xLo = 0.5 + q.offX - q.sX / 2;
-    const xHi = 0.5 + q.offX + q.sX / 2;
-    const yLo = 0.5 + q.offY - q.sY / 2;
-    const yHi = 0.5 + q.offY + q.sY / 2;
+    /* 采样区域 = 取景框覆盖的图片区域（regW×regH），
+       摆到该区域的中心上。 */
+    const regW = r.w * ins0.w, regH = r.h * ins0.h;
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const wantXLo = cx - (regW / W0) / 2;
+    const wantYLo = 1 - (cy + (regH / H0) / 2);
 
-    const near = (a, b) => Math.abs(a - b) < 1e-9;
-    assert.ok(near(q.sX, ex.fw),
-      `x 跨度应该是 ${ex.fw}，实际 ${q.sX}`);
-    assert.ok(near(q.sY, ex.fh),
-      `y 跨度应该是 ${ex.fh}，实际 ${q.sY}`);
-
-    assert.ok(near(xLo, ex.xLo) && near(xHi, ex.xHi),
-      `x 采样区间应该是 [${ex.xLo}, ${ex.xHi}]，实际 [${xLo}, ${xHi}]`);
-    assert.ok(near(yLo, ex.yLo) && near(yHi, ex.yHi),
-      `y 采样区间应该是 [${ex.yLo.toFixed(4)}, ${ex.yHi.toFixed(4)}]，`
-      + `实际 [${yLo.toFixed(4)}, ${yHi.toFixed(4)}]\n`
-      + `     rect.y 是**屏幕约定**：y=0 在画面下边、y=1 在上边`
-      + `（框 y=${r.y}~${r.y + r.h}），换算成图片 v 是反过来的`);
+    assert.ok(near(q.regW, regW, 1e-9) && near(q.regH, regH, 1e-9),
+      `注册区域应该是 ${regW}×${regH}，实际 ${q.regW}×${q.regH}`);
+    assert.ok(near(q.sX, regW / W0, 1e-9) && near(q.sY, regH / H0, 1e-9),
+      `sX/sY 应该是 ${regW / W0}/${regH / H0}，实际 ${q.sX}/${q.sY}`);
+    assert.ok(near(iv.xLo, wantXLo, 1e-9) && near(iv.yLo, wantYLo, 1e-9),
+      `采样区间应该是 [${wantXLo.toFixed(4)}, ${(wantXLo + regW / W0).toFixed(4)}] `
+      + `× [${wantYLo.toFixed(4)}, ${(wantYLo + regH / H0).toFixed(4)}]，`
+      + `实际 [${iv.xLo.toFixed(4)}, ${iv.xHi.toFixed(4)}] `
+      + `× [${iv.yLo.toFixed(4)}, ${iv.yHi.toFixed(4)}]\n`
+      + '     rect.y 是**屏幕约定**：y=0 在画面下边、y=1 在上边');
   });
 }
 
-/* ---------------- 那条曾经错了很久的断言，单独再钉一遍 ---------------- */
+/* ---------------- 不扭曲（核心） ---------------- */
 
-t('⭐⭐ 裁画面上半 → 采到的必须是原图的**上半**（v ∈ [0, 0.5]）', () => {
-  const r = { x: 0, y: 0.5, w: 1, h: 0.5 };
-  const q = plan(r, ins0, box0.W, box0.H, W0, H0);
-  const yLo = 0.5 + q.offY - q.sY / 2;
-  const yHi = 0.5 + q.offY + q.sY / 2;
-  assert.ok(Math.abs(yLo) < 1e-9,
-    `采样区间的上端应该是 0（原图最上边），实际 ${yLo.toFixed(4)}`
-    + ' —— 偏了就是 offY 少减/多减了 sY/2');
-  assert.ok(Math.abs(yHi - 0.5) < 1e-9,
-    `采样区间的下端应该是 0.5（原图正中），实际 ${yHi.toFixed(4)}`);
-});
-
-t('⭐⭐ 裁画面下半 → 采到的必须是原图的**下半**（v ∈ [0.5, 1]）', () => {
-  const r = { x: 0, y: 0, w: 1, h: 0.5 };
-  const q = plan(r, ins0, box0.W, box0.H, W0, H0);
-  const yLo = 0.5 + q.offY - q.sY / 2;
-  const yHi = 0.5 + q.offY + q.sY / 2;
-  assert.ok(Math.abs(yLo - 0.5) < 1e-9, `上端应该是 0.5，实际 ${yLo.toFixed(4)}`);
-  assert.ok(Math.abs(yHi - 1) < 1e-9, `下端应该是 1，实际 ${yHi.toFixed(4)}`);
-});
-
-t('⭐⭐ 采样区间的宽高比必须等于输出的宽高比（防画面被拉长）', () => {
-  /* ⚠️ 这条钉的是一个**实际发生过**的 bug：
-     cropRenderPlan 原来假设"取景框比例 == 输出比例"，但只要框比
-     内接矩形允许的最宽值还宽，输出就会被钳制（比如 2:1 的框配 1:1
-     比例 → 输出 400×400），而采样区间还是按 2:1 算的 ——
-     纵向只采一半，画面被拉长一倍。
-     症状是"裁剪结果的朝向/比例不对"，但根因和朝向无关。 */
-  for (const [name, r] of cases0) {
-    const q = plan(r, ins0, box0.W, box0.H, W0, H0);
-    const ex = expectedSample(r, ins0, box0.W, box0.H);
-
-    // 采样区间在原图上占的像素
-    const apWpx = q.sX * W0;
-    const apHpx = q.sY * H0;
-    // 输出尺寸（导出分支）
-    const boxL = { W: box0.W, H: box0.H };
-    const viewW = r.w * boxL.W, viewH = r.h * boxL.H;
-    const outW = Math.max(1, Math.round(viewW * (ins0.w / boxL.W)));
-    const outH = Math.max(1, Math.round(viewH * (ins0.h / boxL.H)));
-
-    const rSample = apWpx / apHpx;
-    const rOut = outW / outH;
-    assert.ok(Math.abs(rSample - rOut) < 0.01,
-      `${name}：采样区间的宽高比 ${rSample.toFixed(3)}（${apWpx.toFixed(1)}×`
-      + `${apHpx.toFixed(1)} 原图像素）和输出 ${outW}×${outH} 的比例 `
-      + `${rOut.toFixed(3)} 不一致 —— 画面会被拉长`);
-
-    // 顺便确认期望值算的是同一件事
-    assert.ok(Math.abs(q.sX - ex.fw) < 1e-9 && Math.abs(q.sY - ex.fh) < 1e-9,
-      `${name}：跨度期望 (${ex.fw}, ${ex.fh})，实际 (${q.sX}, ${q.sY})`);
+t('⭐⭐ 采样区间比例 == 输出比例（不扭曲的充要条件）', () => {
+  /* ⚠️ 判据必须用"采样区间的**像素**比例"： (sX·W0)/(sY·H0)，
+     而不是 sX/sY。我一开始写成 sX/sY == W0/H0，24 组全红，白查一轮。 */
+  const combos = [
+    { r: { x: 0, y: 0.5, w: 1, h: 0.5 }, ins: { w: 300, h: 200 } },
+    { r: { x: 0.1, y: 0.2, w: 0.6, h: 0.4 }, ins: { w: 250, h: 180 } },
+    { r: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }, ins: { w: 280, h: 210 } },
+    // 一个明显非图片比例的框（16:9）
+    { r: { x: 0.05, y: 0.4, w: 0.9, h: 0.2 }, ins: { w: 360, h: 300 } }
+  ];
+  for (const c of combos) {
+    const q = plan(c.r, c.ins, box0, W0, H0);
+    const apRatio = (q.sX * W0) / (q.sY * H0);
+    const outRatio = q.regW / q.regH;
+    assert.ok(Math.abs(apRatio / outRatio - 1) < 1e-6,
+      `采样比例 ${apRatio.toFixed(4)} 应该等于输出比例 ${outRatio.toFixed(4)}`
+      + `（rect=${JSON.stringify(c.r)}）`);
   }
+});
+
+t('⭐ 输出比例由取景框决定（比例预设不能被废掉）', () => {
+  /* 用户选 16:9，导出就得是 16:9。
+     ⚠️ 曾经把输出比例写成"图片比例"，比例预设直接失效 ——
+     这条断言就是防它回来的。 */
+  const ins = { w: 360, h: 300 };
+  const box = { W: 400, H: 300 };
+  const target = 16 / 9;
+  // 0° 时 ins/box = 1，所以图片上的比例就是 rect.w/rect.h
+  const nw = 0.9, nh = (nw * ins.w / target) / ins.h;
+  const r = { x: (1 - nw) / 2, y: (1 - nh) / 2, w: nw, h: nh };
+  const q = plan(r, ins, box, 360, 300);
+  const outRatio = q.regW / q.regH;
+  assert.ok(Math.abs(outRatio - target) < 0.02,
+    `取景框是 16:9，输出比例应该是 ${target.toFixed(3)}，实际 ${outRatio.toFixed(3)}`
+    + ' —— 如果接近图片比例(1.2)，说明输出比例被强制成了图片比例，'
+    + '比例预设会失效');
 });
 
 t('⭐ 取景框居中时采样区间也居中（不能有系统性偏移）', () => {
   const r = { x: 0.25, y: 0.25, w: 0.5, h: 0.5 };
-  const q = plan(r, ins0, box0.W, box0.H, W0, H0);
-  assert.ok(Math.abs(q.offY) < 1e-9,
-    `居中取景框的 offY 应该是 0，实际 ${q.offY}`);
-  assert.ok(Math.abs(q.offX) < 1e-9,
-    `居中取景框的 offX 应该是 0，实际 ${q.offX}`);
+  const q = plan(r, ins0, box0, W0, H0);
+  assert.ok(Math.abs(q.offX) < 1e-9, `居中取景框的 offX 应该是 0，实际 ${q.offX}`);
+  assert.ok(Math.abs(q.offY) < 1e-9, `居中取景框的 offY 应该是 0，实际 ${q.offY}`);
 });
 
-t('⭐ 0° 全幅是恒等变换（正常编辑必须不受影响）', () => {
-  const q = plan({ x: 0, y: 0, w: 1, h: 1 }, ins0, box0.W, box0.H, W0, H0);
-  assert.equal(q.sX, 1, `全幅 sX 应该是 1，实际 ${q.sX}`);
-  assert.equal(q.sY, 1, `全幅 sY 应该是 1，实际 ${q.sY}`);
-  assert.equal(q.offX, 0, `全幅 offX 应该是 0，实际 ${q.offX}`);
-  assert.equal(q.offY, 0, `全幅 offY 应该是 0，实际 ${q.offY}`);
+t('⭐⭐ 0° 全幅是恒等变换（正常编辑必须不受影响）', () => {
+  const q = plan({ x: 0, y: 0, w: 1, h: 1 }, ins0, box0, W0, H0);
+  assert.ok(near(q.sX, 1) && near(q.sY, 1),
+    `全幅 sX/sY 应该是 1，实际 ${q.sX}/${q.sY}`);
+  assert.ok(near(q.offX, 0) && near(q.offY, 0),
+    `全幅 offX/offY 应该是 0，实际 ${q.offX}/${q.offY}`);
 });
 
-/* ---------------- 采样区间不能越出原图 ---------------- */
+t('⭐⭐ 比例预设：取景框在**图片上**的比例等于所选比例（含旋转）', () => {
+  /* ⚠️ applyCropAspect 曾把"旋转框像素"当成"图片像素"来算比例 ——
+     而内接矩形在横纵上相对旋转框的比例不同（旋转后必然如此），
+     所以旧写法**只有 0° 才对**。实测 400×300 转 45° 选 16:9，
+     图片上的比例算出来是 2.133 而不是 1.778。
+     这条断言在 0° 和 45° 都验一遍。 */
+  const boxFor = (W, H, deg) => {
+    const phi = deg * Math.PI / 180;
+    const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
+    return { W: W * c + H * s, H: W * s + H * c };
+  };
 
-t('⭐ 合法取景框（在内接矩形内）算出的采样区间不会越界', () => {
-  for (const [name, r] of cases0) {
-    const q = plan(r, ins0, box0.W, box0.H, W0, H0);
-    const xLo = 0.5 + q.offX - q.sX / 2, xHi = 0.5 + q.offX + q.sX / 2;
-    const yLo = 0.5 + q.offY - q.sY / 2, yHi = 0.5 + q.offY + q.sY / 2;
-    const eps = 1e-9;
-    assert.ok(xLo >= -eps && xHi <= 1 + eps,
-      `${name}：x 区间 [${xLo}, ${xHi}] 越出 [0,1]`);
-    assert.ok(yLo >= -eps && yHi <= 1 + eps,
-      `${name}：y 区间 [${yLo}, ${yHi}] 越出 [0,1]`);
+  for (const deg of [0, 45]) {
+    const W = 400, H = 300;
+    const box = boxFor(W, H, deg);
+    const ins = insFn(W, H, deg * Math.PI / 180);
+    // 取景框：图片上要做到 16:9
+    const target = 16 / 9;
+    // 图片上的宽高 = rect.w·ins.w × rect.h·ins.h，令其比 = target
+    const nw = 0.8;                                  // 随便取个不满幅的宽度
+    const nh = (nw * ins.w / target) / ins.h;
+    const r = { x: (1 - nw) / 2, y: (1 - nh) / 2, w: nw, h: nh };
+    const outRatio = (r.w * ins.w) / (r.h * ins.h);
+    assert.ok(Math.abs(outRatio - target) < 0.02,
+      `${deg}°: 图片上取景框比例应该是 ${target.toFixed(3)}，实际 ${outRatio.toFixed(3)}`);
+    // 顺带确认 cropRenderPlan 的输出比例跟着它
+    const q = plan(r, ins, box, W, H);
+    const qRatio = q.regW / q.regH;
+    assert.ok(Math.abs(qRatio - target) < 0.02,
+      `${deg}°: 输出比例应该是 ${target.toFixed(3)}，实际 ${qRatio.toFixed(3)}`);
   }
 });
 
-/* ---------------- 源码级：两个坐标系的约定要写清楚 ---------------- */
+t('⭐ 合法取景框算出的采样区间不会越界', () => {
+  for (const [name, r] of cases0) {
+    const q = plan(r, ins0, box0, W0, H0);
+    const iv = interval(q);
+    const eps = 1e-9;
+    assert.ok(iv.xLo >= -eps && iv.xHi <= 1 + eps,
+      `${name}：x 区间 [${iv.xLo}, ${iv.xHi}] 越出 [0,1]`);
+    assert.ok(iv.yLo >= -eps && iv.yHi <= 1 + eps,
+      `${name}：y 区间 [${iv.yLo}, ${iv.yHi}] 越出 [0,1]`);
+  }
+});
 
-t('cropRenderPlan 里写明了 rect 是"屏幕约定（y 向下）"', () => {
-  // 这条不是形式主义：约定的方向搞反正是这个 bug 的根因，
-  // 而"哪边是上"光看代码看不出来，只能靠注释传递。
-  assert.ok(/屏幕约定/.test(SRC),
-    'cropRenderPlan 附近没有说明 crop.rect 用的是哪种 y 约定 —— '
-    + '下一个人会再踩一次，把注释补回去');
-  assert.ok(/图片约定|0 = 图\*?\*?上\*?\*?边|图上边/.test(SRC),
-    '没有说明 shader 采样用的是图片约定（v=0 是图上边）');
+/* ================================================================
+   inscribedRect：必须真的是"最大内接矩形"
+   ----------------------------------------------------------------
+   ⚠️ 这个函数前后错了**三次**（阈值写反 / 钳制后代回 / 交点公式在
+   det≈0 处除零）。症状都是"旋转后画面被裁成一条细缝"或"采到图外"。
+   下面两条断言用**数值金标准**对照，能一次性抓住所有这三种错法。
+   ================================================================ */
+
+/** 金标准：一维扫描求最大面积（步长比实现更细） */
+function maxArea(W0, H0, phi, steps = 40000) {
+  const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
+  let best = 0;
+  for (let i = 1; i <= steps; i++) {
+    const w = W0 * i / steps;
+    const h = Math.min((W0 - w * c) / s, (H0 - w * s) / c, H0);
+    if (h > 0 && w * h > best) best = w * h;
+  }
+  return best;
+}
+
+const SIZES = [[400, 300], [300, 400], [600, 400], [1920, 1080], [1080, 1920]];
+const ANGLES = [0.5, 1, 5, 10, 20, 30, 44, 45, 46, 60, 80, 89, 89.5];
+
+t('⭐⭐ inscribedRect 的解真的放得下（两条不等式成立）', () => {
+  for (const [W, H] of SIZES) {
+    for (const deg of ANGLES) {
+      const phi = deg * Math.PI / 180;
+      const { w, h } = insFn(W, H, phi);
+      const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
+      assert.ok(w > 0 && h > 0, `${W}×${H} ${deg}°: 解出非正尺寸 ${w}×${h}`);
+      assert.ok(w * c + h * s <= W * (1 + 1e-6),
+        `${W}×${H} ${deg}°: w·c+h·s = ${(w * c + h * s).toFixed(2)} > W0 = ${W}`
+        + ' —— 会采到图外');
+      assert.ok(w * s + h * c <= H * (1 + 1e-6),
+        `${W}×${H} ${deg}°: w·s+h·c = ${(w * s + h * c).toFixed(2)} > H0 = ${H}`
+        + ' —— 会采到图外');
+    }
+  }
+});
+
+t('⭐⭐ inscribedRect 的解是最大面积（不小于数值最优的 99.5%）', () => {
+  for (const [W, H] of SIZES) {
+    for (const deg of ANGLES) {
+      const phi = deg * Math.PI / 180;
+      const { w, h } = insFn(W, H, phi);
+      const mine = w * h;
+      const best = maxArea(W, H, phi);
+      assert.ok(mine >= best * 0.995,
+        `${W}×${H} ${deg}°: 解出面积 ${mine.toFixed(0)}（${w.toFixed(1)}×${h.toFixed(1)}），`
+        + `数值最优 ${best.toFixed(0)} —— 框取小了，画面会被白白裁掉`);
+    }
+  }
+});
+
+t('0° 时 inscribedRect 返回整张图（调用方依赖这条不变量）', () => {
+  /* enterCrop / currentInscribed 用 ins.w/box.W 把取景框归一化，
+     并假定 0° 时内接矩形就是整张图。破坏它会让无旋转时取景框就不是满幅。 */
+  for (const [W, H] of SIZES) {
+    const { w, h } = insFn(W, H, 0);
+    assert.ok(near(w, W, 1e-6) && near(h, H, 1e-6),
+      `${W}×${H} 0°: 应该返回 ${W}×${H}，实际 ${w}×${h}`);
+  }
+});
+
+/* ---------------- 源码级：约定要写清楚 ---------------- */
+
+t('cropRenderPlan 里写明了 rect 是"屏幕约定"、采样是"图片约定"', () => {
+  assert.ok(/屏幕约定/.test(PLAN_BODY),
+    '没有说明 crop.rect 用的是哪种 y 约定 —— 方向搞反正是这个 bug 的根因，'
+    + '而下一个人只能靠注释知道');
+  assert.ok(/图片约定|图上边/.test(PLAN_BODY),
+    '没有说明 shader 采样用的是图片约定（v = 0 是图上边）');
+});
+
+t('cropRenderPlan 里写明了"不扭曲"的判据', () => {
+  assert.ok(/采样.{0,6}比例.{0,10}(等于|=).{0,6}输出.{0,4}比例/.test(PLAN_BODY)
+    || /不扭曲|拉伸/.test(PLAN_BODY),
+    '没有写清楚"为什么不能扭曲"的判据 —— 这个坑重复踩了很多次，'
+    + '注释是唯一能拦住下一次的东西');
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);
