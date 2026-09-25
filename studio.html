@@ -89,20 +89,79 @@
       <button id="stPanelToggle" class="st-mini" title="收起/展开">▸</button>
     </div>
 
-    <!-- 范围：全局 / 局部（蒙版）。放在滑块上面，因为「这次调整作用于哪」
-         是比「调多少」更前置的决定 -->
-    <div class="st-scope" id="stScope">
-      <label class="st-switch" title="打开后，下面的调整只作用于涂过的区域">
-        <input type="checkbox" id="stUseMask" disabled>
-        <span>只作用于涂过的区域</span>
-      </label>
-    </div>
+    <!-- ================================================================
+         三个**可折叠**区域：常规修图 / AI 修图 / 裁剪旋转
+         ----------------------------------------------------------------
+         用户要的："AI 修图和常规修图分为两个区域，互不干扰，
+                   常规修图的时候只有常规修图的内容，
+                   AI 修图的时候只有 AI 的内容，只有蒙版这些是共用的"
+         所以：
+           · 「常规」= 范围开关 + 16 个调色滑杆（纯本地，0 延迟）
+           · 「AI」  = 一键模板 + 美颜（发网络请求，慢）
+           · 蒙版   = **共用**，所以单独一块，不塞进任何一边：
+                     - 常规修图时它的含义是"调整只作用在涂过的区域"
+                     - AI「抹掉选区」时它的含义是"要抹掉什么"
+           · 折叠状态记在 localStorage 里，下次打开保持
+         ================================================================ -->
 
-    <div class="st-sliders" id="stSliders"></div>
+    <!-- ===================== 区域一：常规修图 ===================== -->
+    <section class="st-acc" id="stAccBasic">
+      <button class="st-acc-head" id="stAccBasicHead" aria-expanded="true">
+        <span class="st-acc-caret">▾</span>
+        <span class="st-acc-name">常规修图</span>
+        <span class="st-acc-note">本地实时</span>
+      </button>
+      <div class="st-acc-body" id="stAccBasicBody">
+        <!-- 范围：全局 / 局部（蒙版）。放在滑块上面，因为「这次调整作用于哪」
+             是比「调多少」更前置的决定 -->
+        <div class="st-scope" id="stScope">
+          <label class="st-switch" title="打开后，下面的调整只作用于涂过的区域">
+            <input type="checkbox" id="stUseMask" disabled>
+            <span>只作用于涂过的区域</span>
+          </label>
+        </div>
+        <div class="st-sliders" id="stSliders"></div>
+      </div>
+    </section>
 
-    <!-- ===================== 蒙版工具 ===================== -->
-    <div class="st-mask">
+    <!-- ===================== 区域二：AI 修图 =====================
+         和常规修图刻意分开。原因：
+           · 慢（0.7 秒 ~ 22 秒）且要联网、要额度，误触代价高
+           · 免费额度并发只有 1，不能做成实时拖动
+           · 一键模板是"一组参数一次出图"，和"拖滑杆看变化"是两种操作 -->
+    <section class="st-acc" id="stAccAi">
+      <button class="st-acc-head" id="stAccAiHead" aria-expanded="true">
+        <span class="st-acc-caret">▾</span>
+        <span class="st-acc-name">AI 修图</span>
+        <span class="st-acc-note">需联网</span>
+      </button>
+      <div class="st-acc-body" id="stAccAiBody">
+        <!-- 一键模板：每个模板是一组调好的参数，点一下直接出图（~0.7s）。
+             模板只覆盖接口支持的范围（肤质/眼/脸型/滤镜）——
+             鼻子、脖子、头发、体型接口没有，那些要靠局部变形，
+             详见 ai-megvii.js 里 TEMPLATES 的说明。 -->
+        <div class="st-tpl" id="stTemplateRow" hidden></div>
+
+        <div class="st-beauty">
+          <div class="st-beauty-head">
+            <span>美颜</span>
+            <button id="stBeautyPreset" class="st-mini wide" title="填入一组保守的婚纱照参数">一键美颜</button>
+          </div>
+          <div class="st-beauty-body" id="stBeautyBody">
+            <div class="st-beauty-empty">需要在桌面版「修图 App」里使用</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== 共用的选区 / 蒙版 ===================== -->
+    <div class="st-mask" id="stMaskBlock">
       <div class="st-mask-head">
+        <span>选区</span>
+        <span class="st-mask-note" id="stMaskNote">常规修图时 = 局部调整范围；抹除时 = 要抹掉的东西</span>
+      </div>
+
+      <div class="st-mask-row">
         <button id="stBrush" class="st-btn wide" title="画笔（B）" disabled>✎ 画笔</button>
         <button id="stSeg" class="st-btn" title="AI 自动抠出人像（百度）" disabled>AI 抠人</button>
       </div>
@@ -144,57 +203,75 @@
       <div class="st-mask-info" id="stMaskInfo">没涂任何区域</div>
     </div>
 
-    <!-- ===================== 美颜（旷视 Face++） =====================
-         单独一块，和蒙版工具分开。原因：美颜不需要蒙版，
-         是「整张脸」的操作 —— 混在蒙版区里会让人以为要先涂东西。
-         0.7 秒返回，所以做成"调完点一下看效果"，而不是实时的。
-         刻意不做成实时：拖动滑块每动一下都发一次请求，
-         免费额度并发只有 1，会一路撞限流。 -->
-    <div class="st-beauty">
-      <div class="st-beauty-head">
-        <span>美颜</span>
-        <button id="stBeautyPreset" class="st-mini wide" title="填入一组保守的婚纱照参数">一键美颜</button>
-      </div>
-
-      <!-- 一键模板：每个模板是一组调好的参数，点一下直接出图（~0.7s）。
-           模板只覆盖接口支持的范围（肤质/眼/脸型/滤镜）——
-           鼻子、脖子、头发、体型接口没有，那些要靠局部变形，
-           详见 ai-megvii.js 里 TEMPLATES 的说明。 -->
-      <div class="st-tpl" id="stTemplateRow" hidden></div>
-
-      <div class="st-beauty-body" id="stBeautyBody">
-        <div class="st-beauty-empty">需要在桌面版「修图 App」里使用</div>
-      </div>
-    </div>
-
-    <!-- ===================== 裁剪 / 旋转 =====================
-         本项目唯一的**几何**变换：会改变输出尺寸和坐标系。
-         所以做法上刻意保守 —— 参数化（不是累积矩阵）+ 应用时烘焙。
-         详细取舍见 studio.js 里「裁剪 + 旋转」那一段注释。 -->
-    <div class="st-crop">
-      <div class="st-crop-head">
-        <button id="stCrop" class="st-btn wide" disabled>裁剪 / 旋转</button>
-      </div>
-      <div class="st-crop-body" id="stCropOpts" hidden>
-        <label class="st-mini-sl">
-          <span>旋转</span>
-          <input type="range" id="stCropRot" min="-45" max="45" step="1" value="0">
-        </label>
-        <div class="st-crop-row">
-          <span class="st-crop-val" id="stCropRotVal">0°</span>
-          <button id="stCropRotL" class="st-mini wide" title="逆时针 90°">⟲ 90°</button>
-          <button id="stCropRotR" class="st-mini wide" title="顺时针 90°">⟳ 90°</button>
+    <!-- ===================== 区域三：裁剪 =====================
+         裁剪和旋转**分开**两个入口（用户要求），但共用同一份几何状态：
+           · 裁剪 = 决定保留哪一块（画布归一化坐标，轴对齐）
+           · 旋转 = 决定这块画面怎么摆（角度/翻转/缩放）
+         取景框随时看得见，两者互不改写对方的参数。 -->
+    <section class="st-acc" id="stAccCrop">
+      <button class="st-acc-head" id="stAccCropHead" aria-expanded="true">
+        <span class="st-acc-caret">▾</span>
+        <span class="st-acc-name">裁剪</span>
+        <span class="st-acc-note">选保留哪一块</span>
+      </button>
+      <div class="st-acc-body" id="stAccCropBody">
+        <div class="st-crop-head">
+          <button id="stCrop" class="st-btn wide" disabled>裁剪</button>
         </div>
-        <div class="st-crop-seg" id="stCropAspect" role="group"></div>
-        <div class="st-crop-row">
-          <button id="stCropCancel" class="st-btn wide">取消</button>
-          <button id="stCropApply" class="st-btn wide primary">应用裁剪</button>
-        </div>
-        <div class="st-beauty-empty">
-          拖动取景框移动，拖四角缩放。旋转后会自动收进不露白的范围。
+        <div class="st-crop-body" id="stCropOpts" hidden>
+          <div class="st-crop-seg" id="stCropAspect" role="group"></div>
+          <div class="st-beauty-empty">
+            拖动取景框移动，拖四角缩放。旋转后原图外面的角会露出深色底，
+            想避开就把取景框收进去一点。
+          </div>
         </div>
       </div>
-    </div>
+    </section>
+
+    <!-- ===================== 区域四：旋转 / 翻转 / 缩放 ===================== -->
+    <section class="st-acc" id="stAccRot">
+      <button class="st-acc-head" id="stAccRotHead" aria-expanded="true">
+        <span class="st-acc-caret">▾</span>
+        <span class="st-acc-name">旋转 / 翻转</span>
+        <span class="st-acc-note">纯角度，不裁切</span>
+      </button>
+      <div class="st-acc-body" id="stAccRotBody">
+        <div class="st-crop-head">
+          <button id="stRotateBtn" class="st-btn wide" disabled>旋转 / 翻转</button>
+        </div>
+        <div class="st-crop-body" id="stRotateOpts" hidden>
+          <label class="st-mini-sl">
+            <span>旋转</span>
+            <input type="range" id="stCropRot" min="-45" max="45" step="1" value="0">
+          </label>
+          <div class="st-crop-row">
+            <span class="st-crop-val" id="stCropRotVal">0°</span>
+            <button id="stCropRotL" class="st-mini wide" title="逆时针 90°">⟲ 90°</button>
+            <button id="stCropRotR" class="st-mini wide" title="顺时针 90°">⟳ 90°</button>
+          </div>
+          <div class="st-crop-row">
+            <button id="stFlipH" class="st-btn wide" title="左右镜像">⇋ 水平翻转</button>
+            <button id="stFlipV" class="st-btn wide" title="上下镜像">⇅ 垂直翻转</button>
+          </div>
+          <label class="st-mini-sl">
+            <span>缩放</span>
+            <input type="range" id="stZoom" min="25" max="200" step="1" value="100">
+          </label>
+          <div class="st-crop-row">
+            <span class="st-crop-val" id="stZoomVal">100%</span>
+            <button id="stZoomFit" class="st-mini wide" title="缩到能看见整张旋转后的照片">适合窗口</button>
+          </div>
+          <div class="st-crop-row">
+            <button id="stCropCancel" class="st-btn wide">取消</button>
+            <button id="stCropApply" class="st-btn wide primary">应用</button>
+          </div>
+          <div class="st-beauty-empty">
+            旋转只是单纯转角度，取景框不会跟着变。转完露出的深色角会被保留，
+            想看清楚整张就点「适合窗口」。
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div class="st-panel-foot" id="stInfo">—</div>
   </aside>

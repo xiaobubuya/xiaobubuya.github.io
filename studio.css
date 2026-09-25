@@ -94,6 +94,10 @@
 .st-panel{
   flex:none;width:290px;
   display:flex;flex-direction:column;
+  /* ⚠️ 面板现在是「几个可折叠区域 + 常驻选区块」，整体会超出视口高度，
+     所以由**面板自己**滚动。原来靠 .st-sliders 撑满来滚，
+     加了折叠区域之后那样会把"裁剪/旋转"挤到屏幕外面去。 */
+  overflow-y:auto;overscroll-behavior:contain;
   background:var(--spanel);border-left:1px solid var(--sline);
 }
 .st-panel-head{
@@ -109,7 +113,11 @@
   border:1px solid var(--sline);border-radius:7px;cursor:pointer;
 }
 
-.st-sliders{flex:1;min-height:0;overflow-y:auto;padding:0 14px 14px}
+/* 16 个滑杆排下来很长，给它自己的滚动区 —— 否则「裁剪 / 旋转」
+   会被顶到面板最下面，用户得先滚过全部滑杆才能点到。
+   42vh 是量出来的折中：一屏能看见 5~6 个滑杆，同时下面
+   三个区域还能露出来。 */
+.st-sliders{flex:none;max-height:42vh;overflow-y:auto;padding:0 14px 14px}
 .st-panel-foot{
   flex:none;padding:10px 14px calc(env(safe-area-inset-bottom) + 12px);
   font-size:11.5px;color:var(--sink2);
@@ -259,15 +267,52 @@
 .st-btn.ai:disabled{opacity:.4;background:var(--spanel2);color:var(--sink2)}
 .st-btn.ai.dim{opacity:.6}
 
-/* ---------------- 裁剪 / 旋转 ---------------- */
-.st-crop{
+/* ---------------- 可折叠区域 ----------------
+   用户要的是「AI 修图和常规修图分为两个区域，互不干扰」。
+   做成独立折叠而不是互斥切换：两块可以同时摊开对比，
+   互斥切换会让"只想改一个滑杆"变成两次点击。
+   ================================================ */
+.st-acc{
   flex:none;display:flex;flex-direction:column;
   border-top:1px solid var(--sline);
 }
-.st-crop-head{display:flex;padding:10px 14px}
+.st-acc-head{
+  display:flex;align-items:center;gap:8px;
+  width:100%;padding:11px 14px;
+  font:inherit;font-size:12.5px;font-weight:600;
+  color:var(--sink);background:none;border:0;cursor:pointer;
+  text-align:left;
+}
+.st-acc-head:hover{color:#fff}
+.st-acc-caret{
+  flex:none;width:11px;font-size:10px;color:var(--sink2);
+}
+.st-acc-name{flex:none}
+.st-acc-note{
+  flex:1;font-size:10.5px;font-weight:400;
+  color:var(--sink2);opacity:.75;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  text-align:right;
+}
+.st-acc-body{
+  display:flex;flex-direction:column;gap:9px;
+  padding:0 14px 12px;
+}
+.st-acc.collapsed .st-acc-body{display:none}
+/* 折叠后给一点"里面还有东西"的暗示 */
+.st-acc.collapsed .st-acc-head{padding-bottom:11px}
+
+/* 选区块在折叠区域里自己不带分隔线（区域已经有顶线了） */
+.st-acc .st-mask{border-top:0;padding-top:0}
+.st-mask-note{
+  flex:1;font-size:10.5px;color:var(--sink2);opacity:.75;
+  text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* ---------------- 裁剪 / 旋转 ---------------- */
+.st-crop-head{display:flex;padding:0}
 .st-crop-body{
   display:flex;flex-direction:column;gap:8px;
-  padding:0 14px 12px;
 }
 .st-crop-row{display:flex;align-items:center;gap:6px}
 .st-crop-val{
@@ -504,10 +549,8 @@
     max-height:46dvh;
   }
   .st-panel.collapsed{max-height:none}
-  .st-panel.collapsed .st-sliders,
+  .st-panel.collapsed .st-acc,
   .st-panel.collapsed .st-mask,
-  .st-panel.collapsed .st-beauty,
-  .st-panel.collapsed .st-scope,
   .st-panel.collapsed .st-panel-foot{display:none}
   .st-mini{display:block}
   .st-title{display:none}
