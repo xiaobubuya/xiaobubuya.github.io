@@ -12,6 +12,27 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <title>我们的婚纱照</title>
+
+<!-- ================================================================
+     分享预览（发到微信/群里时的卡片）
+     ----------------------------------------------------------------
+     ⚠️ 这里只能放**通用**的兜底图：首页没有"某本相册"的上下文。
+     每本相册**自己的** og 标签由 Worker 在 /s/<token> 上服务端渲染
+     （见 album-api/src/share-page.js）—— 微信爬虫不执行 JS，
+     所以标签必须在服务端就写好。
+
+     ⚠️ og:image 必须是**绝对 URL**，微信不认相对路径。
+     ================================================================ -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="我们的婚纱照">
+<meta property="og:title" content="我们的婚纱照">
+<meta property="og:description" content="只属于我们俩的相册">
+<meta property="og:image" content="https://muyaya.world/og-cover.png">
+<meta property="og:url" content="https://muyaya.world/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="我们的婚纱照">
+<meta name="twitter:description" content="只属于我们俩的相册">
+<meta name="twitter:image" content="https://muyaya.world/og-cover.png">
 </head>
 <body>
 

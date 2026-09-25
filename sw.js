@@ -15,7 +15,7 @@
 // 但**忘了升这里**（4335d06、82f2597），线上会一直在跑旧外壳。
 // 所以「改了 studio.* 就得升」应当当成提交前的固定检查项 ——
 // 现在 test/sw-version.test.mjs 会守住它。
-const SHELL = 'shell-v11';
+const SHELL = 'shell-v12';
 const ASSETS = [
   '/',
   '/index.html',
@@ -41,6 +41,10 @@ const ASSETS = [
   // 是 test/sw-version.test.mjs 的"ASSETS 要覆盖所有 js/css"抓出来的。
   '/upload.js',
   '/icon.svg',
+  // 分享卡片的兜底封面。⚠️ 它同时是**其他站点**（微信爬虫）
+  // 要抓的资源 —— 放进 shell 缓存只是让它离线也能显示，
+  // 爬虫那边走的是网络，不受影响。
+  '/og-cover.png',
   '/manifest.webmanifest'
 ];
 

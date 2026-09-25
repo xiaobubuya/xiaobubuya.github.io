@@ -437,6 +437,59 @@ studio.js runBeauty
 - **留言要能删**（新人自己删），否则第一条垃圾留言就毁掉整个页面。
 - 数据放 D1（一张 `share_comments` 表），**不放进 R2**（不是图片字节）。
 
+### 5.1.5 图像素材（已生成）
+
+用 Agnes 的图像模型生成了一批素材，脚本在
+`xiaobubuya.github.io/tools/gen-assets.mjs`。
+
+| 产物 | 用途 |
+|---|---|
+| `icon-180/192/512.png` + `icon.svg` | App 图标（圆角透明，四档是同一套视觉） |
+| `og-cover.png` | 分享卡片兜底封面（16:9） |
+| `assets/gen/stage-bg.png` | 循环播放页视觉（暗底 + 中心微弱辉光） |
+| `assets/gen/portrait-test.png` | **验收用**人像（测美颜/抠人，不是产品素材） |
+| `assets/gen/icon-master.png` | 图标 1024 原图留档，方便重切 |
+
+#### ⚠️ 为什么是脚本，不是 DSH 的图像生成插件
+
+DSH 的 `dsh-image-generation` 插件**接不了 Agnes**，三道硬障碍（都实测过）：
+
+| # | 障碍 | 证据 |
+|---|---|---|
+| ① | 模型白名单写死 | `provider.js` 里 `OPENAI_IMAGES = new Set([...gpt-image-*])`，`agnes-image-*` 永远不在可选项里 |
+| ② | 保存要过 `GET /v1/models/{model}`，且返回的 `id` 必须等于 model | Agnes 返回 HTTP 200 但内容是 `{"error":{"code":"model_not_found"}}` —— **没有 id 字段** |
+| ③ | 只有 bytedance / openai 两个 provider | `DEFAULTS` 里没有"自定义"这第三个 |
+
+所以插件那条路**不是配置问题，是不通**。脚本直接调 Agnes 的
+OpenAI 兼容接口绕开它。
+
+#### ⚠️ 两个必须记住的坑
+
+1. **必须显式传 `response_format: 'b64_json'`。**
+   Agnes 默认只回 `url`，而 `b64_json` 字段是**空字符串** ——
+   不传这个参数拿到的是 0 长度 base64。
+   （DSH 插件恰恰只认 base64，这也是它接不上的原因之一。）
+2. **密钥走环境变量 `AGNES_API_KEY`，不写进脚本。**
+   前端仓库是**公开**的，密钥写进去就等于公开了。
+
+```bash
+$env:AGNES_API_KEY = 'sk-...'
+node tools/gen-assets.mjs icons      # 或 og / stage / portrait / all
+```
+
+#### ⚠️ 产品素材和验收素材要分开
+
+- `icon-*.png` / `og-cover.png` / `stage-bg.png` 是**产品素材**，进仓库、上线。
+- `portrait-test.png` 是**测试素材**：美颜和抠人必须拿有真实皮肤纹理、
+  发丝细节的图才测得出来（合成色块测不出"磨皮把毛孔磨没了"）。
+  它是 AI 生成的人像，**不是真人**，只用于验收，不进产品页面。
+- ⚠️ **相册里的照片不能拿 AI 图替换** —— 那是产品的主体。
+
+守这些素材的是 `test/assets.test.mjs`（11 项），专抓三种**静默失败**：
+og:image 用了相对路径（浏览器正常、微信是裂图）、
+页面引用了不存在的图（只有一条 404）、
+`icon.svg` 退回旧占位图（主屏和标签页会显示两个不同图标）。
+
 ### 5.2 局部调整增强
 
 现在只有画笔蒙版。常见需求还缺：
@@ -544,7 +597,7 @@ API_PASS=你的口令 node tools/vault-import.mjs
 
 ```bash
 # 0. 一把梭（前端有统一入口）
-cd xiaobubuya.github.io && node test/run-all.mjs          # 244 项
+cd xiaobubuya.github.io && node test/run-all.mjs          # 255 项
 cd xiaobubuya.github.io && node test/run-all.mjs --fast   # 只跑静态，秒出
 cd ../album-studio && npm test                            # 69 项
 cd ../album-api && npm test                               # 212 项

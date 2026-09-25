@@ -12,6 +12,29 @@
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="album.css">
 <title>相册</title>
+
+<!-- ================================================================
+     分享预览（兜底）
+     ----------------------------------------------------------------
+     ⚠️ 这里是**老格式**分享链接（share.html?t=<token>）的页面。
+     它是静态文件，拿不到"这本相册的封面"，所以只能用通用图。
+
+     每本相册**自己的**预览图由 Worker 在 /s/<token> 上服务端渲染
+     （见 album-api/src/share-page.js）。新链接走那个格式；
+     这个页面保留是为了**老链接不失效**。
+
+     ⚠️ 微信爬虫不执行 JS，所以标签必须写在 HTML 里，
+     不能在 share.js 里用 JS 设置。
+     ================================================================ -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="我们的婚纱照">
+<meta property="og:title" content="相册">
+<meta property="og:description" content="左右滑动翻页">
+<meta property="og:image" content="https://muyaya.world/og-cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="相册">
+<meta name="twitter:description" content="左右滑动翻页">
+<meta name="twitter:image" content="https://muyaya.world/og-cover.png">
 <style>
   /* 分享页专用：加载态与失效提示 */
   .share-error{
