@@ -22,7 +22,6 @@ import { launch, openPage, shutdown } from './cdp.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const PORT = Number(process.env.CROP_PORT || 8896);
-const URL = `http://127.0.0.1:${PORT}/studio.html?v=${Date.now()}`;
 
 let pass = 0, fail = 0;
 
@@ -43,7 +42,36 @@ const server = http.createServer((req, res) => {
     res.end(d);
   });
 });
-await new Promise(r => server.listen(PORT, '127.0.0.1', r));
+
+/* ================================================================
+   监听端口：占用了就往后找，不要让整个文件崩掉
+   ----------------------------------------------------------------
+   ⚠️ 原来是 `server.listen(PORT)`，端口被占时抛 EADDRINUSE，
+   整个测试**在收集阶段就死了** —— 输出是一个字都没有，
+   而 test/run-all.mjs 只统计"失败项数"，于是它显示
+   「通过 0 失败 0」，看起来像通过。实测踩过：本机 8896 上起了
+   一个给 Electron 测试用的静态服务，裁剪那 14 项就整批静默消失。
+   ================================================================ */
+let ACTUAL_PORT = PORT;
+for (let p = PORT; p < PORT + 10; p++) {
+  try {
+    await new Promise((ok, no) => {
+      const onErr = e => { server.removeListener('listening', onOk); no(e); };
+      const onOk = () => { server.removeListener('error', onErr); ok(); };
+      server.once('error', onErr);
+      server.once('listening', onOk);
+      server.listen(p, '127.0.0.1');
+    });
+    ACTUAL_PORT = p;
+    break;
+  } catch (e) {
+    if (e.code !== 'EADDRINUSE') throw e;
+  }
+}
+if (ACTUAL_PORT !== PORT) {
+  console.log(`\n  ⚠️ ${PORT} 被占用，改用 ${ACTUAL_PORT}\n`);
+}
+const URL = `http://127.0.0.1:${ACTUAL_PORT}/studio.html?v=${Date.now()}`;
 
 let chrome, page;
 

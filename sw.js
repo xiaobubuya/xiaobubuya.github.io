@@ -10,7 +10,12 @@
 // 版本号改了才会重新拉取整个 shell。
 // 加文件进来（比如 mask.js）也必须升版本，否则老客户端永远拿不到它 ——
 // 表现是「本地测好的功能，线上用起来没反应」。
-const SHELL = 'shell-v8';
+//
+// ⚠️ 这条规则很容易漏：裁剪/旋转那两轮改了 studio.js/css/html
+// 但**忘了升这里**（4335d06、82f2597），线上会一直在跑旧外壳。
+// 所以「改了 studio.* 就得升」应当当成提交前的固定检查项 ——
+// 现在 test/sw-version.test.mjs 会守住它。
+const SHELL = 'shell-v10';
 const ASSETS = [
   '/',
   '/index.html',
@@ -29,6 +34,12 @@ const ASSETS = [
   '/studio.css',
   '/studio.js',
   '/mask.js',
+  // ⚠️ upload.js 一直漏在这里（index.html 引用了它）。
+  // 症状很隐蔽：**在线时完全正常**（SW 只是没缓存，
+  // 浏览器自己会去网络拿），只有**装了 SW 之后离线打开**才暴露 ——
+  // 页面能开、相册能看，但上传按钮点了没反应。
+  // 是 test/sw-version.test.mjs 的"ASSETS 要覆盖所有 js/css"抓出来的。
+  '/upload.js',
   '/icon.svg',
   '/manifest.webmanifest'
 ];

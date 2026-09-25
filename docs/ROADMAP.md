@@ -59,6 +59,9 @@
 | 色调曲线 | 中 | CPU 生成单调 LUT，四个控制 | ✅ 完成 |
 | HSL | 中 | OKLab 感知色彩空间 | ✅ 完成 |
 | 裁剪 / 旋转 | 中 | 几何变换 | ⚠️ 纵向朝向未解决，见 5.1.1 |
+| 一键模板（人像） | 中 | 主进程下发参数表 + 页面按钮 | ✅ 完成，见 5.1.2 |
+| 左右分屏对比 | 低 | 一次额外纹理采样 | ✅ 完成，见 5.1.2 |
+| AI 进度条 | 低 | 三阶段（提交 / 轮询 / 取回） | ✅ 完成，见 5.1.2 |
 | 液化 | 高 | 需要网格变形，可能要独立 shader pass | 待做 |
 | 透视校正 | 高 | 同上 | 待做 |
 
@@ -190,6 +193,93 @@ ImageBitmap → texImage2D → VERT 里的 vUv 翻转），局部推理一定会
     26 个用例各等 60 秒 → 整轮 **523 秒**。
     改成：就绪探测用 4 秒超时 + 页面健康前置检查，整轮降到 21 秒。
 
+#### 5.1.2 一键模板 + 左右对比 + AI 进度条 ✅
+
+**目标**：像素蛋糕那种"一键修人像"的体验 —— 点一下就出一版，
+能拖着竖线看原图对比，AI 跑的时候有进度条。
+
+**做了什么**
+
+| 件 | 位置 | 说明 |
+|---|---|---|
+| 8 个人像模板 | `album-studio/electron/ai-megvii.js` 的 `TEMPLATES` | 参数表在主进程，**不在页面里再存一份** |
+| 模板下发 | `main.js` 的 `ai:beautifySchema` 带 `templates` | 页面通过 IPC 拿 |
+| 模板按钮行 | `studio.js` 的 `renderTemplateRow` / `applyTemplate` | `#stTemplateRow` |
+| 左右分屏 | shader 里 `uSplit` + `setCompare` / `setCompareAt` | `▐▌` 开关 + 可拖竖线 |
+| 三阶段进度条 | `progressStage('submit'\|'poll'\|'download')` | 只对去物接了（轮询才有真进度） |
+
+**几条关键经验**
+
+1. **⭐ `fillBeautyParams` 必须先把所有项清零，再写模板里的项。**
+   不清零的话上一个模板的残留会混进来：先用「夜景人像」（美白 55）、
+   再点「复古胶片」（美白 10），两者会叠在一起得到谁也没预期的结果。
+   模板应当给出**确定的起点**，不是和现有状态混合。
+   `electron-schema.test.js` 里有一条专门守这个（"换模板后参数是干净的"）。
+
+2. **⚠️ 进度条不能编百分比。** 火山即梦的生成时长不可预测（可能 10 秒，
+   也可能 90 秒）。第二阶段只显示"已等待多久"，不画一个假装在动的百分比 ——
+   编出来的进度条到 99% 卡住比没有进度条更让人焦虑。
+
+3. **⚠️ 分屏对比不能跟「按住看原图」同时开。** 两者都在改"画哪里"，
+   同时开的话竖线左边是原图、右边被"按住看原图"整张覆盖，看着像坏了。
+   打开分屏会自动关掉按住看原图。
+
+4. **⭐ 分屏那条 `uOriginal` 必须是 0。** 这个坑很隐蔽：如果分屏打开时
+   `uOriginal` 还是 1（整张都是原图），竖线两侧**看起来一样**，
+   测试里"两侧颜色不同"那条会红，但很容易误判成对比功能没实现。
+   实际是"原图 vs 原图"。
+
+5. **AI 送图改成原图分辨率。** 见下条。
+
+---
+
+#### 5.1.3 ⭐ AI 送图分辨率：别再缩了（这轮最实际的改动）
+
+**改了什么**
+
+| 链路 | 原来 | 现在 |
+|---|---|---|
+| 美颜（旷视） | 长边缩到 **1600** | **原图分辨率**，超过 4096 才缩 |
+| 抠人（百度 labelmap） | 长边缩到 **1024** | 长边 **2048** |
+| 结果回写 | 放大回原图 | 通常不需要缩放（送出去的就是原图尺寸） |
+
+**为什么**
+
+美颜的输入是**整张脸**。缩到 1600 再放大回原图 = 皮肤纹理、发丝、
+睫毛被重采样两遍，出来明显发糊 —— 而婚纱照就是要放大看的，
+这个损失用户一眼能看出来。抠人那边 1024 的蒙版放大回原图时
+**发丝和手指边缘会糊成一坨**。
+
+**凭什么敢送原图**（实测，`tools/size-probe.mjs`）：**旷视原样返回输入尺寸**：
+
+```
+ 800×533   →  800×533
+1600×1066  → 1600×1066
+4000×2665  → 4000×2665
+```
+
+所以送原图不会白费，拿回来的就是原图分辨率的成品。
+
+**代价**（`tools/fullsize-probe.mjs`）：
+
+```
+1600px  请求体 0.29MB  → 约 1s
+2560px  请求体 0.91MB  → 约 2s
+4096px  请求体 1.78MB  → 约 6s
+```
+
+而旷视免费额度串行限流本身就要等 ≥3 秒，所以这个增量可以接受。
+
+**为什么仍然留 4096 上限而不是无脑原图**：再大请求体到几 MB，
+而返回的图我们本来也要缩回画布尺寸，收益不抵等待；
+火山那边对输入尺寸也有自己的限制。
+
+**⭐ 这条是用 Electron 端到端测试守住的**（见下面"测试分工"新增那行）：
+把 `MAX_EDGE` 改回 1600、把 2048 改回 1024，两条断言都会红。
+这是必要的 —— 一个常数的改动**静态测试完全看不见**。
+
+---
+
 #### 测试分工（这轮验证出来的经验）
 
 | 类型 | 手段 | 能抓什么 |
@@ -198,6 +288,53 @@ ImageBitmap → texImage2D → VERT 里的 vUv 翻转），局部推理一定会
 | 数值 | `curve.test.mjs`（纯数学） | 单调性、过冲、串扰、恒等性 —— 不需要浏览器 |
 | 断言有效性 | `adjustments-negative.test.mjs`（变异测试） | 上面那些断言是不是装饰品 |
 | 算得对不对 | `adjust-browser.test.mjs`（真 Chrome 读像素） | 方向、幅度、边界 —— **静态一律验不出来** |
+| 送出去的到底是什么 | `album-studio/test/electron-ai-resolution.test.js`（Electron + 拦 HTTP） | 真正上线的那串字节的尺寸 —— **Chrome 里进不了分支，静态更看不见** |
+
+⭐ **最后一行是这轮新加的一层，值得单独说。** 见下。
+
+**为什么要专门做这一层**
+
+"美颜送的是原图还是缩略图"这件事：
+
+- **静态测试看不见** —— 代码里就是一个 `Math.min(1, 4096 / long)`，
+  把 4096 改成 1600 文本上没有任何异常。
+- **Chrome 里测不了** —— 没有桌面桥，`hasBeauty()` 返回 false，
+  `runBeauty` 弹个提示就 return 了，永远走不到发送那一步。
+  （这几条测试一开始就写在 Chrome 的 `template-browser.test.mjs` 里，
+  表现是"永远红"，查了很久才发现是**永远进不了分支**。）
+
+**⚠️ 也踩了一个大坑：不能替换 `window.AlbumStudio.megviiBeautify`。**
+那个桥是 `contextBridge` 暴露的，**整个对象被冻结**
+（`Object.isFrozen === true`，属性 `writable:false configurable:false`）。
+在页面里赋值换掉它是**静默失败**的 —— 不报错、不生效，真请求照样打出去。
+报出来的错是"旷视密钥被拒 HTTP 401"，**根因完全指不到"桩没生效"**。
+（也没法开 `contextIsolation:false`，那是产品安全设置。）
+
+**解法：往下一层走，拦 HTTP。** `test/ai-http-shim.js` 通过
+`NODE_OPTIONS=--require` 注进 Electron 主进程，只换掉最外层的 `fetch`：
+
+```
+studio.js runBeauty
+  → preload 桥 → ipcMain 'ai:beautify'
+  → vault 取密钥 → ai-megvii.buildForm（拼 multipart）
+  → fetch   ←── 只有这一层是假的
+```
+
+然后从捕获到的 multipart / form-urlencoded body 里**解析出图片字节**，
+再从 JPEG 的 SOF 段读宽高 —— 这个测量**独立于产品代码**，
+产品代码算错了骗不过它。
+
+⚠️ **别用"整个 body 的长度"反推图片尺寸**：body 里还混着
+`api_key` / `api_secret` / 各参数的文本，长度和尺寸不成比例。
+
+**有效性验证**（这步不能省）：把 `MAX_EDGE` 改回 1600、把 2048 改回 1024，
+两条断言都如期变红，且提示直指"是不是又把 MAX_EDGE 改回 1600 了"。
+
+⚠️ **旁路的 host 白名单漏一个，症状会指错方向**：
+`aip.baidubce.com`（百度取 token）第一次漏了，于是那条请求**真的出网**，
+拿着假密钥被拒，报"取 token 失败：invalid client_idid"，
+看着像密钥问题，其实只是白名单少了一项。
+
 
 五条硬教训：
 
@@ -285,20 +422,29 @@ API_PASS=你的口令 node tools/vault-import.mjs
 
 ```bash
 # 0. 一把梭（前端有统一入口）
-cd xiaobubuya-github-io && node test/run-all.mjs          # 196 项（含浏览器）
-cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 只跑静态，秒出
-cd ../album-studio && npm test                            # 63 项
+cd xiaobubuya.github.io && node test/run-all.mjs          # 222 项 + 1 已知问题
+cd xiaobubuya.github.io && node test/run-all.mjs --fast   # 只跑静态，秒出
+cd ../album-studio && npm test                            # 69 项
 cd ../album-api && npm test                               # 193 项
+
+# 需要 Electron 的两组（要 ALBUM_URL，见 test/run-all.mjs 里 ELECTRON_TESTS）
+cd ../album-studio && ALBUM_URL=http://127.0.0.1:8896/studio.html npm test -- --electron   # 13 项
 
 # 单独跑
 node test/adjustments.test.mjs          # 22 项 · uniform 一致性
 node test/curve.test.mjs                # 20 项 · 曲线 LUT 数值（单调性/串扰）
+node test/sw-version.test.mjs           #  4 项 · 改了 studio.* 必须升 sw.js 的 SHELL
 node test/shader-guard.test.mjs         #  3 项 · 模板字符串护栏
 node test/adjustments-negative.test.mjs # 16 项 · 断言有效性（约 70 秒）
 node test/adjust-browser.test.mjs       # 26 项 · 读像素验方向/幅度
+node test/crop-browser.test.mjs         # 14 项（1 项已知问题，见 5.1.1）
 
 # AI 接口还通不通（真实调用，会产生少量费用）
 cd ../album-studio && node tools/ai-probe.mjs
+
+# 送出去的分辨率会不会被改回缩图（拦 HTTP，不花钱、不联网）
+cd ../album-studio && \
+  ALBUM_URL=http://127.0.0.1:8896/studio.html node test/electron-ai-resolution.test.js
 
 # App 端到端（真实调用火山）
 ALBUM_URL=https://muyaya.world/studio.html \
@@ -309,7 +455,11 @@ ALBUM_SMOKE_AI=inpaint ALBUM_SMOKE_USER=yuge ALBUM_SMOKE_PASS=你的口令 \
 ALBUM_URL=https://muyaya.world/studio.html ALBUM_SMOKE_STUDIO=1 npx electron .
 ```
 
-合计 **455 项**（前端 199 + 桌面 63 + 后端 193）。
+⚠️ **`run-all.mjs` 会区分"已知问题"和"新失败"。**
+`crop-browser` 的纵向朝向是登记在案的未解决问题，它以 🟡 单独报、
+**不计入退出码**；但那不是绿，总账里会提示"修好之前不要交付对应功能"。
+这张表在 `test/run-all.mjs` 的 `KNOWN_ISSUES` 里 ——
+要让它消失只有两条正当路径：真修好，或者明确决定不做（那时也要从表里删）。
 
 `beautify.test.js` 里有一段会真等 3 秒，属正常 ——
 测的是旷视并发限流下的串行间隔。

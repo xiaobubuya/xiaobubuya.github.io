@@ -298,6 +298,81 @@
   touch-action:none;
 }
 
+/* ---------------- 一键模板 ---------------- */
+.st-tpl{
+  flex:none;display:flex;flex-wrap:wrap;gap:5px;
+  padding:2px 14px 10px;
+}
+.st-tpl button{
+  font:inherit;font-size:11px;line-height:1;
+  padding:6px 9px;border-radius:14px;cursor:pointer;
+  color:var(--sink2);background:var(--spanel2);
+  border:1px solid var(--sline);
+  white-space:nowrap;
+}
+.st-tpl button:hover{color:var(--sink);border-color:var(--saccent)}
+.st-tpl button:disabled{opacity:.4;cursor:not-allowed}
+/* 正在应用的那个模板 */
+.st-tpl button.on{background:var(--saccent);color:#fff;border-color:var(--saccent)}
+
+/* ---------------- 处理进度 ---------------- */
+.st-progress{
+  width:min(260px,60%);height:4px;border-radius:2px;
+  background:rgba(255,255,255,.14);overflow:hidden;
+}
+.st-progress-bar{
+  height:100%;width:0;border-radius:2px;
+  background:var(--saccent);
+  transition:width .35s ease;
+}
+/* 不可预测的阶段（生成中）：走条纹动画，表示"在动但说不出还要多久" */
+.st-progress-bar.indeterminate{
+  width:100% !important;
+  background:repeating-linear-gradient(
+    90deg, var(--saccent) 0 12px, rgba(91,155,213,.35) 12px 24px);
+  background-size:24px 100%;
+  animation:st-stripes .9s linear infinite;
+}
+@keyframes st-stripes{ from{background-position:0 0} to{background-position:24px 0} }
+.st-progress-note{
+  font-size:11.5px;color:var(--sink2);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ---------------- 左右对比 ---------------- */
+.st-compare{
+  position:absolute;left:0;right:0;bottom:0;
+  padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);
+  display:flex;align-items:center;gap:10px;
+  background:linear-gradient(to top,rgba(0,0,0,.55),transparent);
+  z-index:5;
+}
+.st-compare-tag{
+  flex:none;font-size:10.5px;letter-spacing:.06em;
+  padding:2px 7px;border-radius:9px;
+  color:#fff;background:rgba(0,0,0,.45);
+}
+.st-compare input[type=range]{
+  -webkit-appearance:none;appearance:none;
+  flex:1;height:20px;background:none;cursor:ew-resize;min-width:0;
+}
+.st-compare input[type=range]::-webkit-slider-runnable-track{
+  height:3px;border-radius:2px;background:rgba(255,255,255,.5);
+}
+.st-compare input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:16px;height:16px;margin-top:-6.5px;
+  border-radius:50%;background:#fff;border:0;
+  box-shadow:0 1px 5px rgba(0,0,0,.6);
+}
+.st-compare input[type=range]::-moz-range-track{
+  height:3px;border-radius:2px;background:rgba(255,255,255,.5);
+}
+.st-compare input[type=range]::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;
+  background:#fff;border:0;box-shadow:0 1px 5px rgba(0,0,0,.6);
+}
+
 /* ---------------- 美颜（旷视） ---------------- */
 .st-beauty{
   flex:none;display:flex;flex-direction:column;

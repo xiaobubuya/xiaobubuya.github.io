@@ -219,12 +219,41 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 |---|---|---|---|
 | 人像分割 | 百度 | ✅ 已接 UI | 925ms |
 | 去物 / 生成式重绘 | 火山即梦 | ✅ 已接 UI | 16~22s |
-| 美颜（10 参数 + 35 滤镜） | 旷视 | ✅ 已接 UI | ~0.7s |
+| 美颜（10 参数 + 36 滤镜） | 旷视 | ✅ 已接 UI | ~0.7s |
+| **一键人像模板（8 个）** | 旷视 | ✅ 已接 UI | 每个模板参数真调过一遍（8/8 成功） |
+| **左右分屏对比** | 本地 shader | ✅ | 实时 |
+| **AI 进度条（三阶段）** | —— | ✅ 只对去物接了 | —— |
+
+⭐ **AI 送图分辨率（这轮最重要的改动）**：
+
+- 美颜**按原图分辨率**送（原来缩到长边 1600），超过 4096 才缩
+- 抠人送长边 **2048**（原来是 1024）
+- 实测确认旷视**原样返回输入尺寸**（`tools/size-probe.mjs`），
+  所以送原图不会白费；代价见 `tools/fullsize-probe.mjs`
+- 守它的测试是 `album-studio/test/electron-ai-resolution.test.js`
+  （在 Node 层拦 HTTP，量真正上线那串字节的尺寸）
+- ⚠️ 改 `MAX_EDGE` 或那个 `2048` 之前先看 ROADMAP §5.1.3
 
 ### 阶段 4 · 密钥保险箱 ✅
 
 - 密钥加密存 D1，客户端按需取，10 分钟缓存
 - 本地 `.secrets/` 已删除
+
+### 阶段 5.1 · 更多本地修图工具 ⚠️ 差一项
+
+| 工具 | 状态 |
+|---|---|
+| 锐化 / 暗角 / 颗粒 / 曲线 / HSL | ✅ |
+| 裁剪 / 旋转 | ⚠️ **纵向朝向未解决**，见 ROADMAP §5.1.1 |
+| 液化 / 透视校正 | 待做 |
+
+⚠️ **裁剪/旋转是半成品，交付真人使用前必须先解决纵向朝向** ——
+纵向构图会被弄反。ROADMAP §5.1.1 里记了已排查掉的假设、
+当前关键数值，和**建议的排查方法**（别再推理，直接做
+「输出位置 → 采样坐标」的实测对照表）。
+
+它的失败在 `run-all.mjs` 里登记为**已知问题**（`KNOWN_ISSUES` 表），
+以 🟡 报、不计入退出码，但**不是绿** —— 总账会提示别交付对应功能。
 
 ---
 
@@ -415,13 +444,13 @@ JS 里是两个完全不同的变量。preload 暴露大写，页面读小写，
 
 ```bash
 # 一把梭（推荐）
-cd xiaobubuya-github-io && node test/run-all.mjs          # 全部，含浏览器
-cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 跳过浏览器，秒出
+cd xiaobubuya.github.io && node test/run-all.mjs          # 全部，含浏览器
+cd xiaobubuya.github.io && node test/run-all.mjs --fast   # 跳过浏览器，秒出
 cd album-studio && npm test                               # 桌面
 cd album-api && npm test                                  # 后端
 
 # 或者单独跑
-# 前端（在 xiaobubuya-github-io/）
+# 前端（在 xiaobubuya.github.io/）
 node test/autolayout.test.mjs      # 62 项 · 自动排版几何
 node test/upload.test.mjs          # 20 项 · 上传流程
 node test/mask.test.mjs            # 21 项 · 蒙版引擎
@@ -449,7 +478,7 @@ node test/smoke.mjs                # 193 项 · 全接口
 零依赖（WebSocket 客户端也是手写的），自己起 Chrome、自己起静态服务：
 
 ```bash
-cd xiaobubuya-github-io
+cd xiaobubuya.github.io
 node test/adjust-browser.test.mjs     # 锐化/暗角/颗粒，读真实像素
 ```
 
@@ -474,7 +503,7 @@ node test/adjust-browser.test.mjs     # 锐化/暗角/颗粒，读真实像素
 
 ```bash
 # 1. 起本地静态服务
-cd xiaobubuya-github-io && python3 -m http.server 8899 --bind 127.0.0.1 &
+cd xiaobubuya.github.io && python3 -m http.server 8899 --bind 127.0.0.1 &
 
 # 2. 跑测试
 STUDIO_URL=http://127.0.0.1:8899/studio.html node test/mask-browser.test.mjs
@@ -488,27 +517,88 @@ harness 需要 `/tmp/session.txt` 存登录 Cookie，启动 Chrome 时加
 > 而且 `Runtime.evaluate` 只接受**单个表达式** ——
 > 语句块会静默返回 `undefined`，所以统一包成 `async IIFE`。
 
+### Electron 实测层（新加的一层，值得单独知道）
+
+有些行为**只有真 Electron 里量得出来**：
+
+- 模板表是主进程经 IPC 下发的 —— Chrome 里 `window.AlbumStudio`
+  根本不存在，测"模板有几个"会永远红或永远绿。
+- 「AI 送出去的是原图还是缩略图」在 Chrome 里**进不了分支**
+  （`hasBeauty()` 返回 false，`runBeauty` 弹提示就 return 了）。
+
+两个关键实现细节（都踩过，写在对应文件的顶部）：
+
+1. **⚠️ 不能替换 `window.AlbumStudio.megviiBeautify`。**
+   那是 `contextBridge` 暴露的，**整个对象被冻结**
+   （`Object.isFrozen === true`）。在页面里赋值换掉它是
+   **静默失败** —— 不报错、不生效，真请求照样打出去，
+   报出来的错是"密钥被拒 HTTP 401"，根因完全指不到桩上。
+   → 解法是往下一层走，用 `test/ai-http-shim.js` 拦 HTTP。
+
+2. **`NODE_OPTIONS=--require <路径>` 里不能给路径加引号。**
+   引号会被算进文件名，报 `MODULE_NOT_FOUND` 而路径看着是对的。
+
+| 文件 | 作用 |
+|---|---|
+| `test/electron-host.js` | 起 Electron + 求值一段页面脚本 + 回传 JSON |
+| `test/electron-ai-host.js` | 同上，另外注入 `ai-http-shim.js` 并回收捕获到的请求体 |
+| `test/ai-http-shim.js` | 拦 `api-cn.faceplusplus.com` / `aip.baidubce.com`，记录 body、回假响应 |
+| `test/electron-schema.test.js` | 模板下发链路 6 项 |
+| `test/electron-ai-resolution.test.js` | 送图分辨率 7 项 |
+
+⚠️ 两个宿主都用**文件描述符**做 stdio，不用 `spawn` 的 `pipe` ——
+受限环境下管道会 EPERM。Electron 是 GUI 子系统程序，
+输出只能靠重定向到文件。（这也是为什么测试里
+**页面侧的 `console.log` 到不了测试进程**，要传东西得放进返回值。）
+
+⚠️ 还需要一个本地静态服务：
+
+```bash
+node album-studio/test/_serve.js "C:\...\xiaobubuya.github.io" 8896
+ALBUM_URL=http://127.0.0.1:8896/studio.html node test/electron-ai-resolution.test.js
+```
+
 ### 当前测试基线
 
 ```
 autolayout 62 · upload 20 · mask 21 · contract 9       = 112
+sw-version 4                                            =   4
 shader-guard 3 · adjustments 22 · curve 20              =  45
 adjustments-negative 16（含浏览器变异）                  =  16
-adjust-browser 26                                       =  26
-mask-browser 18 · inpaint-browser 13                    =  31
-inpaint（桌面）20 · beautify（桌面）43                    =  63
+adjust-browser 26 · template-browser 6                  =  32
+crop-browser 13 通过 + 1 已知问题（见 5.1.1）             =  14
+inpaint（桌面）20 · beautify（桌面）49                    =  69
 smoke（后端）193                                         = 193
-                                                合计    455
+                                       前端小计    222 + 1 已知
 ```
+
+⚠️ 上表里**不含** `mask-browser` / `inpaint-browser`（要外部 harness）
+和两组 Electron 实测。Electron 那两组单独跑：
+
+```bash
+cd ../album-studio
+ALBUM_URL=http://127.0.0.1:8896/studio.html npm test -- --electron
+```
+
+| Electron 实测 | 项数 | 守什么 |
+|---|---|---|
+| `electron-schema.test.js` | 6 | 模板下发链路（主进程 → IPC → 页面按钮） |
+| `electron-ai-resolution.test.js` | 7 | **AI 真正送出去的那串字节的尺寸** |
 
 前端和桌面都有统一入口：
 
 ```bash
-cd xiaobubuya-github-io && node test/run-all.mjs          # 全部（约 80 秒）
-cd xiaobubuya-github-io && node test/run-all.mjs --fast   # 跳过浏览器，几秒
+cd xiaobubuya.github.io && node test/run-all.mjs          # 全部（约 80 秒）
+cd xiaobubuya.github.io && node test/run-all.mjs --fast   # 跳过浏览器，几秒
 cd album-studio && npm test
 cd album-api && npm test
 ```
+
+⚠️ **`run-all.mjs` 会把"跑不起来"当成失败。** 一个测试文件如果在
+收集阶段就崩（比如静态服务端口被占），输出里没有汇总行 ——
+第一版只累加"失败项数"，于是显示成「通过 0 失败 0 ✅」，
+**整批测试静默消失而总账还是绿的**。实测踩过（裁剪那 14 项）。
+现在没有汇总行就报 ❌ 并把崩溃输出尾部打出来。
 
 ---
 
@@ -519,9 +609,9 @@ cd album-api && npm test
 | **本文档** | `xiaobubuya.github.io/docs/HANDOFF.md` | 总览 + 交接 |
 | 执行计划 | `xiaobubuya.github.io/docs/ROADMAP.md` | 各阶段状态 + 实现要点 + 测试分工 |
 | 上下文速查 | `xiaobubuya.github.io/docs/CONTEXT.md` | 压缩版工作记忆（给接手的人/Agent） |
-| **参考项目评估** | `xiaobubuya.github.io/docs/REFERENCES.md` | 两个外部项目的评估 + **哪些代码是独立写的** |
+| **参考项目评估** | `xiaobubuya.github.io/docs/REFERENCES.md` | 三个外部项目的评估 + **哪些代码是独立写的** |
 | AI 接口笔记 | `album-studio/docs/AI-API-NOTES.md` | 三家厂商的**实测**调用方式、参数、坑 |
-| 前端说明 | `xiaobubuya.github.io/README.md` | 前端结构 |
+| 前端说明 | `xiaobubuya.github.io/ALBUM-PLAN.md` | 前端结构与实施方案 |
 | 后端说明 | `album-api/README.md` | API 路由 |
 | App 说明 | `album-studio/README.md` | 构建、打包、签名 |
 
@@ -531,6 +621,9 @@ cd album-api && npm test
 |---|---|---|
 | `tools/ai-probe.mjs` | album-studio | 一条命令验证三家 AI 接口还通不通 |
 | `tools/vault-import.mjs` | album-studio | 导入密钥到保险箱 |
+| `tools/template-probe.mjs` | album-studio | 8 个一键模板逐个真调一遍，看哪个参数组合被拒 |
+| `tools/size-probe.mjs` | album-studio | 确认旷视**原样返回输入尺寸**（决定"敢不敢送原图"） |
+| `tools/fullsize-probe.mjs` | album-studio | 量不同分辨率下的请求体大小和耗时 |
 | `tools/import.mjs` | album-api | 批量导入照片 |
 
 ---
@@ -552,11 +645,15 @@ cd album-api && npm test
 ```
 ✅ 能用：上传、相册排版、翻页阅读、分享、WebGL 调色、
         锐化/暗角/颗粒/曲线/HSL、蒙版局部调整、
-        AI 抠人、AI 去物、AI 美颜、导出
-📋 没做：裁剪旋转/液化/透视校正、渐变与径向蒙版、
+        AI 抠人、AI 去物、AI 美颜（**按原图分辨率送**）、
+        一键人像模板（8 个）、左右分屏对比、AI 进度条、导出
+📋 没做：液化/透视校正、渐变与径向蒙版、
         修图结果回存、火山任务持久化
+⚠️ 半成品：裁剪/旋转 —— 纵向朝向未解决（ROADMAP §5.1.1），
+          **交付真人使用前必须解决**
 🔑 密钥：已全部迁到保险箱，本地文件已删
-🧪 测试：452 项全绿（前端 196 + 桌面 63 + 后端 193）
+🧪 测试：见上表（前端 + 桌面 + 后端 + 两组 Electron 实测）
 ⚠️ 没真人验证过：旷视美颜的实际出图效果、美颜面板的手感、
+                 一键模板出来的效果好不好看、
                  五个本地工具的手感、Windows 安装包
 ```

@@ -129,6 +129,7 @@
     uniform float uCurveShadow, uCurveMid, uCurveHigh, uCurveFade;
     uniform float uHue, uHslSat, uHslLight;
     uniform float uOriginal;   // 1 = 显示原图（对比用）
+    uniform float uSplit;      // >=0 = 左右分屏对比的竖线位置（<0 关闭）
     uniform float uUseMask;    // 1 = 调整只作用在蒙版内
     uniform float uMaskOverlay; // 1 = 显示蒙版本身（红色叠加）
     uniform vec2 uTexel;       // 1/图片宽高，锐化取邻居用
@@ -459,6 +460,25 @@
 
       c = clamp(c, 0.0, 1.0);
 
+      /* ================================================================
+         左右对比分屏
+         ----------------------------------------------------------------
+         竖线左边显示**原图**、右边显示**修过的**。
+         和「按住看原图」（uOriginal）是两件事：
+           uOriginal  = 整张变原图，用来快速确认
+           uSplit     = 一半一半，用来直接比对肤色/构图差异
+
+         ⚠️ 放在最后（蒙版红色叠加之前）：对比的是**成品**，
+         不是半成品。涂着蒙版时红色的提示层还能看见。
+
+         ⚠️ uSplit < 0 表示关闭。用负数而不是 0 当"关闭"哨兵，
+         是因为 0 是合法位置（竖线贴最左边 = 全是修过的）。
+         ================================================================ */
+      if (uSplit >= 0.0) {
+        vec3 raw = texture2D(uImage, u).rgb;
+        c = vUv.x < uSplit ? raw : c;
+      }
+
       // 蒙版可视化：涂过的地方罩一层红。
       // 用 0.45 的不透明度而不是纯色，是为了还能看清底下照片的细节 ——
       // 涂眼睛的时候需要看见眼睛在哪。
@@ -674,6 +694,7 @@
     uniforms.uImage = gl.getUniformLocation(program, 'uImage');
     uniforms.uMask = gl.getUniformLocation(program, 'uMask');
     uniforms.uOriginal = gl.getUniformLocation(program, 'uOriginal');
+    uniforms.uSplit = gl.getUniformLocation(program, 'uSplit');
     uniforms.uUseMask = gl.getUniformLocation(program, 'uUseMask');
     uniforms.uMaskOverlay = gl.getUniformLocation(program, 'uMaskOverlay');
     uniforms.uTexel = gl.getUniformLocation(program, 'uTexel');
@@ -774,6 +795,17 @@
   let img = null;          // ImageBitmap
   let fileName = '';
   let showingOriginal = false;
+  /**
+   * 左右分屏对比：左边原图、右边修过的。
+   *
+   * 和 showingOriginal 的区别：那个是"整张临时变原图"（按住看），
+   * 这个是"一半一半"（拖动着看）。两个都留着，用途不同。
+   *
+   * compareAt 是竖线位置 0~1；关闭时 compareOn=false，
+   * shader 收到 -1（见 draw 里的说明：0 是合法位置，不能当哨兵）。
+   */
+  let compareOn = false;
+  let compareAt = 0.5;
 
   /* ================================================================
      渲染
@@ -802,6 +834,8 @@
     gl.activeTexture(gl.TEXTURE0);
 
     gl.uniform1f(uniforms.uOriginal, showingOriginal ? 1 : 0);
+    // 分屏对比：-1 = 关闭。0 是合法位置（竖线贴最左），所以用负数当哨兵
+    gl.uniform1f(uniforms.uSplit, compareOn ? compareAt : -1);
     // 蒙版是空的却开着「只看局部」，画面会完全没反应 —— 那看起来就是坏了。
     // 所以空蒙版一律按全局处理，不管开关状态。
     gl.uniform1f(uniforms.uUseMask, (useMask && !mask.isEmpty) ? 1 : 0);
@@ -1631,6 +1665,10 @@
     $('stExport').disabled = !on;
     $('stReset').disabled = !on;
     $('stCompare').disabled = !on;
+    const ct = $('stCompareToggle');
+    if (ct) ct.disabled = !on;
+    // 没图时把分屏对比关掉，否则换图后会留着上次的竖线
+    if (!on && compareOn) setCompare(false);
     const b = $('stBrush');
     if (b) b.disabled = !on;
     const s = $('stSeg');
@@ -1889,6 +1927,35 @@
   }
 
   /* ================================================================
+     左右分屏对比
+     ----------------------------------------------------------------
+     左边原图、右边修过的，拖滑块比。和「按住看原图」互补：
+     按住是"闪一下看整体"，分屏是"并排抠差异"。
+
+     ⚠️ 两个状态同时开的话会打架（uOriginal=1 时整张都是原图，
+     分屏就没意义了）。所以打开分屏时自动关掉"按住看原图"，
+     反之亦然 —— 用户不会同时想要两个。
+     ================================================================ */
+  function setCompare(on) {
+    compareOn = !!on && !!img;
+    if (compareOn && showingOriginal) setOriginal(false);
+    const bar = $('stCompareBar');
+    if (bar) bar.hidden = !compareOn;
+    const btn = $('stCompareToggle');
+    if (btn) btn.classList.toggle('on', compareOn);
+    draw();
+  }
+
+  function setCompareAt(v) {
+    compareAt = Math.min(1, Math.max(0, v));
+    const s = $('stCompareSlider');
+    if (s && Math.abs(parseFloat(s.value) / 100 - compareAt) > 1e-6) {
+      s.value = String(Math.round(compareAt * 100));
+    }
+    if (compareOn) draw();
+  }
+
+  /* ================================================================
      导出
      ================================================================ */
   async function exportImage() {
@@ -1955,10 +2022,13 @@
     try {
       // 先把百度密钥取好交给主进程（有 10 分钟缓存，通常不打请求）
       await getKeys('baidu').catch(() => {});
-      // 先把当前图缩到长边 1024 再传 —— 百度接口对分辨率没那么敏感，
-      // 但传原图(4000px)会让请求体变成好几 MB，白等好几秒。
+      /* 缩到长边 2048 再传。
+         ⚠️ 原来写的是 1024 —— 太小了：蒙版是按这个尺寸出的，
+         再放大回原图时**发丝、手指边缘会糊成一坨**，抠出来的人像
+         边缘有明显锯齿。2048 是"细节够用 + 请求体还能接受"的折中。
+         （百度这条本来就快 ~800ms，多传一点不心疼。）*/
       const long = Math.max(img.width, img.height);
-      const s = Math.min(1, 1024 / long);
+      const s = Math.min(1, 2048 / long);
       const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
 
       const off = document.createElement('canvas');
@@ -2116,16 +2186,29 @@
     };
   }
 
-  /** 当前图 → JPEG blob（必要的话先缩到长边 2048，省上传时间和流量） */
-  async function imageBlob(maxSide = 2048) {
+  /**
+   * 当前图 → JPEG blob。
+   *
+   * ⚠️ maxSide 默认给 4096，和**美颜那边保持一致**（都按原图送）。
+   * 原来默认 2048 是"省流量"的思路，但代价是：AI 出来的结果
+   * 比原图糊，缩回原尺寸时那块选区的细节就比周围差一截 ——
+   * 在婚纱照上放大看能看出来。而火山的链路本来就等 16~22 秒，
+   * 多传 1MB 不是瓶颈。
+   *
+   * 仍然保留上限（4096）而不是无脑原图：更大的请求体换来的收益
+   * 不抵等待，而且火山那边对输入尺寸也有自己的限制。
+   */
+  async function imageBlob(maxSide = 4096) {
     const long = Math.max(img.width, img.height);
     const s = Math.min(1, maxSide / long);
     const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
 
     const off = document.createElement('canvas');
     off.width = cw; off.height = ch;
-    off.getContext('2d').drawImage(img, 0, 0, cw, ch);
-    return await new Promise(r => off.toBlob(r, 'image/jpeg', 0.92));
+    const g = off.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, 0, 0, cw, ch);
+    return await new Promise(r => off.toBlob(r, 'image/jpeg', 0.95));
   }
 
   async function removeObject() {
@@ -2154,17 +2237,22 @@
     let up = null;
     const offProgress = hasInpaint()
       ? window.AlbumStudio.onInpaintProgress(p => {
-          if (p.stage === 'submit') busy(true, '正在提交…');
+          if (p.stage === 'submit') { busy(true, '正在提交…'); progressStage('submit'); }
           else if (p.stage === 'poll') {
-            const s = Math.round((p.elapsed || 0) / 1000);
-            busy(true, `AI 正在重绘… ${s}s`);
-          } else if (p.stage === 'download') busy(true, '正在取回结果…');
+            // 生成中：时长不可预测。只显示"已等待多久"，不编百分比
+            busy(true, 'AI 正在重绘…');
+            progressStage('poll', p.elapsed);
+          } else if (p.stage === 'download') {
+            busy(true, '正在取回结果…');
+            progressStage('download');
+          }
         })
       : null;
 
     try {
       // 取火山密钥交给主进程（有缓存，通常不打请求）
       await getKeys('volcengine');
+      progressStage('submit');
 
       const blob = await imageBlob();
       up = await uploadForAI(blob);
@@ -2180,6 +2268,7 @@
 
       if (!r.ok) throw new Error(r.error || '生成失败');
       if (r.image) {
+        progressStage('done');
         applyInpaintResult(r.image, blob, stats);
         toast(`已抹掉（${(r.totalMs / 1000).toFixed(1)}s）`, 3200);
       }
@@ -2399,9 +2488,13 @@
       if (pre) {
         pre.addEventListener('click', () => {
           applyBeautyPreset();
+          markTemplate(-1);
           toast('已填入一组保守参数，点「看一下效果」试试', 3000);
         });
       }
+
+      // 一键模板按钮（模板表由主进程下发，不在页面里另存一份）
+      renderTemplateRow();
     } catch (e) {
       body.innerHTML = '<div class="st-beauty-empty">美颜面板打不开：'
         + String(e && e.message || e) + '</div>';
@@ -2418,14 +2511,86 @@
     if (row) row.classList.toggle('on', v > 0);
   }
 
-  function applyBeautyPreset() {
-    const preset = (beautySchema && beautySchema.preset) || {};
-    for (const [k, v] of Object.entries(preset)) {
-      beautyValues[k] = v;
+  /**
+   * 把一组参数写进面板（滑块 + 滤镜）。
+   *
+   * ⚠️ 关键：**先把所有项清零**，再写模板里的项。
+   * 不清零的话，上一个模板/手动拖过的残留会混进来 ——
+   * 比如先用「夜景人像」（美白 55）、再点「复古胶片」（美白 10），
+   * 不清零就会把两者叠在一起，得到谁也没预期的结果。
+   * 模板应当给出**确定的起点**，而不是和现有状态混合。
+   */
+  function fillBeautyParams(params, filterValue) {
+    for (const k of Object.keys(beautyValues)) onBeautySlider(k, 0);
+    beautyFilter = '';
+    for (const [k, v] of Object.entries(params || {})) {
+      if (k === 'filter_type') continue;
+      if (!(k in beautyValues)) continue;
       const inp = document.querySelector(`input[data-bsl="${k}"]`);
       if (inp) inp.value = v;
       onBeautySlider(k, v);
     }
+    // 滤镜：'不用滤镜' 那一项的值是空串
+    const fv = filterValue != null ? filterValue : (params && params.filter_type) || '';
+    beautyFilter = fv;
+    const sel = $('stBeautyFilter');
+    if (sel) sel.value = fv;
+  }
+
+  function applyBeautyPreset() {
+    fillBeautyParams((beautySchema && beautySchema.preset) || {}, '');
+  }
+
+  /** 标记当前选中的模板（-1 = 没有） */
+  let activeTemplateIdx = -1;
+
+  function markTemplate(idx) {
+    activeTemplateIdx = idx;
+    const row = $('stTemplateRow');
+    if (!row) return;
+    [...row.children].forEach((b, i) => b.classList.toggle('on', i === idx));
+  }
+
+  /**
+   * 应用一个模板：填参数 + 立刻出图。
+   *
+   * 为什么"直接调接口"而不是"只填滑块让用户再点一下"：
+   * 一键模板的价值就在"一键"，中间再插一步就失去意义了。
+   * 滑块仍然会被填好，用户看完效果可以继续微调。
+   */
+  async function applyTemplate(idx) {
+    if (!img) return;
+    const tpl = beautySchema && beautySchema.templates && beautySchema.templates[idx];
+    if (!tpl) return;
+
+    fillBeautyParams(tpl.params, tpl.params.filter_type || '');
+    markTemplate(idx);
+    const row = $('stTemplateRow');
+    if (row) [...row.children].forEach(b => { b.disabled = true; });
+    try {
+      await runBeauty();
+    } finally {
+      if (row) [...row.children].forEach(b => { b.disabled = false; });
+    }
+  }
+
+  /** 由主进程下发的模板表生成按钮 */
+  function renderTemplateRow() {
+    const row = $('stTemplateRow');
+    if (!row) return;
+    const list = (beautySchema && beautySchema.templates) || [];
+    if (!list.length) { row.hidden = true; return; }
+    row.hidden = false;
+    row.innerHTML = '';
+    list.forEach((t, i) => {
+      const b = document.createElement('button');
+      b.textContent = t.name;
+      // desc 放到 title 里：面板窄，一屏放不下 8 个带说明的卡片
+      b.title = t.desc || t.name;
+      b.dataset.tpl = t.id;
+      b.addEventListener('click', () => applyTemplate(i));
+      row.appendChild(b);
+    });
   }
 
   /** 只挑出 > 0 的项。0 的含义是「别碰这一项」，不是「调成 0」 */
@@ -2454,11 +2619,33 @@
       // 密钥走保险箱（有 10 分钟缓存，通常不打请求）
       await getKeys('megvii');
 
-      // 长边 1600 再传。旷视按张计费不按像素，但没有理由把
-      // 4000px 的原图（几 MB）塞进请求体 —— 白等上传时间。
-      // 1600 和相册里 preview 档一致，做婚礼相册足够。
+      /* ================================================================
+         按**原图分辨率**送出去
+         ----------------------------------------------------------------
+         ⚠️ 这里原来是"长边缩到 1600 再传"，那是错的 ——
+         美颜的输入是**整张脸**，缩小再放大等于把皮肤纹理、
+         发丝、睫毛重采样一遍，出来会明显发糊。
+         婚纱照要放大看的，这个损失用户一眼能看出来。
+
+         实测确认（tools/size-probe.mjs）：**旷视原样返回输入尺寸**，
+         送多少给多少：
+             800×533   →  800×533
+            1600×1066  → 1600×1066
+            4000×2665  → 4000×2665
+         所以送原图不会白费 —— 拿回来的就是原图分辨率的成品。
+
+         代价只是慢一点，实测（tools/fullsize-probe.mjs）：
+            1600px  请求体 0.29MB  → 约 1s
+            2560px  请求体 0.91MB  → 约 2s
+            4096px  请求体 1.78MB  → 约 6s
+         而免费额度串行限流本身就要等 ≥3 秒，所以这个增量可以接受。
+
+         ⚠️ 但也不无脑发：**超过 4096 就不发了**。再大请求体到几 MB，
+         而返回的图我们本来也要缩回画布尺寸，收益不抵等待。
+         ================================================================ */
+      const MAX_EDGE = 4096;
       const long = Math.max(img.width, img.height);
-      const s = Math.min(1, 1600 / long);
+      const s = Math.min(1, MAX_EDGE / long);
       const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
 
       const off = document.createElement('canvas');
@@ -2466,18 +2653,26 @@
       off.getContext('2d').drawImage(img, 0, 0, cw, ch);
 
       // 统一 JPEG：相册里的 preview 是 WebP 存成 .jpg 的（踩过这个坑）
-      const b64 = off.toDataURL('image/jpeg', 0.92).split(',')[1];
+      const b64 = off.toDataURL('image/jpeg', 0.95).split(',')[1];
 
       const r = await window.AlbumStudio.megviiBeautify(b64, params);
       if (!r || !r.ok) throw new Error((r && r.error) || '美颜失败');
 
-      // 结果缩回原图尺寸再换。旷视返回值是按我们发过去的尺寸出的，
-      // 直接换上去的话画布会突然"变小"（其实是图变小了）——
-      // 而且原图上万一有别的调整，尺寸一变坐标就全错。
+      /* 结果回写。
+         ⚠️ 现在送出去的就是原图尺寸（除了 >4096 会先缩），所以
+         这里通常**不需要缩放** —— 但也不能直接换：
+           · 原图 >4096 时结果是缩过的，得放回去
+           · 极少数情况下旷视返回的尺寸可能和请求差 1 像素
+             （取整差异），直接换会让画布尺寸跳一下、
+             而画布尺寸一变，蒙版和坐标就全错位了
+         所以统一"按当前图尺寸重绘一遍" —— 尺寸相同时这一步是
+         1:1 拷贝，几乎不损失；尺寸不同时它就是必要的缩放。 */
       const res = await loadImage(r.image);
       const merged = document.createElement('canvas');
       merged.width = img.width; merged.height = img.height;
-      merged.getContext('2d').drawImage(res, 0, 0, img.width, img.height);
+      const mg = merged.getContext('2d');
+      mg.imageSmoothingQuality = 'high';
+      mg.drawImage(res, 0, 0, img.width, img.height);
 
       // 先留住原图，才能撤销。
       // 只在**第一次**美颜前留 —— 连着美颜两次，撤销要回到最初那张，
@@ -2645,6 +2840,75 @@
   function busy(on, text) {
     $('stBusy').hidden = !on;
     if (text) $('stBusyText').textContent = text;
+    // 关掉忙碌提示时进度条也一起收起来，否则下次打开还挂着上一轮的进度
+    if (!on) progressHide();
+  }
+
+  /* ================================================================
+     进度条
+     ----------------------------------------------------------------
+     去物要 16~22 秒。光一个转圈会让人以为卡死了，所以给一条真实
+     进度。但**不能编一个假百分比**（那种"永远走到 90% 然后卡住"的
+     进度条比没有还糟），所以按**阶段**推进：
+
+       提交   → 20%    （提交请求，几百毫秒，可预测）
+       重绘   → 45%    （生成中，时长不可预测 → 走条纹动画
+                        + "已等待 Ns"，不假装知道进度）
+       取回   → 85%    （下载结果，几秒）
+       完成   → 100%
+
+     只有首尾是确定的，中间那段诚实地显示成"不确定态"。
+     ================================================================ */
+  const PROGRESS_STAGES = { submit: 0.2, poll: 0.45, download: 0.85 };
+
+  function progressShow() {
+    const box = $('stProgress');
+    if (box) box.hidden = false;
+  }
+
+  function progressHide() {
+    const box = $('stProgress');
+    const bar = $('stProgressBar');
+    const note = $('stProgressNote');
+    if (box) box.hidden = true;
+    if (bar) { bar.style.width = '0'; bar.classList.remove('indeterminate'); }
+    if (note) { note.hidden = true; note.textContent = ''; }
+  }
+
+  /**
+   * 推进到某个阶段。
+   * @param {string} stage submit | poll | download | done
+   * @param {number} elapsedMs 仅 poll 用：已等待毫秒数
+   */
+  function progressStage(stage, elapsedMs) {
+    const bar = $('stProgressBar');
+    const note = $('stProgressNote');
+    if (!bar) return;
+    progressShow();
+
+    if (stage === 'done') {
+      bar.classList.remove('indeterminate');
+      bar.style.width = '100%';
+      if (note) { note.hidden = true; }
+      return;
+    }
+
+    const pct = PROGRESS_STAGES[stage];
+    if (pct == null) return;
+    bar.style.width = Math.round(pct * 100) + '%';
+
+    if (stage === 'poll') {
+      // 生成中：时长不可预测，所以用条纹表示"在动"，不报假百分比
+      bar.classList.add('indeterminate');
+      if (note) {
+        note.hidden = false;
+        note.textContent = elapsedMs ? `AI 正在重绘… 已等待 ${Math.round(elapsedMs / 1000)}s`
+                                     : 'AI 正在重绘…';
+      }
+    } else {
+      bar.classList.remove('indeterminate');
+      if (note) { note.hidden = true; }
+    }
   }
 
   function updateInfo() {
@@ -2683,6 +2947,12 @@
     cmp.addEventListener('pointerup', up);
     cmp.addEventListener('pointerleave', up);
     cmp.addEventListener('pointercancel', up);
+
+    // 左右分屏对比
+    const cmpT = $('stCompareToggle');
+    if (cmpT) cmpT.addEventListener('click', () => setCompare(!compareOn));
+    const cmpS = $('stCompareSlider');
+    if (cmpS) cmpS.addEventListener('input', e => setCompareAt(parseFloat(e.target.value) / 100));
 
     // 拖拽打开
     const stage = $('stStage');
@@ -2948,6 +3218,17 @@
     undoBeauty,
     /** 这次会发出去的参数（只含 > 0 的项 + 滤镜），测试要断言这个 */
     beautyParams,
+    // —— 一键模板 ——
+    applyTemplate,
+    applyBeautyPreset,
+    fillBeautyParams,
+    get templates() { return (beautySchema && beautySchema.templates) || []; },
+    get activeTemplateIdx() { return activeTemplateIdx; },
+    // —— 左右分屏对比 ——
+    setCompare,
+    setCompareAt,
+    get compareOn() { return compareOn; },
+    get compareAt() { return compareAt; },
     get beautyValues() { return { ...beautyValues }; },
     setBeautyValue: onBeautySlider,
     get beautyFilter() { return beautyFilter; },

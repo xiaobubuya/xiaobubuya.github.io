@@ -24,6 +24,7 @@
 
   <span class="st-sep"></span>
   <button id="stCompare" class="st-btn" title="按住看原图（或按 \ 键）" disabled>◑</button>
+  <button id="stCompareToggle" class="st-btn" title="左右对比原图（分屏）" disabled>▐▌</button>
   <button id="stReset" class="st-btn" title="重置全部调整" disabled>⟲</button>
 </header>
 
@@ -55,10 +56,29 @@
       </div>
     </div>
 
-    <!-- 正在处理的提示 -->
+    <!-- 正在处理的提示。
+         去物要 16~22 秒，光一个转圈会让人以为卡死了 ——
+         所以带一条真实进度条。进度按**阶段**推进（提交/重绘/取回），
+         不是假的百分比动画：重绘阶段占大头，且时长不可预测，
+         所以那一段显示"已等待 Ns"+ 不确定态条纹。 -->
     <div class="st-busy" id="stBusy" hidden>
       <div class="spinner"></div>
       <span id="stBusyText">处理中…</span>
+      <div class="st-progress" id="stProgress" hidden>
+        <div class="st-progress-bar" id="stProgressBar"></div>
+      </div>
+      <span class="st-progress-note" id="stProgressNote" hidden></span>
+    </div>
+    <!-- 左右对比滑块。
+         和「按住看原图」是两件事，都保留：
+           · 按住 ◑ / \ 键 = 临时看全图原图（快速确认）
+           · 这个滑块     = 把画面按竖线分成左右两半，可以直接比对构图/肤色
+         分割线左边显示原图、右边显示修过的。 -->
+    <div class="st-compare" id="stCompareBar" hidden>
+      <span class="st-compare-tag left">原图</span>
+      <span class="st-compare-tag right">修图</span>
+      <input type="range" id="stCompareSlider" min="0" max="100" step="0.5" value="50"
+             aria-label="原图对比位置">
     </div>
   </section>
 
@@ -135,6 +155,12 @@
         <span>美颜</span>
         <button id="stBeautyPreset" class="st-mini wide" title="填入一组保守的婚纱照参数">一键美颜</button>
       </div>
+
+      <!-- 一键模板：每个模板是一组调好的参数，点一下直接出图（~0.7s）。
+           模板只覆盖接口支持的范围（肤质/眼/脸型/滤镜）——
+           鼻子、脖子、头发、体型接口没有，那些要靠局部变形，
+           详见 ai-megvii.js 里 TEMPLATES 的说明。 -->
+      <div class="st-tpl" id="stTemplateRow" hidden></div>
 
       <div class="st-beauty-body" id="stBeautyBody">
         <div class="st-beauty-empty">需要在桌面版「修图 App」里使用</div>
