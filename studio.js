@@ -1105,6 +1105,31 @@
     return { inW: ins.w / box.W, inH: ins.h / box.H };
   }
 
+  /* ================================================================
+     把旋转滑杆和度数标签同步到 crop.rot
+     ----------------------------------------------------------------
+     ⚠️⚠️ 滑杆（#stCropRot）和标签（#stCropRotVal）是**两个独立元素**，
+     没有 <output> 绑定 —— 只有显式同步才会一致。
+     实测踩到：进裁剪 → 拖到 30° → 按「⟲ 90°」快转（内部会旋转并
+     **重新进入裁剪**，crop.rot 归零）→ 滑杆和标签**仍停在 30°**。
+     显示 30° 而实际 0°，用户会以为旋转丢了，或者反过来以为没转。
+
+     所以规则是：**凡是有可能改变 crop.rot 的地方，都要调它一次**。
+     现在有三处：enterCrop（归零）、setCropRotation（拖滑杆）、
+     rotateQuarter 之后（重进裁剪）。
+     ================================================================ */
+  function syncCropRotUI(deg) {
+    const d = Number.isFinite(deg) ? deg : 0;
+    const slider = $('stCropRot');
+    const label = $('stCropRotVal');
+    /* 滑杆量程只有 ±45（90° 整转走按钮），所以钳一下再显示 ——
+       否则给滑杆赋超出 min/max 的值会被浏览器夹到边界，
+       而标签却显示真实值，两者又不一致了。 */
+    const shown = Math.max(-45, Math.min(45, d));
+    if (slider) slider.value = String(shown);
+    if (label) label.textContent = shown.toFixed(0) + '°';
+  }
+
   /** 打开裁剪模式 */
   function enterCrop() {
     if (!img) return;
@@ -1121,6 +1146,9 @@
     setBrushMode(false);
     showMaskTool(false);
     showCropUI(true);
+    // ⚠️ 必须重置滑杆：重新进入裁剪时 rot 归零了，
+    // 不重置就会显示上一次的角度（实测踩过）
+    syncCropRotUI(0);
     layoutCanvas();
     render();
     drawCropOverlay();
@@ -1139,6 +1167,13 @@
   /** 设置旋转角；内接矩形随之变化，裁剪框要 rebase */
   function setCropRotation(deg) {
     if (!crop || !img) return;
+    /* ⚠️ 先把角度钳进滑杆量程（±45）。
+       不钳的话：给 input.value 赋超出 min/max 的值时**浏览器会夹到边界**，
+       于是"标签显示 80°、滑杆停在 45°"—— 显示值和实际值对不上。
+       钳住 crop.rot 本身，让"显示 == 实际"这条不变量恒成立。 */
+    const r45 = v => Math.max(-45, Math.min(45, Number(v) || 0));
+    deg = r45(deg);
+
     // 归一化坐标是相对**旋转框**的，旋转角一变框就变了 ——
     // 所以不能直接把旧的归一化值搬过来，要按比例换算
     const oldBox = rotatedBoxSize(img.width, img.height,
@@ -1155,8 +1190,8 @@
     crop.rect = clampCropRect(crop.rect, inW, inH);
     if (crop.aspect) applyCropAspect(crop.aspect);
 
-    const r = $('stCropRotVal');
-    if (r) r.textContent = deg.toFixed(0) + '°';
+    // 用同一个函数同步（别各写各的，否则滑杆和标签迟早不一致）
+    syncCropRotUI(deg);
     layoutCanvas();
     render();
     drawCropOverlay();

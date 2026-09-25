@@ -597,7 +597,7 @@ API_PASS=你的口令 node tools/vault-import.mjs
 
 ```bash
 # 0. 一把梭（前端有统一入口）
-cd xiaobubuya.github.io && node test/run-all.mjs          # 276 项
+cd xiaobubuya.github.io && node test/run-all.mjs          # 281 项
 cd xiaobubuya.github.io && node test/run-all.mjs --fast   # 只跑静态，秒出
 cd ../album-studio && npm test                            # 69 项
 cd ../album-api && npm test                               # 212 项
