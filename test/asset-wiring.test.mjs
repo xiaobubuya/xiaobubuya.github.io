@@ -86,26 +86,41 @@ const chrome = await launch();
 let r;
 try {
   const page = await openPage(chrome.port, `http://127.0.0.1:${ACTUAL}/__probe.html?v=${Date.now()}`);
-  await new Promise(res => setTimeout(res, 1200));
+
+  /* ⚠️ 先等页面就绪再断言，别裸取 naturalWidth。
+     踩过：直接 `bm.naturalWidth` 时，bm 为 null 会抛
+     "Cannot read properties of null" —— 而这条错误发生在
+     `run-all` 里（单独跑却正常），说明是**加载时机**问题。
+     这类"单独跑绿、一起跑红"最容易浪费时间，所以：
+       ① 显式等 document.readyState + 元素出现
+       ② 元素缺失时给出人话错误，而不是让 TypeError 冒出去 */
+  await page.eval(`(async () => {
+    const dl = Date.now() + 8000;
+    while (Date.now() < dl) {
+      if (document.readyState === 'complete'
+          && document.querySelector('.brand-mark')
+          && document.getElementById('show')) return true;
+      await new Promise(r => setTimeout(r, 50));
+    }
+    throw new Error('probe 页面 8 秒内没就绪'
+      + '（.brand-mark / #show 没出现）—— 静态服务是不是没起在预期端口？');
+  })()`);
+  await new Promise(res => setTimeout(res, 600));
+
   r = await page.eval(`(() => {
     const out = { failed: [] };
-    // 拿到所有资源失败（用 performance 里已经完成的条目更可靠）
-    out.entries = performance.getEntriesByType('resource').map(e => ({
-      name: e.name.split('/').pop(),
-      size: e.transferSize,
-      ok: e.responseStatus === undefined ? null : e.responseStatus
-    }));
 
     const bm = document.querySelector('.brand-mark');
-    out.brandMark = { w: bm.naturalWidth, complete: bm.complete };
+    out.brandMark = bm ? { w: bm.naturalWidth, complete: bm.complete } : null;
     const ea = document.querySelector('.empty-art');
-    out.emptyArt = { w: ea.naturalWidth };
-
-    out.albumCoverArt = getComputedStyle(
-      document.querySelector('.album-cover.empty'), '::after').backgroundImage;
-    out.showBg = getComputedStyle(document.getElementById('show')).backgroundImage;
+    out.emptyArt = ea ? { w: ea.naturalWidth } : null;
+    const cover = document.querySelector('.album-cover.empty');
+    out.albumCoverArt = cover
+      ? getComputedStyle(cover, '::after').backgroundImage : null;
+    const show = document.getElementById('show');
+    out.showBg = show ? getComputedStyle(show).backgroundImage : null;
     // 顺带确认 #show 的兜底底色也在（图片没加载完时不闪白底）
-    out.showBgColor = getComputedStyle(document.getElementById('show')).backgroundColor;
+    out.showBgColor = show ? getComputedStyle(show).backgroundColor : null;
     out.sheets = [...document.styleSheets].map(s => (s.href || '').split('/').pop());
     return out;
   })()`);
@@ -145,10 +160,12 @@ t('幻灯片有兜底底色（图片没加载完时不闪白底）', () => {
 });
 
 t('图标（品牌位 / 空状态）真的解码出来了', () => {
-  assert.ok(r.brandMark && r.brandMark.w > 0,
-    `品牌位图标没解码出来（naturalWidth=${r.brandMark && r.brandMark.w}）`);
-  assert.ok(r.emptyArt && r.emptyArt.w > 0,
-    `空状态插图没解码出来（naturalWidth=${r.emptyArt && r.emptyArt.w}）`);
+  assert.ok(r.brandMark, '.brand-mark 元素不在页面上');
+  assert.ok(r.brandMark.w > 0,
+    `品牌位图标没解码出来（naturalWidth=${r.brandMark.w}）`);
+  assert.ok(r.emptyArt, '.empty-art 元素不在页面上');
+  assert.ok(r.emptyArt.w > 0,
+    `空状态插图没解码出来（naturalWidth=${r.emptyArt.w}）`);
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);

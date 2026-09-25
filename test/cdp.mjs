@@ -185,6 +185,7 @@ export async function launch(opts = {}) {
   const userDir = path.join(os.tmpdir(), 'cdp-profile-' + process.pid + '-' + port);
   fs.mkdirSync(userDir, { recursive: true });
 
+  const winSize = opts.windowSize || '1200,800';
   const args = [
     '--headless=new',
     '--remote-debugging-port=' + port,
@@ -193,7 +194,13 @@ export async function launch(opts = {}) {
     '--no-default-browser-check',
     '--disable-extensions',
     '--disable-background-networking',
-    '--window-size=1200,800',
+    /* ⚠️ 窗口尺寸可以通过 opts.windowSize 覆盖。
+       为什么需要：媒体查询（max-width:1100px 之类）看的是**视口宽度**，
+       而视口宽度由这个启动参数决定 —— 用 JS 改 body 宽度**不会**触发
+       媒体查询（innerWidth 不变）。踩过：想测窄屏顶栏，
+       给 body 设了 width:1000px，结果 matchMedia 还是 false，
+       量到的全是宽屏的样式。要测窄屏只能按宽度分别启动。 */
+    '--window-size=' + winSize,
     // SwiftShader：无头环境没有真 GPU，用软件渲染跑 WebGL。
     // 不加这几个的话 getContext('webgl') 返回 null
     '--use-gl=angle',

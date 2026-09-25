@@ -586,6 +586,7 @@ ALBUM_URL=http://127.0.0.1:8896/studio.html node test/electron-ai-resolution.tes
 autolayout 62 · upload 20 · mask 21 · contract 9       = 112
 crop-geometry 15                                        =  15
 assets 13（og 绝对 URL / 图标是一套 / CSS url 存在）        =  13
+topbar 5（窄窗口不溢出 / 按钮不挤成一坨）                   =   5
 sw-version 4 · line-endings 4                           =   8
 shader-guard 3 · adjustments 22 · curve 20              =  45
 adjustments-negative 16（含浏览器变异）                  =  16
@@ -593,7 +594,7 @@ asset-wiring 5 · adjust-browser 26 · template-browser 6  =  37
 crop-browser 16                                         =  16
 inpaint（桌面）20 · beautify（桌面）49                    =  69
 smoke（后端）212                                         = 212
-                                       前端小计    262
+                                       前端小计    267
 ```
 
 ⚠️ 上表里**不含** `mask-browser` / `inpaint-browser`（要外部 harness）
@@ -675,7 +676,7 @@ cd album-api && npm test
 📋 没做：液化/透视校正、渐变与径向蒙版、
         修图结果回存、火山任务持久化
 🔑 密钥：已全部迁到保险箱，本地文件已删
-🧪 测试：见上表（前端 262 + 桌面 69 + 后端 212 + 两组 Electron 实测 13）
+🧪 测试：见上表（前端 267 + 桌面 69 + 后端 212 + 两组 Electron 实测 13）
 ⚠️ 没真人验证过：旷视美颜的实际出图效果、美颜面板的手感、
                  一键模板出来的效果好不好看、
                  六个本地工具的手感、裁剪的拖拽手感、
