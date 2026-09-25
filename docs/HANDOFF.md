@@ -596,7 +596,7 @@ asset-wiring 5 · adjust-browser 26 · template-browser 6  =  37
 crop-browser 16                                         =  16
 inpaint（桌面）20 · beautify（桌面）49                    =  69
 smoke（后端）212                                         = 212
-                                       前端小计    284
+                                       前端小计    284（静态 231 + 浏览器 53）
 ```
 
 ⚠️ 上表里**不含** `mask-browser` / `inpaint-browser`（要外部 harness）
