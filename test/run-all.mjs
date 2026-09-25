@@ -20,7 +20,9 @@ const FAST = [
   ['upload', '上传流程'],
   ['mask', '蒙版引擎'],
   ['contract', '跨仓库契约'],
+  ['crop-geometry', '裁剪几何：采样区间的源码级等式'],
   ['sw-version', 'sw.js 外壳版本（改了 studio.* 必须升）'],
+  ['line-endings', '行尾一致性（CRLF 会让多行变异假红）'],
   ['shader-guard', 'shader 模板字符串护栏'],
   ['adjustments', '调整项 ↔ shader 一致性'],
   ['curve', '色调曲线 LUT（单调性/串扰）'],
@@ -46,10 +48,13 @@ const BROWSER = [
    总账里也单独列一行。要让它消失只有两个正当办法 ——
    真的修好（那 ROADMAP §5.1.1 要一起删），
    或者明确决定不做（那也要从这张表里删掉并说明）。
+
+   ✅ 2026-09-24：原来这里登记着 crop-browser 的「裁剪内容的上下朝向」，
+   现在已经**真修好了**（根因是 cropRenderPlan 的采样区间算错，
+   不是翻转问题），所以条目已删、断言也改成严格判据了。
+   表留着不改结构 —— 下一个已知问题直接往里加。
    ================================================================ */
-const KNOWN_ISSUES = {
-  'crop-browser': ['裁剪内容的上下朝向'],
-};
+const KNOWN_ISSUES = {};
 
 function run(file) {
   return new Promise(resolve => {

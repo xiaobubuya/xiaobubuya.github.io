@@ -1,0 +1,18 @@
+# 统一用 LF 行尾。
+#
+# ⚠️ 为什么必须写死这个（实际踩过）：
+# 本机 core.autocrlf=true，检出时会把工作区变成 CRLF。
+# 而仓库里一部分文件是新写的（LF），一部分是老检出（CRLF）——
+# 于是**同一份代码在不同文件里行尾不一致**。
+#
+# 后果不是"看着不舒服"，而是**测试会莫名其妙地红**：
+#   · test/adjustments-negative.test.mjs 的变异表里，
+#     多行匹配串是按 LF 写的 → 遇到 CRLF 的文件全部匹配不上，
+#     报「变异目标片段找不到了（代码改过？）」，
+#     而代码根本没改过（实际踩过：5 个变异一起变成假红）
+#   · 用 PowerShell 的 ReadAllLines/WriteAllLines 改文件会**悄悄**
+#     把 LF 变成 CRLF（.NET 的 WriteAllLines 恒用 Environment.NewLine），
+#     改完当时看不出来，下一轮测试才炸，且报错指不到根因
+#
+# 加了这条之后：git 里的内容和工作区**都是 LF**，与平台无关。
+* text=auto eol=lf

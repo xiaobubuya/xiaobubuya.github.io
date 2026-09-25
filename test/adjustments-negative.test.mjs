@@ -172,7 +172,26 @@ let lastRaw = null;
 for (const mu of MUTATIONS) {
   t(mu.name, () => {
     if (!original.includes(mu.from)) {
-      throw new Error(`变异目标片段找不到了（代码改过？）：${mu.from}`);
+      /* ⚠️ 这个错误有两种完全不同的原因，别只往"代码改过"上想：
+         ① 代码真的改了（变异表要跟着更新）
+         ② **文件的 CR 数量是 0，但这里的目标片段是按 LF 写的，
+            而文件在工作区里是 CRLF** —— 多行片段会全部匹配不上，
+            表现成"5 个变异一起假红"。实测踩过。
+         所以先把行尾情况打出来，省得下次又排查半天。
+
+         ⚠️ 用 `hasCR = ...` 而不是把目标片段打出来对比 ——
+         片段可能很长，打在终端里根本看不出哪一行的行尾不一样。 */
+      const hasCR = original.includes('\r\n');
+      const multiLine = mu.from.includes('\n');
+      const hint = hasCR
+        ? `\n     ⚠️ 文件里有 CRLF 行尾，而这个片段是多行匹配`
+          + `${multiLine ? '' : '（单行的其实不受影响，另找原因）'}。\n`
+          + '     修：根目录 .gitattributes 已声明 eol=lf，'
+          + '跑 `git add --renormalize .` 重新检出；\n'
+          + '     或者别用 PowerShell 的 WriteAllLines 改文件'
+          + '（它会把 LF 变成 CRLF）。'
+        : `\n     （文件里没有 CRLF，所以不是行尾问题）`;
+      throw new Error(`变异目标片段找不到了（代码改过？）：${mu.from}${hint}`);
     }
     fs.writeFileSync(FILE, original.replace(mu.from, mu.to), 'utf8');
     let n, failedRaw = null;

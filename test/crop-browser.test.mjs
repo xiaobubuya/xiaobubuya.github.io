@@ -146,6 +146,35 @@ try {
       x.fillStyle = '#808080'; x.fillRect(0, 0, W, H);
       return c;
     }
+    /* ================================================================
+       行编码图：绿通道 = 这一行在原图里的位置（0 = 图上边）
+       ----------------------------------------------------------------
+       ⚠️ 为什么需要它（这条是补盲区，不是为了好看）：
+
+       四象限那种"颜色"判据**太粗**。实测：把 cropRenderPlan 的
+       offY 换成错的符号，crop-browser 那 15 项**全绿** ——
+       因为它读的那几个点，两种公式算出来的颜色碰巧一样
+       （全宽取景框时两个公式恰好等价）。
+       而错符号会让采样区间整体偏半个框高，是肉眼能看出的构图错误。
+
+       行编码图把"位置"变成可读的数字，于是错多少、往哪偏都能断言。
+       对应的源码级判据在 crop-geometry.test.mjs（更快、更精确），
+       这一条的作用是**在真实 WebGL 管线里**再确认一遍。 */
+    function makeRowCoded() {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+      const im = g.createImageData(W, H);
+      for (let y = 0; y < H; y++) {
+        const gv = Math.round(255 * y / (H - 1));
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          im.data[i] = 0; im.data[i + 1] = gv; im.data[i + 2] = 0; im.data[i + 3] = 255;
+        }
+      }
+      g.putImageData(im, 0, 0);
+      return c;
+    }
     async function load(canvas) {
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
       await window.Studio.openFile(new File([blob], 't.png', { type: 'image/png' }));
@@ -337,15 +366,23 @@ try {
       `输出不该比原图大：${r.outW}×${r.outH} vs ${r.imgW}×${r.imgH}`);
   });
 
-  await t('⭐ 裁剪真的取了那一块内容（不是原图左上角）', SETUP + `
+  await t('⭐ 裁剪真的取了那一块内容（不是每次取同一个角）', SETUP + `
     await load(makeQuad());
     window.Studio.enterCrop();
     window.Studio.setCropRotation(0);
-    /* 把取景框设到**右下半部分**（原图里是白+蓝那块）。
-       如果实现有 bug（比如忽略 offset），画面会显示左上角的红色。 */
+    /* ⚠️ rect 是**屏幕约定**：y=0 在画面**下**边、y=1 在上边
+       （依据：cropRectOnCanvas() 里 r.y=1 时框画在画布顶部）。
+       所以「画面右上角」= x 大、y 大 → { x: 0.5, y: 0.5 }，
+       对应原图里的**右上象限（绿）**。
+
+       ⚠️ 这条原来写的是 { x: 0.5, y: 0.5 } 却期望"白"（右下象限），
+       那是按"y 向下"写的。它当时能过，是因为取景框 0.5×0.5 居中取样
+       时正好落在四象限的**交点**附近，读到什么色全看取整 ——
+       属于"碰巧通过"。修好纵向偏移之后它就露出了真面目
+       （读到绿色 = 右上象限，正是 y=0.5 该有的结果）。
+
+       换个**明确落在单一象限内**的框，判据就不再依赖取整。 */
     window.Studio.setCropRect({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
-    const plan = window.Studio.cropRenderPlan(false);
-    // 重新渲染一帧再读（setCropRect 内部已经 render 了）
     const c = window.Studio._canvas();
     const g = c.getContext('webgl', { preserveDrawingBuffer: true });
     const buf = new Uint8Array(4);
@@ -355,11 +392,54 @@ try {
              rect: window.Studio.crop.rect,
              canvas: [c.width, c.height] };
   `, r => {
-    // 右下半在中灰图里是"白"（右下象限），不该是红
-    const [R, G, B] = r.center;
-    assert.ok(Math.min(R, G, B) > 150,
-      `取景框在右下半，中心应该接近白，实际 rgb(${R},${G},${B})`
-      + ` —— 如果偏红说明忽略裁剪偏移（总是取原图左上角）`);
+    // 画面右上 = 原图右上象限 = 绿
+    assert.ok(isGreen(r.center),
+      `取景框在画面右上，中心应该是右上象限的绿，实际 ${rgb(r.center)}`
+      + ' —— 偏红说明忽略了裁剪偏移（总是取原图左上角）');
+  });
+
+  /* ---------------- 采样位置（行编码图） ---------------- */
+
+  await t('⭐⭐ 采样区间落在正确的位置上（用行编码图量源行，不是看颜色）', SETUP + `
+    await load(makeRowCoded());
+    window.Studio.enterCrop();
+    window.Studio.setCropRotation(0);
+    /* 取景框在画面**左下角**：x∈[0,0.5]、y∈[0,0.5]（y 是屏幕约定，0=底）。
+       于是应该采到原图左下角的 1/4：图像 v∈[0.5, 1]、u∈[0, 0.5]。
+
+       ⚠️⚠️ 取景框必须**在 y 上不居中**，否则这条测试是瞎的。
+       实测教训：第一版用的是「画面上半」（y=0.5, h=0.5，全宽）——
+       那个框中心正好在画面中心，两种 offY 公式**完全等价**
+       （框中心 - 0.5 = 0，差的符号项被消掉），
+       所以把 offY 换成错的符号，这条照样绿。
+       挑框的原则：让框中心明显偏离画面中心。 */
+    window.Studio.setCropRect({ x: 0, y: 0, w: 0.5, h: 0.5 });
+    const plan = window.Studio.cropRenderPlan(true);
+    const img = [window.Studio.image.width, window.Studio.image.height];
+    // 画面顶 / 底指向的源行（绿通道 = 行位置 / 255）
+    const top = px(0.5, 0.99), bot = px(0.5, 0.01);
+    return {
+      img,
+      plan: plan ? { sX: plan.sX, sY: plan.sY, offX: plan.offX, offY: plan.offY } : null,
+      srcVTop: top[1], srcVBot: bot[1],
+      srcUTop: top[0], srcUBot: bot[0]
+    };
+  `, r => {
+    /* 期望：画面顶 = 原图第 150 行（v≈0.5）、画面底 = 原图第 299 行（v≈1）。 */
+    const near = (a, b, tol, what) => {
+      assert.ok(Math.abs(a - b) <= tol,
+        `${what}：期望 ${b.toFixed(1)}，实际 ${a}（差 ${Math.abs(a - b).toFixed(1)}）`);
+    };
+    console.log(`        [采样] 源行 顶=${r.srcVTop}/255 底=${r.srcVBot}/255  `
+      + `(plan sY=${r.plan && r.plan.sY.toFixed(3)} offY=${r.plan && r.plan.offY.toFixed(3)})`);
+
+    // 绿通道 = 行位置，所以期望值是 127.5 和 255
+    near(r.srcVTop, 127.5, 12,
+      '取景框在画面左下，画面**顶**应该采到原图正中那一行');
+    near(r.srcVBot, 255, 12,
+      '取景框在画面左下，画面**底**应该采到原图最下面一行');
+    // 红通道全是 0（这张图没编码列），顺手确认读的不是别的东西
+    near(r.srcUTop, 0, 12, '行编码图的红通道应该恒为 0');
   });
 
   /* ---------------- 应用（烘焙） ---------------- */
@@ -385,53 +465,74 @@ try {
       `实际尺寸应该等于渲染计划：${r.after} vs ${r.plan}`);
   });
 
-  await t('⭐ 裁剪内容的上下朝向（已知未解决）', SETUP + `
+  await t('⭐ 裁剪内容的上下朝向（取景框取画面上半 → 结果只有上半的色）', SETUP + `
     await load(makeQuad());
     window.Studio.enterCrop();
     window.Studio.setCropRotation(0);
-    /* 裁画面**上半**（红 + 绿）。
-       ⚠️ 正确结果：整块只有红和绿（左半红、右半绿）。
-       当前实现会采到**纵向翻转**的内容（顶蓝底红），
-       所以这条断言是红的 —— 这是**已知未解决**的问题，
-       不是测试写错。保留一条明确的红，
-       而不是删掉或放宽阈值（那等于把问题藏起来）。 */
+    /* 裁画面**上半**（原图 v∈[0,0.5]，也就是红+绿那两个象限）。
+       ⚠️ rect 是屏幕约定：y=0.5 是画面中线，y=1 是画面顶边。
+       所以 { y: 0.5, h: 0.5 } = 画面上半。
+
+       ⚠️ 这条曾经是**已知未解决**的红，症状是"采到了纵向相邻的区块"。
+       根因不在翻转，而在 cropRenderPlan 的 offY 少减了 sY/2 ——
+       整个采样区间上移了半个框高。详见 studio.js 里 offY 的推导注释和
+       test/_probe-crop-map.mjs（实测对照表，一次跑完全部场景）。
+
+       这里同时验**预览**和**烘焙后**，因为这两条路是分开实现的：
+       预览走 cropRenderPlan(false)，烘焙走 cropRenderPlan(true) + 手工行序。
+       只验预览的话，"应用完上下颠倒"这种错会漏掉（实际就漏过一次）。 */
     window.Studio.setCropRect({ x: 0, y: 0.5, w: 1, h: 0.5 });
 
-    const readTopBottom = (c, g) => {
-      const b1 = new Uint8Array(4), b2 = new Uint8Array(4);
-      g.readPixels(5, c.height - 5, 1, 1, g.RGBA, g.UNSIGNED_BYTE, b1);
-      g.readPixels(5, 5, 1, 1, g.RGBA, g.UNSIGNED_BYTE, b2);
-      return { top: [b1[0], b1[1], b1[2]], bottom: [b2[0], b2[1], b2[2]] };
-    };
+    /* ⚠️ 读点要按**象限中心**读，不能贴边。
+       第一版读的是 (x=5, 顶) 和 (x=5, 底) —— 那是画面左缘，
+       左半列上下都该是红（原图左半是红/蓝），于是两条断言自相矛盾。
+       用 px(0.25, v) / px(0.75, v) 落在两个象限中心。 */
     const c0 = window.Studio._canvas();
-    const preview = readTopBottom(c0, c0.getContext('webgl', { preserveDrawingBuffer: true }));
+    const preview = {
+      topL: px(0.25, 0.98), topR: px(0.75, 0.98),
+      botL: px(0.25, 0.02), botR: px(0.75, 0.02)
+    };
+    const previewSize = [c0.width, c0.height];
 
     await window.Studio.applyCrop();
-    const c = window.Studio._canvas();
-    const applied = readTopBottom(c, c.getContext('webgl', { preserveDrawingBuffer: true }));
-    return { preview, applied };
-  `, r => {
-    const isRG = p => {
-      const red = p[0] > 150 && p[1] < 90 && p[2] < 90;
-      const green = p[1] > 130 && p[0] < 120 && p[2] < 120;
-      return red || green;
+    const applied = {
+      topL: px(0.25, 0.98), topR: px(0.75, 0.98),
+      botL: px(0.25, 0.02), botR: px(0.75, 0.02)
     };
-    console.log('        [ori] 预览 顶=' + rgb(r.preview.top) + ' 底=' + rgb(r.preview.bottom));
-    console.log('        [ori] 应用后 顶=' + rgb(r.applied.top) + ' 底=' + rgb(r.applied.bottom));
+    return { preview, applied, previewSize,
+             size: [window.Studio.image.width, window.Studio.image.height] };
+  `, r => {
+    const fmt = o => `顶左=${rgb(o.topL)} 顶右=${rgb(o.topR)} `
+      + `底左=${rgb(o.botL)} 底右=${rgb(o.botR)}`;
+    console.log('        [朝向] 预览 ' + fmt(r.preview));
+    console.log('        [朝向] 应用后 ' + fmt(r.applied));
 
-    // 先守住"所见即所得"：预览和应用后必须一致（这条是好的）
+    /* 严格判据：裁**画面上半** → 采到原图上半 = 红（左）+ 绿（右）。
+       原来是宽松的"是红或绿就行"，那验不出翻转 ——
+       翻转后是"顶蓝底红"，也落在"红或绿"里，能蒙过去。 */
+    assert.ok(isRed(r.preview.topL), `预览顶左应该红，实际 ${rgb(r.preview.topL)}`);
+    assert.ok(isGreen(r.preview.topR), `预览顶右应该绿，实际 ${rgb(r.preview.topR)}`);
+    assert.ok(isRed(r.preview.botL), `预览底左应该红，实际 ${rgb(r.preview.botL)}`);
+    assert.ok(isGreen(r.preview.botR), `预览底右应该绿，实际 ${rgb(r.preview.botR)}`);
+
+    // 所见即所得
     const same = Math.max(
-      ...r.preview.top.map((v, i) => Math.abs(v - r.applied.top[i])),
-      ...r.preview.bottom.map((v, i) => Math.abs(v - r.applied.bottom[i]))
+      ...[['topL'], ['topR'], ['botL'], ['botR']].map(([k]) =>
+        Math.max(...r.preview[k].map((v, i) => Math.abs(v - r.applied[k][i]))))
     );
     assert.ok(same <= 3,
-      `预览和应用后必须一致（所见即所得），实际最大通道差 ${same}`);
+      `预览和应用后必须一致（所见即所得），实际最大通道差 ${same}`
+      + `（预览画布 ${r.previewSize.join('×')}）`);
 
-    // 再验内容朝向 —— 这两条当前是红的（已知问题）
-    assert.ok(isRG(r.preview.top) && isRG(r.preview.bottom),
-      `KNOWN-ISSUE 裁画面上半，结果应该整块只有红/绿（不含蓝/白），`
-      + ` 实际 顶=${rgb(r.preview.top)} 底=${rgb(r.preview.bottom)}`
-      + ' —— 纵向朝向反了，见 studio.js 里 cropRenderPlan 的说明');
+    /* 烘焙出来的图本身也要对 —— 不能只靠 canvas 显示正确。
+       这条是分开实现的（烘焙要手工处理 readPixels 的行序），
+       只验预览的话"应用完上下颠倒"会漏掉（实际就漏过一次）。 */
+    assert.ok(isRed(r.applied.topL) && isGreen(r.applied.topR),
+      `应用后画面顶部应该是红+绿，实际 ${rgb(r.applied.topL)} / ${rgb(r.applied.topR)}`
+      + `（图 ${r.size.join('×')}）`);
+    assert.ok(isRed(r.applied.botL) && isGreen(r.applied.botR),
+      `应用后画面底部应该是红+绿，实际 ${rgb(r.applied.botL)} / ${rgb(r.applied.botR)}`
+      + ' —— 如果顶蓝底红，说明烘焙时行序翻了');
   });
 
   /* ---------------- 90° 整转 ---------------- */
@@ -465,6 +566,45 @@ try {
       + `左下${rgb(r.afterBL)} 右下${rgb(r.afterBR)}`);
     assert.ok(isBlue(r.afterTL),
       `顺时针转 90° 后左上应该是蓝（原来的左下），实际 ${rgb(r.afterTL)}`);
+  });
+
+  await t('⭐ 裁剪模式里转 90°：取景框回填整个画面，画面不被扭/不偏移', SETUP + `
+    await load(makeQuad());
+    window.Studio.enterCrop();
+    window.Studio.setCropRotation(0);
+    await window.Studio.rotateQuarter(1);
+    const plan = window.Studio.cropRenderPlan(false);
+    return {
+      rect: window.Studio.crop.rect,
+      img: [window.Studio.image.width, window.Studio.image.height],
+      plan: plan ? { sX: plan.sX, sY: plan.sY, offX: plan.offX, offY: plan.offY,
+                     outW: plan.outW, outH: plan.outH } : null,
+      tl: px(0.25, 0.98), tr: px(0.75, 0.98),
+      bl: px(0.25, 0.02), br: px(0.75, 0.02)
+    };
+  `, r => {
+    /* 转了 90° 之后 enterCrop 会把取景框重置成整个内接矩形，
+       此时 s/off 必须是恒等（1 / 1 / 0 / 0）——
+       不是恒等的话说明"图片转了但采样参数还按旧的算"，
+       画面会被扭或整体偏掉。 */
+    assert.ok(r.plan, '没有渲染计划');
+    const near = (a, b) => Math.abs(a - b) < 1e-6;
+    assert.ok(near(r.plan.sX, 1) && near(r.plan.sY, 1),
+      `90° 后取景框占满画面，sX/sY 应该是 1，实际 ${r.plan.sX}/${r.plan.sY}`);
+    assert.ok(near(r.plan.offX, 0) && near(r.plan.offY, 0),
+      `90° 后取景框占满画面，offX/offY 应该是 0，实际 `
+      + `${r.plan.offX}/${r.plan.offY} —— 不是 0 说明采样区间整体偏了`);
+
+    /* 四象限内容：原图 左上=红 右上=绿 左下=蓝 右下=白，
+       顺时针 90° 之后应该变成 左上=蓝 右上=红 左下=白 右下=绿。
+       ⚠️ 判据必须**带颜色**。只断言"画面变了"或"四角不露白"
+       抓不到"上下颠倒/左右颠倒"，而这个功能恰恰错在朝向。 */
+    assert.ok(isBlue(r.tl), `90° 后左上应该是蓝（原左下），实际 ${rgb(r.tl)}`);
+    assert.ok(isRed(r.tr), `90° 后右上应该是红（原左上），实际 ${rgb(r.tr)}`);
+    assert.ok(isWhite(r.bl), `90° 后左下应该是白（原右下），实际 ${rgb(r.bl)}`);
+    assert.ok(isGreen(r.br), `90° 后右下应该是绿（原右上），实际 ${rgb(r.br)}`);
+    assert.equal(r.img[0], 300, `转 90° 后宽应该等于原高 300，实际 ${r.img[0]}`);
+    assert.equal(r.img[1], 400, `转 90° 后高应该等于原宽 400，实际 ${r.img[1]}`);
   });
 
   /* ---------------- 回归 ---------------- */
