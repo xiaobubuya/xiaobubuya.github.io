@@ -39,7 +39,9 @@
 <!-- ============================ 登录 ============================ -->
 <div id="login" class="login">
   <form id="loginForm" class="login-card" autocomplete="on">
-    <div class="ring"></div>
+    <!-- 品牌位用真正的 App 图标（原来是 CSS 画的同心圆环占位）。
+         ⚠️ 尺寸 46px 是刻意对齐旧 .ring 的占位尺寸，不改变布局。 -->
+    <img class="brand-mark" src="icon.svg" alt="" width="46" height="46">
     <h1>我们的婚纱照</h1>
     <p class="sub">只有我们俩能进</p>
 
@@ -79,6 +81,9 @@
     <div class="spinner"></div><span>加载中…</span>
   </div>
   <div id="empty" class="empty" hidden>
+    <!-- 空状态用图标的浅色版做插图：比纯文字有"这是一个相册应用"的暗示，
+         又不会抢眼。⚠️ 它是装饰，所以 aria-hidden + 空 alt。 -->
+    <img class="empty-art" src="icon.svg" alt="" aria-hidden="true" width="72" height="72">
     <p>还没有照片</p>
     <p class="dim">等上传功能做好，这里就会热闹起来</p>
   </div>

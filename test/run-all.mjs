@@ -31,6 +31,7 @@ const FAST = [
 ];
 
 const BROWSER = [
+  ['asset-wiring', 'UI 素材接线（CSS 背景/水印真的生效）'],
   ['adjust-browser', '锐化/暗角/颗粒/曲线/HSL（真 Chrome + WebGL）'],
   ['template-browser', '一键模板（Chrome 侧）/ 左右对比 / 进度条'],
   ['crop-browser', '裁剪 / 旋转（几何变换）'],

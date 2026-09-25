@@ -36,10 +36,21 @@
   overflow:hidden;
 }
 .album-cover img{width:100%;height:100%;object-fit:cover;display:block}
+/* ================================================================
+   空相册封面
+   ----------------------------------------------------------------
+   原来是渐变底 + 一行"空相册"文字。改成图标做浅色水印：
+   相册列表里通常会同时出现"有封面的"和"空的"，空的那张只有文字
+   会显得像坏了；放一个很淡的相册图标能看出"这是还没选封面的相册"。
+
+   ⚠️ 用 background-image 而不是 <img>：这里只需要一层水印，
+   不需要它参与布局；background 尺寸也可控（按百分比），
+   不会因为卡片比例不同被拉变形。
+   ================================================================ */
 .album-cover.empty::after{
-  content:"空相册";position:absolute;inset:0;
-  display:grid;place-items:center;
-  font-size:12px;color:var(--ink-3);
+  content:"";position:absolute;inset:0;
+  background:url("icon.svg") center/38% no-repeat;
+  opacity:.28;
 }
 .album-meta{padding:9px 11px 11px}
 .album-name{

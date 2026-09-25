@@ -42,14 +42,32 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
   width:100%;max-width:340px;text-align:center;
   display:flex;flex-direction:column;gap:16px;
 }
-.ring{
-  width:46px;height:46px;margin:0 auto;
-  border:1.5px solid var(--accent);border-radius:50%;position:relative;
+/* ================================================================
+   品牌标记（App 图标）
+   ----------------------------------------------------------------
+   ⚠️ 原来是 `.ring`：纯 CSS 画的同心圆环占位图。换成真正的图标之后
+   才有"这是一个相册应用"的样子。
+   尺寸保持 46px，和旧占位一致 —— 换图不该顺带改布局。
+   ================================================================ */
+.brand-mark{
+  width:46px;height:46px;margin:0 auto;display:block;
+  border-radius:12px;                      /* 图标本身已是圆角，这里再收一点 */
+  box-shadow:0 2px 10px rgba(43,35,32,.10);
 }
-.ring::after{
-  content:"";position:absolute;inset:7px;
-  border:1.5px solid rgba(176,141,106,.4);border-radius:50%;
+
+/* ================================================================
+   空状态插图
+   ----------------------------------------------------------------
+   用图标的浅色版做插图：比纯文字多一层"相册"的暗示，又不抢眼。
+   ⚠️ 它是装饰（aria-hidden + 空 alt），所以透明度压低、不参与交互。
+   ================================================================ */
+.empty-art{
+  width:72px;height:72px;margin:0 auto 16px;display:block;
+  opacity:.34;border-radius:18px;
 }
+/* 深色底（修图页）上要反过来提亮一点，否则几乎看不见 */
+.edit-view .empty-art,
+.read-view .empty-art{opacity:.5}
 .login h1{font-size:20px;font-weight:600;letter-spacing:.03em}
 .login .sub{font-size:12.5px;color:var(--ink-2);margin-top:-8px}
 
@@ -298,9 +316,20 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 }
 
 /* ============================ 幻灯片 ============================ */
+/* ================================================================
+   幻灯片 / 全屏播放
+   ----------------------------------------------------------------
+   背景用 stage-bg.png（暗底 + 中心一圈微弱辉光），不是纯黑。
+   为什么值得换：纯黑衬托照片会显得"硬"，而这张图的辉光正好在中心，
+   和 object-fit:contain 的照片区域重合，照片边缘和环境过渡更自然。
+
+   ⚠️ 必须留 background-color 兜底：它在 Service Worker 的 shell 里，
+   但首次安装/离线首次打开时可能还没缓存到 —— 没有兜底色就会闪白底。
+   ⚠️ cover + center 保证各种屏幕比例都只取中心那块辉光。
+   ================================================================ */
 .show{
   position:fixed;inset:0;z-index:95;
-  background:#000;
+  background:#15110f url("assets/gen/stage-bg.png") center/cover no-repeat;
   display:grid;place-items:center;
 }
 .show img{

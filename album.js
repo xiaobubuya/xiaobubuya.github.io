@@ -132,6 +132,12 @@
         img.alt = '';
         img.src = A.thumbUrl(al.coverKey);
         cover.appendChild(img);
+      } else {
+        /* 空封面的视觉是 CSS 画的水印图标（见 album.css），
+           那个 `content:""` 对读屏是空的 —— 所以这里补一个可读的名字，
+           否则"这本相册没有封面"这件事只有视力正常的人看得出。 */
+        cover.setAttribute('role', 'img');
+        cover.setAttribute('aria-label', '空相册（还没有选封面）');
       }
 
       const meta = document.createElement('div');

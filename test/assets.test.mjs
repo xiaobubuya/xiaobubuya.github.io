@@ -127,5 +127,42 @@ t('manifest 里列出的图标文件都存在', () => {
   }
 });
 
+/* ================================================================
+   ⭐ CSS 里引用的图片也要存在
+   ----------------------------------------------------------------
+   ⚠️ 这条是这次改 UI 才补上的盲区。CSS 里的 url() 指向不存在的文件，
+   表现是**完全静默**的：
+     · background-image 失败 → 那层背景/水印直接不显示，没有报错
+     · 只有在开发者工具的网络面板里才看得到一条 404
+   而这次恰好新增了两处（空相册水印、幻灯片背景），
+   任何一处路径写错都会"看起来只是少了个装饰"。
+   ================================================================ */
+t('⭐ CSS 里 url() 引用的本地图片都存在', () => {
+  const missing = [];
+  for (const cssFile of ['styles.css', 'album.css', 'studio.css']) {
+    if (!fs.existsSync(path.join(ROOT, cssFile))) continue;
+    const css = read(cssFile);
+    // 只取 url(...) 里的相对路径：跳过 data: / http(s): / 变量
+    for (const m of css.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
+      const u = m[1].trim();
+      if (/^(data:|https?:|\/\/|#|var\()/.test(u)) continue;
+      const clean = u.split('?')[0].split('#')[0];
+      if (!fs.existsSync(path.join(ROOT, clean))) {
+        missing.push(`${cssFile} → ${clean}`);
+      }
+    }
+  }
+  assert.equal(missing.length, 0,
+    '这些 CSS 引用的图片不存在（浏览器里是静默失败，只有一条 404）：\n       '
+    + missing.join('\n       '));
+});
+
+t('幻灯片背景用的 stage-bg.png 真的存在', () => {
+  const css = read('styles.css');
+  if (!/stage-bg\.png/.test(css)) return;   // 以后不用了也不算错
+  assert.ok(fs.existsSync(path.join(ROOT, 'assets/gen/stage-bg.png')),
+    'styles.css 引用了 stage-bg.png，但文件不在 —— 幻灯片会退回兜底色');
+});
+
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);
 process.exit(fail ? 1 : 0);
