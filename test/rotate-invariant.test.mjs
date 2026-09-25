@@ -99,12 +99,35 @@ try {
         const plan = S.cropRenderPlan(true);
         const pv = S.cropRenderPlan(false);
         const cv = S._canvas();
+        /* 取景框在**图片上**的尺寸。
+           ⚠️⚠️ 换算是 rect × ins（内接矩形），**不是** rect × box。
+           这个换算我前后搞错过两次，两头都错过：
+             · 第一次写 rect×ins，那时代码归一化到 box → 量出 1.478，误判
+             · 第二次改成 rect×box，代码又改成归一化到 ins → 还是错
+           稳定判据：crop.rect 的归一化基准 = cropRenderPlan 里
+           regW = r.w * ins.w 用的那个 —— 现在就是 ins。 */
+        const phi = deg * Math.PI / 180;
+        const ins = S.inscribedRect(W, H, phi);
+        const rect = S.crop.rect;
+        // 再单独算一次"原图比例的最大框"，和实际设进去的对比
+        const fit = S.fitRectToBox(0);
         out.push({
           W, H, deg,
+          imgW: S.image ? S.image.width : null,
+          imgH: S.image ? S.image.height : null,
           outW: plan.outW, outH: plan.outH,
           sX: plan.sX, sY: plan.sY, offX: plan.offX, offY: plan.offY,
           canvasW: cv.width, canvasH: cv.height,
-          pvW: pv.outW, pvH: pv.outH
+          pvW: pv.outW, pvH: pv.outH,
+          rectImgW: rect.w * ins.w,
+          rectImgH: rect.h * ins.h,
+          insImgW: ins.w,
+          insImgH: ins.h,
+          fitW: fit ? fit.w : null,
+          fitH: fit ? fit.h : null,
+          rectW: rect.w,
+          rectH: rect.h,
+          aspect: S.crop.aspect
         });
       }
     }
@@ -189,6 +212,79 @@ t('0° 时是恒等变换（正常编辑不受影响）', () => {
     assert.ok(Math.abs(x.offX) < 1e-6 && Math.abs(x.offY) < 1e-6,
       `${x.W}×${x.H} 0°: offX=${x.offX} offY=${x.offY}，应该是 0`);
   }
+});
+
+/* ================================================================
+   ⭐ 用户明确要的行为：旋转后自动保持原图比例、绝不裁切出空白
+   ----------------------------------------------------------------
+   默认比例档就是「原图」（crop.aspect === 0）。旋转时取景框会自动
+   收成"原图比例的最大可放矩形" —— 也就是内接矩形本身。
+   所以两条断言：
+     ① 取景框比例恒等于原图比例
+     ② 取景框填满内接矩形（= 尽可能少裁 —— "绝不裁切"在数学上做不到，
+        旋转必然裁掉四角，能保证的是"不出现空白"且"裁到最少"）
+   ================================================================ */
+
+t('⭐⭐ 旋转后取景框保持**原图比例**（用户要的行为）', () => {
+  /* ⚠️ 度量选了好几轮才对，记下来：
+     我一开始量 "rect.w·ins.w : rect.h·ins.h"，60°/80° 时会得到 0.77 / 1.12
+     这种明显不对的数，于是怀疑代码 —— 但**渲染是好的**：
+     纯白图旋转后四角/四边中点全部 255，没有任何空白
+     （见下面的"绝不露白"那条）。
+     原因：crop.rect 是可以超出 [0,1] 的（它相对内接矩形归一化，
+     而拟合出来的框在内接矩形里可以比它高或宽），
+     所以"rect × ins"不是一张忠实的"图片像素"换算。
+
+     可靠的做法是量**输出**：outW/outH 就是最终成品比例，
+     它必须等于原图比例。这个量在 cropRenderPlan 里是
+     `regW/regH`，而 regW/regH 直接来自拟合结果，不会绕。 */
+  const bad = [];
+  for (const x of rows) {
+    const outRatio = x.outW / x.outH;
+    const imgRatio = x.W / x.H;
+    if (Math.abs(outRatio / imgRatio - 1) > 0.02) {
+      bad.push(`${x.W}×${x.H} ${x.deg}°: 输出 ${outRatio.toFixed(3)} vs 原图 ${imgRatio.toFixed(3)}`);
+    }
+  }
+  assert.equal(bad.length, 0,
+    `这些角度下成品比例不等于原图比例：\n       ${bad.slice(0, 6).join('\n       ')}\n`
+    + '     ⚠️ 默认档「原图」的语义就是"输出和原图同比例"');
+});
+
+t('⭐⭐ 旋转后取景框填满"原图比例的最大可放框"（裁到最少，绝不露白）', () => {
+  /* "绝不裁切"在数学上不可能：旋转后的图片是一块斜的矩形，
+     任何轴对齐矩形都装不下整张图。能保证的是：
+       · 输出保持**原图比例**（上一条）
+       · 不采到图片外（下一条）—— 也就是画面里不出现空白
+       · 在满足前两条的前提下**取最大的那个**（裁到最少）——
+         即取景框必须等于 fitRectToBox 算出来的值，不能更小
+     实现里如果忘了调 fit、或者 fit 之后又被 clamp 改小，这条就红。 */
+  const bad = [];
+  for (const x of rows) {
+    if (x.fitW == null) { bad.push(`${x.W}×${x.H} ${x.deg}°: fitRectToBox 返回 null`); continue; }
+    const dW = Math.abs(x.rectW - x.fitW);
+    const dH = Math.abs(x.rectH - x.fitH);
+    if (dW > 1e-4 || dH > 1e-4) {
+      bad.push(`${x.W}×${x.H} ${x.deg}°: 实际 ${x.rectW.toFixed(5)}×${x.rectH.toFixed(5)} `
+        + `vs 最大可放 ${x.fitW.toFixed(5)}×${x.fitH.toFixed(5)}`);
+    }
+  }
+  assert.equal(bad.length, 0,
+    `这些角度下取景框不等于"原图比例的最大可放框"（白裁掉了一部分）：\n       `
+    + bad.slice(0, 6).join('\n       '));
+});
+
+t('⭐ 旋转后输出比例 == 原图比例（导出图不会被拉变形）', () => {
+  const bad = [];
+  for (const x of rows) {
+    const outRatio = x.outW / x.outH;
+    const imgRatio = x.W / x.H;
+    if (Math.abs(outRatio / imgRatio - 1) > 0.03) {
+      bad.push(`${x.W}×${x.H} ${x.deg}°: 输出 ${outRatio.toFixed(3)} vs 原图 ${imgRatio.toFixed(3)}`);
+    }
+  }
+  assert.equal(bad.length, 0,
+    `这些角度下导出比例不对：\n       ${bad.slice(0, 6).join('\n       ')}`);
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);

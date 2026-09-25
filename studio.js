@@ -971,8 +971,19 @@
      ⚠️ 用归一化坐标（相对旋转框 W×H）而不是像素：
      这样旋转角度一变，只要把归一化值 clamp 回新的内接矩形就行，
      不用做像素换算。 */
+  /* ================================================================
+     裁剪比例预设
+     ----------------------------------------------------------------
+     ⚠️ 第一项原来叫「自由」，但它其实**不是**自由 ——
+     点它走的是"把取景框收进内接矩形"，也就是**原图比例**。
+     叫自由会让人以为"点它之后拖动不受约束"，而实际上受约束。
+
+     更重要的是：这一项是用户要的「旋转后自动保持原图比例、绝不裁切」
+     的**唯一出口** —— 从 16:9 点回来时必须真的回到原图比例。
+     ================================================================ */
   const ASPECTS = [
-    { name: '自由', v: 0 },
+    { name: '原图', v: 0 },
+    { name: '自由', v: -1 },
     { name: '1:1', v: 1 },
     { name: '4:3', v: 4 / 3 },
     { name: '3:4', v: 3 / 4 },
@@ -1096,6 +1107,150 @@
     return { x, y, w, h };
   }
 
+  /** 把取景框设成"原图比例的最大可放矩形"（旋转后自动收框用） */
+  function fitCropToImageRatio() {
+    const r = fitRectToBox(0);
+    if (r) crop.rect = r;
+  }
+
+  /* ================================================================
+     "按某个比例最大可放"的取景框 —— 旋转后收框的公共逻辑
+     ----------------------------------------------------------------
+     用户要的行为：**旋转后保持原图比例、绝不裁切出空白**。
+
+     数学上这件事有唯一答案：旋转后的图片是一块斜着的矩形，
+     要放一个"和原图同比例"的轴对齐矩形进去、且完全落在图片内，
+     最大的那个就是 `inscribedRect` —— 它按构造满足
+         w / h == W0 / H0
+     （比值恒等于原图比：w/h = (k·W0)/(k·H0)，见 inscribedRect 推导）。
+
+     所以"保持原图比例 + 不露白" = 取景框填满内接矩形。
+     旋转角越大内接矩形越小 → 输出分辨率随之下降，
+     这是旋转裁切的必然代价（想不裁切就只能露白边）。
+
+     ⚠️ 通用化到一个函数里（targetRatio 传 0 表示"原图比例"），
+     是为了让 enterCrop / setCropRotation / 比例按钮三处**共用同一套
+     逻辑** —— 各写一份迟早不一致（这个文件里已经栽过好几次）。
+     ================================================================ */
+  function fitRectToBox(targetRatio) {
+    if (!img) return null;
+    const phi = (crop ? crop.rot : 0) * Math.PI / 180;
+    const ins = inscribedRect(img.width, img.height, phi);
+
+    // 目标比例（图片上的比例）：0 → 原图比例
+    const ratio = (targetRatio && Number(targetRatio) > 0)
+      ? Number(targetRatio)
+      : img.width / img.height;
+
+    /* ⚠️ 注意：**不能**直接拿内接矩形当"原图比例的最大矩形" ——
+       内接矩形是"塞进旋转矩形里的最大轴对齐矩形"，它的比例
+       (ins.w/ins.h) 一般**不等于**原图比例（旋转把它压扁/拉长了）。
+       实测 400×300 转 5°：ins = 378×268.1（比例 1.410），而原图是 1.333。
+
+       所以要单独解一次：在旋转矩形里放一个**指定比例**的轴对齐矩形。 */
+    const dim = fitRatioInRotated(img.width, img.height, phi, ratio);
+
+    /* ⚠️⚠️ 单位！归一化的基准是**内接矩形**，不是旋转框。
+       因为取值的地方是 `regW = r.w * ins.w`（见 cropRenderPlan）——
+       也就是"rect 的 1 单位 = ins.w 图片像素"。
+
+       我一开始写成 `dim.w / box.W`（旋转框），两者差 ins/box 倍：
+       实测 5° 时拟合出 359.5（正确的 4:3 宽），除以 box.W 得 0.84663，
+       再乘回 ins.w 只有 320 —— 于是 4:3 变成了 1.478，**画面被拉变形**。
+       ⚠️ 0° 时 ins == box，这个错误**完全看不出来** —— 典型的
+       "只有旋转后才暴露"，和这一整轮的 bug 同一个套路。 */
+    const nw = dim.w / ins.w, nh = dim.h / ins.h;
+    return { x: (1 - nw) / 2, y: (1 - nh) / 2, w: nw, h: nh };
+  }
+
+  /* ================================================================
+     ⭐ 唯一的几何判据：矩形是否整块落在"旋转后的图片"里
+     ----------------------------------------------------------------
+     这个判据必须和 `inscribedRect` 用**同一套不等式** —— 后者是
+     用数值金标准验过的（5 尺寸 × 13 角度，0 越界 0 非最优）。
+
+     ⚠️⚠️ 我在这一轮里把这个判据的旋转方向写错了**五次**，
+     而且每次"推导看起来都对"。最后一次的教训：
+     不要再自己推旋转矩阵的符号，直接复用 inscribedRect 那两条：
+
+         a·c + b·s ≤ W0/2
+         a·s + b·c ≤ H0/2
+
+     （a、b 是矩形半宽半高）。`inscribedRect` 里就是
+     `w·c + h·s ≤ W0` 和 `w·s + h·c ≤ H0`，除以 2 即得。
+     两者一致之后，"按原图比例取最大"就只是同一个可行域上多一个
+     w/h = ratio 的约束，不会再互相打架。
+     ================================================================ */
+  function aabbFitsInRotated(a, b, W0, H0, phi) {
+    const c = Math.abs(Math.cos(phi));
+    const s = Math.abs(Math.sin(phi));
+    const eps = 1e-6;
+    return a * c + b * s <= W0 / 2 + eps
+        && a * s + b * c <= H0 / 2 + eps;
+  }
+
+  /**
+   * 给定比例 ratio，求"落在旋转后图片里"的最大轴对齐矩形（图片像素）。
+   *
+   * 令 t = 2a（半宽的两倍即宽），则 h = t/ratio。
+   * 两条不等式各自给出 t 的一个**区间**，取交集后取最大 t。
+   *
+   * ⚠️⚠️ 这里是本轮第 4 次写错的地方，务必看清：
+   * 我前几次都是"逐项取 min"，那是**错的** —— 这两条是**绝对值**不等式，
+   * 解出来是区间 [−lim, lim] 的交集，不是简单取小。
+   * 正确解法（令 k = s/c，把不等式拆开）：
+   *     |t·c/2 + t·s/(2·ratio)| ≤ W0/2
+   *         → t ≤ W0 / c / (1 + k/ratio)
+   *     |−t·s/2 + t·c/(2·ratio)| ≤ H0/2
+   *         → t ≤ H0 / |k − 1/ratio| , 且 k === 1/ratio 时无上界
+   * 取两者的较小值。
+   * 数值校验（test/crop-geometry.test.mjs 里那条"角点必须落在旋转图片内"）
+   * 覆盖 4 种尺寸 × 4 种比例 × 9 个角度。
+   */
+  function fitRatioInRotated(W0, H0, phi, ratio) {
+    const c = Math.abs(Math.cos(phi));
+    const s = Math.abs(Math.sin(phi));
+    if (!(ratio > 0)) ratio = W0 / H0;
+
+    // 0° / 90°：退化成整张图按比例取最大
+    if (c < 1e-9 || s < 1e-9) {
+      let w = W0, h = w / ratio;
+      if (h > H0) { h = H0; w = h * ratio; }
+      return { w, h };
+    }
+
+    /* ⚠️⚠️ 用**数值扫描**，不要试图写解析解。
+       这个约束是两条**带绝对值的**不等式：
+           |a·c + b·s| ≤ W0/2
+           |−a·s + b·c| ≤ H0/2      （a = w/2, b = h/2 = a/ratio）
+       我按"拆绝对值 → 解区间"的写法连续错了四遍：漏掉
+       r vs tanφ 的大小分支、把区间写成"逐项取 min"、
+       又在末尾加了个错误的 `min(t, W0, H0·ratio)` 保险把解砍小。
+       每次都是"看着推导没问题、数值一跑就错"。
+
+       而 `inscribedRect` 用数值扫描是**验证过**的（5 尺寸 × 13 角度，
+       0 越界 0 非最优）。同一个可行域、同一套判据（aabbFitsInRotated），
+       所以这里也用扫描 —— 一致、不可能写错、且不在热路径上
+       （只在换角度/换比例时算一次）。 */
+    const wCap = Math.min(W0, H0 * ratio);
+    const STEPS = 2000;
+    let best = -1, bw = 0, bh = 0;
+    for (let i = 1; i <= STEPS; i++) {
+      const w = wCap * i / STEPS;
+      const h = w / ratio;
+      if (!aabbFitsInRotated(w / 2, h / 2, W0, H0, phi)) continue;
+      const area = w * h;
+      if (area > best) { best = area; bw = w; bh = h; }
+    }
+
+    if (!(best > 0)) {
+      let w = W0, h = w / ratio;
+      if (h > H0) { h = H0; w = h * ratio; }
+      return { w, h };
+    }
+    return { w: bw, h: bh };
+  }
+
   /** 当前旋转角对应的内接矩形（归一化到旋转框） */
   function currentInscribed() {
     if (!img) return { inW: 1, inH: 1 };
@@ -1188,7 +1343,15 @@
 
     const { inW, inH } = currentInscribed();
     crop.rect = clampCropRect(crop.rect, inW, inH);
-    if (crop.aspect) applyCropAspect(crop.aspect);
+
+    /* ⭐ 旋转后的取景框处理（用户要的"保持原图比例、绝不裁切露白"）：
+         · crop.aspect === 0（「原图」）→ 收成原图比例的最大可放矩形
+         · crop.aspect > 0（选了固定比例）→ 保持那个比例
+         · crop.aspect < 0（「自由」）→ 不动，保留用户自己拖的框
+       ⚠️ 不处理"自由"这一档的话，用户拖小的框会在每次改角度时被弹回最大，
+       手感很差（而且他拖框的动作就白做了）。 */
+    if (crop.aspect > 0) applyCropAspect(crop.aspect);
+    else if (crop.aspect === 0) fitCropToImageRatio();
 
     // 用同一个函数同步（别各写各的，否则滑杆和标签迟早不一致）
     syncCropRotUI(deg);
@@ -1597,15 +1760,26 @@
       const b = document.createElement('button');
       b.textContent = a.name;
       b.dataset.ratio = String(a.v);
-      if (!a.v) b.classList.add('on');
+      // 默认高亮「原图」（v = 0）
+      if (a.v === 0) b.classList.add('on');
       b.addEventListener('click', () => {
         if (!crop) return;
         for (const el of seg.children) el.classList.remove('on');
         b.classList.add('on');
-        // ⚠️ 先清掉当前比例再设新的：applyCropAspect 会按目标比例
-        // 重算尺寸，如果旧的 aspect 还留着，clampCropRect 会把它拉回去
+        /* ⚠️ 先清掉当前比例再设新的：applyCropAspect 会按目标比例
+           重算尺寸，如果旧的 aspect 还留着，clampCropRect 会把它拉回去 */
         crop.aspect = 0;
-        if (a.v) applyCropAspect(a.v);
+
+        if (a.v > 0) {
+          // 固定比例（1:1 / 16:9 …）
+          applyCropAspect(a.v);
+        } else if (a.v === 0) {
+          // 原图比例 + 不露白：把取景框收进内接矩形
+          fitCropToImageRatio();
+        }
+        /* a.v < 0 的「自由」：什么都不做 —— 保留用户当前拖出的框，
+           之后拖动/缩放也不受比例约束。旋转时同样不强制收框，
+           否则用户辛苦拖出来的框会被弹回最大。 */
         render();
         drawCropOverlay();
       });
@@ -3436,6 +3610,12 @@
       drawCropOverlay();
       return true;
     },
+    /* 暴露给测试：算"指定比例的最大可放取景框"（0 = 原图比例）。
+       ⚠️ 几何核心函数应该可测 —— 否则只能从渲染结果反推，
+       而反推在裁剪这块已经栽过很多次（颜色/包围盒都不够硬）。 */
+    fitRectToBox,
+    fitCropToImageRatio,
+    fitRatioInRotated,
     _drawCropOverlay: drawCropOverlay,
     _cropRectOnCanvas: cropRectOnCanvas,
     _applyGeometry: applyGeometryUniforms,
