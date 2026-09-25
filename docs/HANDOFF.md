@@ -20,7 +20,7 @@
                     muyaya.world（GitHub Pages，静态）
                     ├── index.html      时间线 / 登录 / 大图浏览 / 幻灯片
                     ├── album.html      相册列表 + 自由排版编辑器 + 翻页阅读
-                    ├── share.html      分享页（只读，凭 token）
+                    ├── share.html      分享页（只读，凭 token；**老链接兼容用**）
                     └── studio.html     修图（WebGL 调色 + 蒙版 + AI）
                               │
                               │ fetch（带 httpOnly Cookie）
@@ -31,7 +31,8 @@
                     ├── /api/blob/:size/:key  上传字节（R2）
                     ├── /api/img/:size/:key   读图（鉴权 + 边缘缓存）
                     ├── /api/albums        相册 + 页面排版（D1）
-                    ├── /api/share/:token  分享（免登录、只读、永久）
+                    ├── /s/:token          ⭐ 分享页本体（服务端渲染 og 标签）
+                    ├── /api/share/:token  分享数据（免登录、只读、永久）
                     ├── /api/tmp/:token    临时上传（给火山当公网中转，10 分钟）
                     └── /api/vault/:provider  密钥保险箱（加密存储，10 分钟缓存）
                               │
@@ -193,7 +194,13 @@ CI：打 `v*` 标签会触发 GitHub Actions 构建 Windows + macOS 安装包。
 - 自动排版引擎（`autolayout.js`，纯几何，62 项测试）
 - 翻页阅读器（`reader.js`，滑动翻页，编辑器与分享页共用）
 - 移动端横屏查看（`orient.js`）
-- 分享链接（永久有效、只读、`?t=<32位hex>`）
+- 分享链接（永久有效、只读、`api.muyaya.world/s/<32位hex>`）
+  - ⭐ **由 Worker 服务端渲染**，所以 og:title/og:description/og:image
+    是**每本相册自己的** —— 微信转发出去有预览图，不是一行秃链接
+  - ⚠️ 为什么不放在静态的 `share.html`：微信爬虫**不执行 JS**，
+    静态页拿不到"这本相册的封面"，所有相册只能共用一张通用图
+  - 老格式 `share.html?t=<token>` 仍然可用（老链接不能失效），
+    它和 `/s/<token>` 读同一份数据、复用同一个 `reader.js`
 
 ### 阶段 2 · 修图（本地） ✅
 
@@ -484,7 +491,7 @@ node test/beautify.test.js         # 43 项 · 美颜参数裁剪/密钥形状/�
                                    #   ⚠️ 会真等 3 秒，那是在测并发限流的间隔
 
 # 后端（在 album-api/）
-node test/smoke.mjs                # 193 项 · 全接口
+node test/smoke.mjs                # 212 项 · 全接口
 ```
 
 ### 浏览器测试怎么跑
@@ -584,7 +591,7 @@ adjustments-negative 16（含浏览器变异）                  =  16
 adjust-browser 26 · template-browser 6                  =  32
 crop-browser 16                                         =  16
 inpaint（桌面）20 · beautify（桌面）49                    =  69
-smoke（后端）193                                         = 193
+smoke（后端）212                                         = 212
                                        前端小计    244
 ```
 
@@ -666,7 +673,7 @@ cd album-api && npm test
 📋 没做：液化/透视校正、渐变与径向蒙版、
         修图结果回存、火山任务持久化
 🔑 密钥：已全部迁到保险箱，本地文件已删
-🧪 测试：见上表（前端 244 + 桌面 69 + 后端 193 + 两组 Electron 实测 13）
+🧪 测试：见上表（前端 244 + 桌面 69 + 后端 212 + 两组 Electron 实测 13）
 ⚠️ 没真人验证过：旷视美颜的实际出图效果、美颜面板的手感、
                  一键模板出来的效果好不好看、
                  六个本地工具的手感、裁剪的拖拽手感、
