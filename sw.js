@@ -15,7 +15,7 @@
 // 但**忘了升这里**（4335d06、82f2597），线上会一直在跑旧外壳。
 // 所以「改了 studio.* 就得升」应当当成提交前的固定检查项 ——
 // 现在 test/sw-version.test.mjs 会守住它。
-const SHELL = 'shell-v17';
+const SHELL = 'shell-v18';
 const ASSETS = [
   '/',
   '/index.html',

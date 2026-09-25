@@ -25,6 +25,15 @@
      · git 命令失败（没有 HEAD 等）      → 跳过
      · 一次提交里同时改了外壳和 SHELL    → 通过
      · 只改测试、文档、非外壳文件        → 通过
+
+   ⚠️⚠️ 这个护栏本身有个**洞**，实际漏过一次：判据只看"相对 HEAD 的
+   *工作区*改动"，所以**只要先把外壳改动提交了、再跑测试**，它就看不到
+   那次改动 —— 几何重写那一提交（先 commit studio.js、后跑测试）
+   它就报了"✅ 通过"，而线上会一直吃旧外壳缓存。
+
+   补的判据（下面第 ② 条）：再看**最近 N 个提交**里有没有"动了外壳
+   但没升 SHELL"的组合。不追求完备（很久以前的历史不去追），
+   只要求"提交之后漏检"这条路被堵住。
    ================================================================ */
 import { strict as assert } from 'node:assert';
 import fs from 'node:fs';
@@ -96,7 +105,10 @@ t('⭐ ASSETS 覆盖了仓库根目录下所有会被页面引用的 js/css', ()
 
 /* ---------------- ⭐ 版本号必须跟着外壳改动一起升 ---------------- */
 
-t('⭐ 外壳文件改了，SHELL 就必须升（相对 HEAD 判断）', () => {
+/** 把 SHELL 的序号抠成数字，方便比大小 */
+const shellNum = s => Number(String(s || '').replace(/\D/g, '')) || 0;
+
+t('① 工作区改了外壳文件 → SHELL 必须同时升（相对 HEAD）', () => {
   const headSw = git(['show', 'HEAD:sw.js']);
   if (headSw === null) {
     console.log('       ⏭  取不到 HEAD:sw.js（不在 git 仓库里？），跳过这条');
@@ -114,7 +126,6 @@ t('⭐ 外壳文件改了，SHELL 就必须升（相对 HEAD 判断）', () => {
     .map(l => l.trim().replace(/^..\s+/, ''))   // 去掉 porcelain 的状态列
     .filter(Boolean);
 
-  // 这次改动里有没有碰被缓存的外壳文件？
   const touchedShell = changedFiles.filter(f => cached.has(f));
   if (!touchedShell.length) return;   // 没碰外壳，随便改
 
@@ -127,10 +138,57 @@ t('⭐ 外壳文件改了，SHELL 就必须升（相对 HEAD 判断）', () => {
     + `「${oldShell[1]}」没变。\n`
     + '     → 老客户端会一直用缓存里的旧文件，症状是'
     + '「本地测好了、线上没反应」。\n'
-    + `     把 sw.js 里的 SHELL 改成 shell-v${
-        Number(String(oldShell[1]).replace(/\D/g, '')) + 1
-      } 就好了。`
+    + `     把 sw.js 里的 SHELL 改成 shell-v${shellNum(oldShell[1]) + 1} 就好了。`
   );
+});
+
+t('② 最近 20 个提交里，动了外壳的那次必须也升过 SHELL', () => {
+  /* ⚠️ 这条是补 ① 的洞：① 只看**未提交**的改动。一旦先提交再跑测试，
+     ① 就什么都看不到（真发生过）。这里往回看 20 个提交。 */
+  const N = 20;
+  const log = git(['log', `-${N}`, '--format=%H%x09%s']);
+  if (!log) { console.log('       ⏭  取不到 git log，跳过这条'); return; }
+
+  const commits = log.split('\n').filter(Boolean).map(l => {
+    const [hash, ...rest] = l.split('\t');
+    return { hash, subject: rest.join('\t') };
+  });
+
+  /* 逐个提交看：它有没有动外壳文件？它有没有升 SHELL？
+     规则：**如果某个提交动了外壳、但 SHELL 相对它的父提交没变**，
+     那一次就是漏升。（同一次提交里既改外壳又升 SHELL 是允许的。）
+
+     ⚠️ 只看**上一次升 SHELL 之后**的提交：升一次就覆盖它之前的全部
+     漏升，所以不能拿"历史遗留"永久卡住这条断言（否则以后谁改
+     都会看见同一批旧账）。找到第一个升过 SHELL 的提交就停。 */
+  const offenders = [];
+  for (const c of commits) {
+    const cur = git(['show', `${c.hash}:sw.js`]);
+    const prev = git(['show', `${c.hash}^:sw.js`]);
+    if (cur === null) continue;
+    const curShell = /const\s+SHELL\s*=\s*'([^']+)'/.exec(cur);
+    const prevShell = prev === null ? null : /const\s+SHELL\s*=\s*'([^']+)'/.exec(prev);
+    if (!curShell) continue;
+
+    // 这次提交升了 SHELL → 之前的旧账一笔勾销，停止回溯
+    if (prevShell && shellNum(curShell[1]) > shellNum(prevShell[1])) break;
+
+    const files = git(['show', '--name-only', '--format=', c.hash]);
+    if (!files) continue;
+    const touched = files.split('\n')
+      .map(s => s.trim()).filter(f => cached.has(f));
+    if (!touched.length) continue;
+
+    if (prevShell && curShell[1] === prevShell[1]) {
+      offenders.push(`${c.hash.slice(0, 8)} ${c.subject} `
+        + `（动了 ${touched.join(', ')}，SHELL 仍是 ${curShell[1]}）`);
+    }
+  }
+
+  assert.equal(offenders.length, 0,
+    '这些提交改了外壳文件却没升 SHELL —— 线上会一直吃旧缓存：\n       '
+    + offenders.join('\n       ')
+    + `\n     → 现在把 SHELL 从「${m[1]}」升一档即可（升一次覆盖前面所有漏升）。`);
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);
