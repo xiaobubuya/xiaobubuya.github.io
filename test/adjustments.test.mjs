@@ -117,11 +117,27 @@ t('shader 里声明的每个 uXxx uniform 都被用到了', () => {
   assert.equal(unused.length, 0, `声明了但没用到：${unused.join(', ')}`);
 });
 
-/* ---------------- 3. draw() 里赋值了 ---------------- */
+/* ---------------- 3. draw() 里赋值了 ----------------
+   ⚠️ 这里必须按**大括号配对**抠函数体，不能再用
+   `src.indexOf('\n  }')` 截断 —— draw() 现在有嵌套的 if 块
+   （几何 uniform 那一段），第一个 `\n  }` 落在块内部，于是
+   "找不到 ADJUSTMENTS 的遍历"，报出三条假红。
+   顺带：签名改成 draw(planOverride) 之后，也不能再拿
+   字面量 'function draw()' 当锚点（它已经不存在了）。 */
+function fnBody(src, decl) {
+  const i = src.indexOf(decl);
+  assert.ok(i >= 0, '找不到 ' + decl);
+  const open = src.indexOf('{', i);
+  let d = 0;
+  for (let j = open; j < src.length; j++) {
+    if (src[j] === '{') d++;
+    else if (src[j] === '}') { d--; if (d === 0) return src.slice(open + 1, j); }
+  }
+  assert.fail(decl + ' 的大括号没闭合');
+}
 
 t('⭐ 每个调整项在 draw() 里都被赋值给 uniform', () => {
-  const drawSrc = SRC.slice(SRC.indexOf('function draw()'));
-  const body = drawSrc.slice(0, drawSrc.indexOf('\n  }'));
+  const body = fnBody(SRC, 'function draw(');
   // 遍历 ADJUSTMENTS 那行是等价的赋值，单独判
   const loopAssigns = /for\s*\(const a of ADJUSTMENTS\)\s*gl\.uniform1f\(uniforms\[a\.key\]/.test(body);
   assert.ok(loopAssigns, 'draw() 里没有遍历 ADJUSTMENTS 赋值 uniform');
@@ -129,8 +145,7 @@ t('⭐ 每个调整项在 draw() 里都被赋值给 uniform', () => {
 });
 
 t('uTexel / uAspect 也都有赋值（锐化和暗角要用）', () => {
-  const drawSrc = SRC.slice(SRC.indexOf('function draw()'));
-  const body = drawSrc.slice(0, drawSrc.indexOf('\n  }'));
+  const body = fnBody(SRC, 'function draw(');
   assert.ok(/uniforms\.uTexel/.test(body), 'draw() 没有设置 uTexel');
   assert.ok(/uniforms\.uAspect/.test(body), 'draw() 没有设置 uAspect');
   assert.ok(/gl\.uniform2f\(uniforms\.uTexel/.test(body), 'uTexel 是 vec2，要用 uniform2f');
@@ -139,8 +154,7 @@ t('uTexel / uAspect 也都有赋值（锐化和暗角要用）', () => {
 t('⭐ 锐化的步长用原图尺寸，不是画布尺寸', () => {
   // 用画布尺寸的话，拖一下窗口锐化半径就变了 ——
   // 而且预览（屏幕尺寸）和导出（原图尺寸）会明显不一致
-  const drawSrc = SRC.slice(SRC.indexOf('function draw()'));
-  const body = drawSrc.slice(0, drawSrc.indexOf('\n  }'));
+  const body = fnBody(SRC, 'function draw(');
   assert.ok(/uniform2f\(uniforms\.uTexel,\s*1\s*\/\s*img\.width,\s*1\s*\/\s*img\.height\)/.test(body),
     'uTexel 应该用 img.width / img.height（原图），不能用 canvas.width');
   assert.ok(!/uniform2f\(uniforms\.uTexel[^)]*canvas\./.test(body),
@@ -270,8 +284,7 @@ t('比较原图时直接返回，不经过任何调整', () => {
 /* ---------------- 6. 导出链路 ---------------- */
 
 t('导出复用同一个 draw()（所见即所得）', () => {
-  const exp = SRC.slice(SRC.indexOf('async function exportImage()'));
-  const body = exp.slice(0, exp.indexOf('\n  }'));
+  const body = fnBody(SRC, 'async function exportImage(');
   assert.ok(/draw\(\)/.test(body), '导出没有调用 draw() —— 会和预览不一致');
   assert.ok(/canvas\.width = img\.width/.test(body),
     '导出没有切到原图分辨率');
@@ -279,8 +292,8 @@ t('导出复用同一个 draw()（所见即所得）', () => {
 
 t('导出前会把显示原图关掉', () => {
   // 忘了关的话，按住对比键导出会导出一张没修过的图
-  const exp = SRC.slice(SRC.indexOf('async function exportImage()'));
-  assert.ok(/showingOriginal\s*=\s*false/.test(exp.slice(0, 900)),
+  const body = fnBody(SRC, 'async function exportImage(');
+  assert.ok(/showingOriginal\s*=\s*false/.test(body),
     '导出前没有重置 showingOriginal —— 按住对比键时导出会得到原图');
 });
 

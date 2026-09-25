@@ -29,6 +29,55 @@ const t = (name, fn) => {
 
 console.log('\n=== 负向测试：断言真的抓得到问题吗 ===\n');
 
+/* ================================================================
+   启动自检：如果 studio.js 是"脏"的（上一次跑被中途打断），先还原
+   ----------------------------------------------------------------
+   ⚠️⚠️ 这一条是踩出来的，代价是整个测试套件假红一轮：
+
+   变异测试的还原写在 `finally` 里，但 **finally 挡不住进程被杀** ——
+   我中途 abort 了一次 `node test/run-all.mjs`，那一下正好切在某个变异
+   生效的瞬间，于是 studio.js 被留在"改坏"的状态里。下一次跑
+   run-all 时：
+     · 这个文件把"坏掉的 studio.js"当成了 original 存起来
+     · 后面的还原检查自然认为"已还原"
+     · 而真正受害的是别的测试：curve 的褪色、adjust-browser 的
+       阴影提亮一起假红（看上去像是我刚改的几何把它弄坏了）
+
+   所以启动时先看 git 有没有未提交改动；有就还原，让这一轮从干净
+   状态开始。这样"上一次被打断"不会污染"这一次"。
+
+   ⚠️ 副作用要知道：**如果你正好有 studio.js 的未提交改动，会被还原掉**。
+   所以只在真的脏的时候动手，并且把这件事明确打印出来（不静默）。
+   ================================================================ */
+function isDirty(file) {
+  try {
+    execFileSync('git', ['diff', '--quiet', '--', file],
+      { cwd: ROOT, stdio: 'ignore' });
+    return false;                       // 退出码 0 = 没有差异
+  } catch (e) {
+    // 退出码 1 = 有差异；其它（没有 git / 不在仓库里）= 未知，按"干净"处理
+    return e && e.status === 1;
+  }
+}
+
+function restoreFromHead(file) {
+  try {
+    const clean = execFileSync('git', ['show', `HEAD:${file}`],
+      { cwd: ROOT, encoding: 'utf8' });
+    fs.writeFileSync(path.join(ROOT, file), clean, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirty('studio.js')) {
+  const ok = restoreFromHead('studio.js');
+  console.log(`  ⚠️  studio.js 有未提交改动${ok ? '，已从 HEAD 还原' : '，且还原失败'}`
+    + `\n     （上一次变异测试大概是被中途打断了。`
+    + `如果你本来就有未提交的改动，它已被覆盖 —— 抱歉，这是为了隔离上一轮的污染。）\n`);
+}
+
 const original = fs.readFileSync(FILE, 'utf8');
 
 /** 每种变异：改坏一处关键逻辑，看**对应的**测试会不会红

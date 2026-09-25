@@ -1,16 +1,22 @@
 /* ================================================================
-   裁剪 / 旋转 —— 浏览器实测
+   裁剪 / 旋转 / 翻转 —— 浏览器实测（交互 + 烘焙）
    ----------------------------------------------------------------
-   这是本项目唯一的**几何**变换，也是最容易出错的一块：涉及的
-   坐标系有三套（原图 / 旋转框 / 画布），而且旋转后四角会露白。
-   单元测试验不了这些 —— 必须在真浏览器里读像素。
+   ⚠️ 这份测试**重写**过。旧版守的是旧模型的"旋转后自动收框"
+   （内接矩形、采到旋转框哪个位置、预览比例 == 导出比例），
+   那套已经被用户否掉：
 
-   要守住的核心不变量：
-     ① 旋转 0° 时必须是**恒等变换**（不然正常编辑就全歪了）
-     ② 旋转后四角**不能露白**（取景框必须落在内接矩形里）
-     ③ 裁剪输出的**长宽比**要等于取景框的比例
-     ④ 裁剪输出的**内容**真的来自取景框那块（不是原图左上角）
-     ⑤ 90° 整转后尺寸互换、内容转过去了
+     "裁剪和翻转做复杂了，不需要做数学运算，裁剪和旋转分开做"
+
+   新模型下这份文件专注**交互与烘焙**（纯几何不变量在
+   test/rotate-invariant.test.mjs 和 crop-geometry.test.mjs 里）：
+
+     ① 不在几何编辑时是恒等变换（正常编辑不受影响）
+     ② 进裁剪后取景框覆盖整个视口，画布 = 视口
+     ③ 拖小取景框**不会让画面平移**（画布中心始终是图片中心）
+        —— 这是"uImgOffset 恒为 0"那条不变量的交互面
+     ④ 应用裁剪：输出尺寸 = 取景框那块，且内容真的是那一块
+     ⑤ 取消不留下任何痕迹
+     ⑥ 90° 整转：尺寸互换 + 内容真的转过去了 + 结果和预览一致
    ================================================================ */
 import { strict as assert } from 'node:assert';
 import http from 'node:http';
@@ -22,8 +28,6 @@ import { launch, openPage, shutdown } from './cdp.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const PORT = Number(process.env.CROP_PORT || 8896);
-
-let pass = 0, fail = 0;
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -43,607 +47,337 @@ const server = http.createServer((req, res) => {
   });
 });
 
-/* ================================================================
-   监听端口：占用了就往后找，不要让整个文件崩掉
-   ----------------------------------------------------------------
-   ⚠️ 原来是 `server.listen(PORT)`，端口被占时抛 EADDRINUSE，
-   整个测试**在收集阶段就死了** —— 输出是一个字都没有，
-   而 test/run-all.mjs 只统计"失败项数"，于是它显示
-   「通过 0 失败 0」，看起来像通过。实测踩过：本机 8896 上起了
-   一个给 Electron 测试用的静态服务，裁剪那 14 项就整批静默消失。
-   ================================================================ */
+/* 端口被占就往后找 —— 不能让整个文件静默消失（踩过：run-all 会显示
+   "通过 0 失败 0"，看起来像通过）。 */
 let ACTUAL_PORT = PORT;
 for (let p = PORT; p < PORT + 10; p++) {
   try {
     await new Promise((ok, no) => {
       const onErr = e => { server.removeListener('listening', onOk); no(e); };
       const onOk = () => { server.removeListener('error', onErr); ok(); };
-      server.once('error', onErr);
-      server.once('listening', onOk);
+      server.once('error', onErr); server.once('listening', onOk);
       server.listen(p, '127.0.0.1');
     });
-    ACTUAL_PORT = p;
-    break;
-  } catch (e) {
-    if (e.code !== 'EADDRINUSE') throw e;
-  }
+    ACTUAL_PORT = p; break;
+  } catch (e) { if (e.code !== 'EADDRINUSE') throw e; }
 }
-if (ACTUAL_PORT !== PORT) {
-  console.log(`\n  ⚠️ ${PORT} 被占用，改用 ${ACTUAL_PORT}\n`);
-}
+if (ACTUAL_PORT !== PORT) console.log(`\n  ⚠️ ${PORT} 被占用，改用 ${ACTUAL_PORT}\n`);
 const URL = `http://127.0.0.1:${ACTUAL_PORT}/studio.html?v=${Date.now()}`;
 
-let chrome, page;
-
-/* ================================================================
-   象限断言的小工具
-   ----------------------------------------------------------------
-   ⚠️ 必须定义在 **Node 这一侧**。定义在 SETUP 里（页面那边）的话，
-   check() 里用不了 —— 那是两个不同的作用域。
-   踩过：check 里调 isRed 报 "isRed is not defined"。
-   ================================================================ */
-const isRed   = p => p[0] > 150 && p[1] < 90 && p[2] < 90;
-const isGreen = p => p[1] > 130 && p[0] < 120 && p[2] < 120;
-const isBlue  = p => p[2] > 150 && p[0] < 120 && p[1] < 120;
-const isWhite = p => Math.min(...p) > 180;
+let pass = 0, fail = 0;
 const rgb = p => 'rgb(' + p.join(',') + ')';
+const isDarkBg = p => p[0] < 45 && p[1] < 45 && p[2] < 45;
+const isRed = p => p[0] > 150 && p[1] < 90 && p[2] < 90;
 
-async function t(name, body, check) {
-  const code = `(async () => {
-    await (async () => {
-      const deadline = Date.now() + 20000;
-      while (Date.now() < deadline) {
-        const s = document.getElementById('stSliders');
-        if (window.Studio && window.Studio.enterCrop && s && s.children.length) return;
-        await new Promise(r => setTimeout(r, 60));
-      }
-      throw new Error('修图页 20 秒内没初始化完');
-    })();
-    ${body}
-  })()`;
-  try {
-    const r = await page.eval(code);
-    if (r === undefined || r === null) throw new Error('页面返回 undefined');
-    if (r.error) throw new Error(r.error);
-    check(r);
-    pass++;
-    console.log(`  ✅ ${name}`);
-  } catch (e) {
-    fail++;
-    console.log(`  ❌ ${name}\n     ${e.message}`);
-  }
-}
-
+const chrome = await launch();
+let R = {};
 try {
-  chrome = await launch();
-  page = await openPage(chrome.port, URL);
-  console.log('\n=== 裁剪 / 旋转（真实 Chrome + WebGL）===\n');
-  console.log(`  Chrome ${chrome.version.Browser}   静态服务 :${PORT}\n`);
-
-  /* ================================================================
-     造一张**四个象限不同颜色**的测试图。
-     为什么不用纯色：要验"裁剪出来的内容真的来自那一块"，
-     必须让图上有可区分的位置信息 —— 纯色裁哪儿都一样，测不出来。
-     ================================================================ */
-  const SETUP = `
-    const W = 400, H = 300;
-    function makeQuad() {
-      const c = document.createElement('canvas');
-      c.width = W; c.height = H;
-      const x = c.getContext('2d');
-      // 左上红 右上绿 左下蓝 右下白
-      x.fillStyle = '#e02020'; x.fillRect(0, 0, W/2, H/2);
-      x.fillStyle = '#20c020'; x.fillRect(W/2, 0, W/2, H/2);
-      x.fillStyle = '#2040e0'; x.fillRect(0, H/2, W/2, H/2);
-      x.fillStyle = '#f0f0f0'; x.fillRect(W/2, H/2, W/2, H/2);
-      return c;
+  const page = await openPage(chrome.port, URL);
+  await page.eval(`(async () => {
+    const dl = Date.now() + 20000;
+    while (Date.now() < dl) {
+      const s = document.getElementById('stSliders');
+      if (window.Studio && window.Studio.enterCrop && s && s.children.length) return true;
+      await new Promise(r => setTimeout(r, 60));
     }
-    /** 纯中灰，用来验旋转后四角有没有露白 */
-    function makeGray() {
-      const c = document.createElement('canvas');
-      c.width = W; c.height = H;
-      const x = c.getContext('2d');
-      x.fillStyle = '#808080'; x.fillRect(0, 0, W, H);
-      return c;
-    }
-    /* ================================================================
-       行编码图：绿通道 = 这一行在原图里的位置（0 = 图上边）
-       ----------------------------------------------------------------
-       ⚠️ 为什么需要它（这条是补盲区，不是为了好看）：
+    throw new Error('修图页 20 秒没就绪');
+  })()`);
 
-       四象限那种"颜色"判据**太粗**。实测：把 cropRenderPlan 的
-       offY 换成错的符号，crop-browser 那 15 项**全绿** ——
-       因为它读的那几个点，两种公式算出来的颜色碰巧一样
-       （全宽取景框时两个公式恰好等价）。
-       而错符号会让采样区间整体偏半个框高，是肉眼能看出的构图错误。
+  R = await page.eval(`(async () => {
+    const S = window.Studio;
+    const out = {};
 
-       行编码图把"位置"变成可读的数字，于是错多少、往哪偏都能断言。
-       对应的源码级判据在 crop-geometry.test.mjs（更快、更精确），
-       这一条的作用是**在真实 WebGL 管线里**再确认一遍。 */
-    function makeRowCoded() {
+    /** 位置编码图：R = x 位置、G = y 位置、B 恒 90。
+     *  ⚠️ 用编码而不是色块：色块只能分象限，"整体偏 0.25"这种错看不出来。 */
+    function makePos(W, H) {
       const c = document.createElement('canvas');
       c.width = W; c.height = H;
       const g = c.getContext('2d');
       const im = g.createImageData(W, H);
-      for (let y = 0; y < H; y++) {
-        const gv = Math.round(255 * y / (H - 1));
-        for (let x = 0; x < W; x++) {
-          const i = (y * W + x) * 4;
-          im.data[i] = 0; im.data[i + 1] = gv; im.data[i + 2] = 0; im.data[i + 3] = 255;
-        }
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        im.data[i] = Math.round(255 * x / (W - 1));
+        im.data[i + 1] = Math.round(255 * y / (H - 1));
+        im.data[i + 2] = 90; im.data[i + 3] = 255;
       }
       g.putImageData(im, 0, 0);
       return c;
     }
+    /** 四象限纯色：验朝向和 90° 整转 */
+    function makeQuad(W, H) {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+      g.fillStyle = '#e02020'; g.fillRect(0, 0, W / 2, H / 2);
+      g.fillStyle = '#20c020'; g.fillRect(W / 2, 0, W / 2, H / 2);
+      g.fillStyle = '#2040e0'; g.fillRect(0, H / 2, W / 2, H / 2);
+      g.fillStyle = '#f0f0f0'; g.fillRect(W / 2, H / 2, W / 2, H / 2);
+      return c;
+    }
+    /** 灰底 + 左上角一个红方块：验"取景框真的只取那一块" */
+    function makeMarked(W, H) {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const g = c.getContext('2d');
+      g.fillStyle = '#808080'; g.fillRect(0, 0, W, H);
+      g.fillStyle = '#ff0000';
+      g.fillRect(Math.round(W * 0.02), Math.round(H * 0.02),
+                 Math.round(W * 0.20), Math.round(H * 0.20));
+      return c;
+    }
     async function load(canvas) {
       const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-      await window.Studio.openFile(new File([blob], 't.png', { type: 'image/png' }));
-      window.Studio.resetAll();
+      await S.openFile(new File([blob], 't.png', { type: 'image/png' }));
+      S.resetAll();
     }
+    /** 读画布上归一化坐标处的像素。
+     *  ⚠️ readPixels 的行序是**自下而上**：v=0 是画面**下**边。 */
     function px(u, v) {
-      /* ⚠️ 坐标方向这一段很容易绕，写清楚：
-         readPixels 用的是 **GL 坐标**（y=0 在 framebuffer 底部），
-         而屏幕显示时 y=0 在**顶部** —— 两者上下相反。
-         所以「屏幕上方 v=0」对应 readPixels 的**大** y。
-
-         一开始这里的 (1-v) 是多余的：它把方向又翻了一次，
-         于是所有关于"上下"的断言都会错。这个错误之所以长期没暴露，
-         是因为我早期用的测试图是**上下对称**的（左右分区），
-         换成四象限图（上下左右都不同）之后才显出来。
-
-         正确的三组关系（记牢，别再绕）：
-           · readPixels y=0        → 画面底部
-           · shader vUv.y=0        → 画面底部（VERT 里做了 0.5 - y*0.5）
-           · canvas 的像素坐标 y=0  → 画面顶部 */
-      const c = window.Studio._canvas();
+      const c = S._canvas();
       const g = c.getContext('webgl', { preserveDrawingBuffer: true });
-      const buf = new Uint8Array(4);
-      g.readPixels(Math.round(u*(c.width-1)), Math.round(v*(c.height-1)), 1, 1,
-                   g.RGBA, g.UNSIGNED_BYTE, buf);
-      return [buf[0], buf[1], buf[2]];
+      const b = new Uint8Array(4);
+      g.readPixels(Math.round(u * (c.width - 1)), Math.round(v * (c.height - 1)),
+                   1, 1, g.RGBA, g.UNSIGNED_BYTE, b);
+      return [b[0], b[1], b[2]];
     }
-    const lum = p => 0.2126*p[0] + 0.7152*p[1] + 0.0722*p[2];
-    /** 测试图四个象限（v 是 GL/纹理方向：0 = 画面**下**方） */
-    // 画面左上红 右上绿 左下蓝 右下白
-    // → 纹理坐标下：左下角是 y 小
-    const QUAD = {
-      tl: [0.25, 0.75], tr: [0.75, 0.75],   // v 大 = 画面上方
-      bl: [0.25, 0.25], br: [0.75, 0.25]    // v 小 = 画面下方
+    const W = 400, H = 300;
+
+    /* ① 不在几何编辑时是恒等变换 */
+    await load(makePos(W, H));
+    /* ⚠️ 先显式退出几何编辑再量：geom 是模块级状态，前面几次
+       enterCrop/enterRotate 可能把它留着（exitCrop(false) 会置 null）。 */
+    const geomBeforeExit = JSON.stringify(S.geom);
+    S.exitCrop(false);
+    const geomAfterExit = JSON.stringify(S.geom);
+    /* ⚠️⚠️ 这里必须存**快照**（普通值），不能存 S.geom 这个 getter 的
+       求值结果 —— 我为此多花了一轮排查，原因很反直觉：
+       CDP 把返回值序列化回测试侧时会**再读一次**所有属性，
+       而 S.geom 是 getter，于是它读到的是"整个测试块跑完之后"的状态
+       （那时后面的 step 已经把几何建起来了）。断言里打印出来的对象
+       和当时真正的值（null）根本不是一个时刻的。
+       教训：跨 CDP 边界的断言一律用**即时快照**，不要留 getter。
+       ⚠️ 另外：这整段是包在外层模板字符串里的页面脚本，
+       注释里不能再出现反引号（会把外层的模板提前闭合，直接语法错）。 */
+    const geomSnap = S.geom === null ? null : JSON.parse(JSON.stringify(S.geom));
+    const identity = { before: px(0.25, 0.75), canvas: [S._canvas().width, S._canvas().height],
+                       geomSnap, geomBeforeExit, geomAfterExit };
+    S.enterCrop();
+    S.setDisplay({ rotate: 0, flipX: false, flipY: false, zoom: 1 });
+    const identityAfter = { after: px(0.25, 0.75), canvas: [S._canvas().width, S._canvas().height],
+                            geom: JSON.parse(JSON.stringify(S.geom)) };
+    out.identity = { ...identity, ...identityAfter };
+
+    /* ② 取景框初始覆盖整个视口（画布 = 视口） */
+    out.initial = {
+      rect: { ...S.geom.rect },
+      canvas: [S._canvas().width, S._canvas().height],
+      plan: (p => p && { outW: p.outW, outH: p.outH, bufW: p.bufW, bufH: p.bufH,
+                         off: [p.offX, p.offY], s: p.screenZoom })(S.cropRenderPlan(false))
     };
-  `;
 
-  /* ---------------- 前置 ---------------- */
+    /* ③ 拖小取景框不该让画面平移 */
+    const before = { c: px(0.5, 0.5), tl: px(0.25, 0.75) };
+    S.setCropRect({ x: 0.25, y: 0.25, w: 0.5, h: 0.5 });
+    const after = { c: px(0.5, 0.5), tl: px(0.25, 0.75) };
+    out.panTest = { before, after, rect: { ...S.geom.rect },
+                    canvas: [S._canvas().width, S._canvas().height],
+                    plan: (p => p && { outW: p.outW, outH: p.outH,
+                                       off: [p.offX, p.offY] })(S.cropRenderPlan(false)) };
 
-  await t('页面初始化，裁剪 UI 就位', SETUP + `
-    return {
-      hasStudio: !!window.Studio,
-      hasEnterCrop: typeof window.Studio.enterCrop === 'function',
-      cropBtn: !!document.getElementById('stCrop'),
-      cropOpts: !!document.getElementById('stCropOpts'),
-      aspects: document.querySelectorAll('#stCropAspect button').length,
-      shaderFailed: /打不开修图功能/.test(
-        (document.getElementById('stDrop')||{}).textContent || '')
+    /* ④ 应用裁剪：输出 = 取景框那块，内容也是那一块 */
+    /* ④ 应用裁剪：输出 = 取景框那块，内容也是那一块。
+       ⚠️ 这里必须用**位置编码图**（makePos），不能用带红块的灰图 ——
+       判据要读 R/G 的数值来钉住方向，红块只能回答"在不在"，
+       而且它在图片左上，正好落在某些取景框里，判据不干净。 */
+    await load(makePos(W, H));
+    S.enterCrop();
+    S.setDisplay({ zoom: 1 });
+    S.setCropRect({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
+    const cropCenterBefore = px(0.5, 0.5);
+    const beforeApply = S.bakeRenderPlan();
+    await S.applyGeometry();
+    const cropAfter = {
+      beforeApply: beforeApply && { outW: beforeApply.outW, outH: beforeApply.outH,
+                                    off: [beforeApply.offX, beforeApply.offY],
+                                    s: beforeApply.screenZoom },
+      trace: S._trace.slice(-3),
+      size: [S.image.width, S.image.height],
+      geom: S.geom,
+      canvas: [S._canvas().width, S._canvas().height]
     };
-  `, r => {
-    assert.equal(r.hasStudio, true, 'window.Studio 不存在');
-    assert.equal(r.shaderFailed, false, 'shader 编译失败');
-    assert.equal(r.hasEnterCrop, true, '没有 enterCrop');
-    assert.ok(r.cropBtn && r.cropOpts, '裁剪 UI 元素缺失');
-    assert.ok(r.aspects >= 6, `比例按钮应该是 6 个，实际 ${r.aspects}`);
-  });
-
-  /* ---------------- 恒等性 ---------------- */
-
-  await t('⭐ 不在裁剪模式时是恒等变换（画面和原图一致）', SETUP + `
-    await load(makeQuad());
-    return {
-      tl: px(...QUAD.tl), tr: px(...QUAD.tr),
-      bl: px(...QUAD.bl), br: px(...QUAD.br),
-      cropActive: !!window.Studio.crop
+    /* 取景框取**画面右上**那 1/4（x:0.5 起、y:0.5 起）。
+       ⚠️ 为什么用位置编码图而不是"红块在不在"：
+       红块在图片左上，取哪个象限都可能碰上它，判据不干净。
+       位置编码图直接读数值：取右半边 → R 应该明显大于左半边，
+       取上半边（画面 y 大）→ G 应该偏小。这样一条就同时钉住
+       x 和 y 两个方向都没有反。
+       结果画布 200×150，取它的四角读 R/G。 */
+    const quadOf = (label, u, v) => {
+      const c = S._canvas();
+      const g = c.getContext('webgl', { preserveDrawingBuffer: true });
+      const b = new Uint8Array(4);
+      g.readPixels(Math.round(u * (c.width - 1)), Math.round(v * (c.height - 1)),
+                   1, 1, g.RGBA, g.UNSIGNED_BYTE, b);
+      return { label, u, v, rgb: [b[0], b[1], b[2]] };
     };
-  `, r => {
-    assert.equal(r.cropActive, false, '不该在裁剪模式里');
-    // 屏幕方向：上 = 画布画的上半（canvas 2D 的 y=0 也在上）
-    assert.ok(isRed(r.tl), `左上应该偏红，实际 ${rgb(r.tl)}`);
-    assert.ok(isGreen(r.tr), `右上应该偏绿，实际 ${rgb(r.tr)}`);
-    assert.ok(isBlue(r.bl), `左下应该偏蓝，实际 ${rgb(r.bl)}`);
-    assert.ok(isWhite(r.br), `右下应该接近白，实际 ${rgb(r.br)}`);
-  });
+    const afterCorners = [
+      quadOf('左下', 0.1, 0.1), quadOf('右下', 0.9, 0.1),
+      quadOf('左上', 0.1, 0.9), quadOf('右上', 0.9, 0.9)
+    ];
+    out.applyCrop = { cropCenterBefore, cropAfter, afterCorners };
 
-  /* ---------------- 进入裁剪模式 ---------------- */
+    /* ⑤ 取消不留下痕迹 */
+    await load(makePos(W, H));
+    const cancelBefore = px(0.25, 0.75);
+    S.enterCrop();
+    S.setDisplay({ rotate: 30, zoom: 1 });
+    S.setCropRect({ x: 0.1, y: 0.1, w: 0.5, h: 0.5 });
+    S.exitCrop(false);
+    const cancelAfter = { px: px(0.25, 0.75), geom: S.geom,
+                          canvas: [S._canvas().width, S._canvas().height] };
+    out.cancel = { before: cancelBefore, ...cancelAfter };
 
-  await t('进入裁剪模式：画布比例变成取景框比例', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    const c = window.Studio._canvas();
-    const plan = window.Studio.cropRenderPlan(false);
-    return {
-      cropActive: !!window.Studio.crop,
-      canvasAspect: c.width / c.height,
-      planAspect: plan.outW / plan.outH,
-      rot: window.Studio.crop.rot,
-      // 0° 时取景框应该覆盖整个内接矩形 = 整张图
-      rect: window.Studio.crop.rect
-    };
-  `, r => {
-    assert.equal(r.cropActive, true, '没有进入裁剪模式');
-    assert.equal(r.rot, 0, '初始旋转角应该是 0');
-    assert.ok(Math.abs(r.canvasAspect - r.planAspect) < 0.02,
-      `画布比例应该和渲染计划一致：${r.canvasAspect.toFixed(3)} vs ${r.planAspect.toFixed(3)}`);
-    // 0° 时内接矩形就是整张图，取景框该占满
-    assert.ok(r.rect.w > 0.98 && r.rect.h > 0.98,
-      `0° 时取景框应该占满画面，实际 w=${r.rect.w.toFixed(3)} h=${r.rect.h.toFixed(3)}`);
-  });
+    /* ⑥ 90° 整转 */
+    await load(makeQuad(W, H));
+    S.enterRotate();
+    S.setDisplay({ rotate: 0, flipX: false, flipY: false, zoom: 1 });
+    S.setCropRect({ x: 0, y: 0, w: 1, h: 1 });
+    const q0 = { tl: px(0.25, 0.75), tr: px(0.75, 0.75),
+                 bl: px(0.25, 0.25), br: px(0.75, 0.25) };
+    const size0 = [S.image.width, S.image.height];
+    await S.rotateQuarter(1);
+    S.fitZoomToWindow();
+    const q1 = { tl: px(0.25, 0.75), tr: px(0.75, 0.75),
+                 bl: px(0.25, 0.25), br: px(0.75, 0.25) };
+    out.quarter = { before: q0, after: q1, size0,
+                    size: [S.image.width, S.image.height],
+                    canvas: [S._canvas().width, S._canvas().height] };
 
-  /* ---------------- 旋转 ---------------- */
-
-  await t('⭐ 旋转 0° 时画面不变（恒等），旋转后画面确实变了', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    const before = px(0.5, 0.5);
-    window.Studio.setCropRotation(0);
-    const zero = px(0.5, 0.5);
-    window.Studio.setCropRotation(20);
-    const turned = px(0.5, 0.5);
-    return { before, zero, turned, rot: window.Studio.crop.rot };
-  `, r => {
-    const d0 = Math.max(...r.before.map((v, i) => Math.abs(v - r.zero[i])));
-    assert.ok(d0 <= 3, `旋转 0° 应该是恒等，实际最大通道差 ${d0}`);
-    assert.equal(r.rot, 20, '旋转角没设上');
-    // 中心是四象限交界处，转 20° 之后颜色一定变了
-    const d1 = Math.max(...r.zero.map((v, i) => Math.abs(v - r.turned[i])));
-    assert.ok(d1 > 10, `旋转 20° 后中心应该明显变化，实际差 ${d1}`);
-  });
-
-  await t('⭐ 旋转后四角不露白（取景框在内接矩形内）', SETUP + `
-    await load(makeGray());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(30);
-    const c = window.Studio._canvas();
-    const g = c.getContext('webgl', { preserveDrawingBuffer: true });
-    // 取四角和四边中点，都不该出现"透明/黑"（露白）
-    const pts = [[0.01,0.01],[0.99,0.01],[0.01,0.99],[0.99,0.99],
-                 [0.5,0.01],[0.5,0.99],[0.01,0.5],[0.99,0.5]];
-    const out = [];
-    for (const [u,v] of pts) {
-      const buf = new Uint8Array(4);
-      g.readPixels(Math.round(u*(c.width-1)), Math.round((1-v)*(c.height-1)), 1, 1,
-                   g.RGBA, g.UNSIGNED_BYTE, buf);
-      out.push([buf[0],buf[1],buf[2]]);
-    }
-    return { out, rot: window.Studio.crop.rot };
-  `, r => {
-    for (let i = 0; i < r.out.length; i++) {
-      const [R, G, B] = r.out[i];
-      // 中灰 #808080 经过 sRGB 往返应该在 120~140；露白会是纯黑(0)
-      assert.ok(R > 100 && R < 160 && G > 100 && G < 160 && B > 100 && B < 160,
-        `第 ${i} 个采样点露白或异常：rgb(${R},${G},${B})，旋转角 ${r.rot}°`);
-    }
-  });
-
-  await t('小角度旋转时内接矩形接近原图，大角度时明显缩小', SETUP + `
-    const W0 = 400, H0 = 300;
-    const a = window.Studio.inscribedRect(W0, H0, 5 * Math.PI / 180);
-    const b = window.Studio.inscribedRect(W0, H0, 40 * Math.PI / 180);
-    const boxA = window.Studio.rotatedBoxSize(W0, H0, 5 * Math.PI / 180);
-    const boxB = window.Studio.rotatedBoxSize(W0, H0, 40 * Math.PI / 180);
-    return {
-      areaA: (a.w * a.h) / (W0 * H0),
-      areaB: (b.w * b.h) / (W0 * H0),
-      boxAspectA: boxA.W / boxA.H,
-      boxAspectB: boxB.W / boxB.H
-    };
-  `, r => {
-    assert.ok(r.areaA > r.areaB,
-      `角度越大内接矩形应该越小：5°=${r.areaA.toFixed(3)} 40°=${r.areaB.toFixed(3)}`);
-    // 40° 时面积应该明显损失（不该还接近 1）
-    assert.ok(r.areaB < 0.8,
-      `40° 时内接矩形面积应该明显小于原图，实际 ${r.areaB.toFixed(3)}`);
-    // 外接矩形比原图大
-    assert.ok(r.boxAspectA !== 1 && r.boxAspectB !== 1, '外接矩形比例不该恒为 1');
-  });
-
-  /* ---------------- 裁剪输出 ---------------- */
-
-  await t('⭐ 裁剪输出的长宽比等于取景框比例', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(0);
-    // 设一个明显的 16:9 取景框
-    const box = window.Studio.rotatedBoxSize(400, 300, 0);
-    const w = 0.5, h = (w * box.W) / ((16 / 9) * box.H);
-    window.Studio.setCropRect({ x: 0.25, y: 0.5 - h / 2, w, h });
-    const plan = window.Studio.cropRenderPlan(true);
-    return { aspect: plan.outW / plan.outH, outW: plan.outW, outH: plan.outH,
-             target: 16 / 9, imgW: window.Studio.image.width,
-             imgH: window.Studio.image.height };
-  `, r => {
-    assert.ok(Math.abs(r.aspect - r.target) < 0.03,
-      `导出长宽比应该是 ${r.target.toFixed(3)}，实际 ${r.aspect.toFixed(3)}`
-      + `（${r.outW}×${r.outH}）`);
-    // 输出尺寸不该超过原图
-    assert.ok(r.outW <= r.imgW + 1 && r.outH <= r.imgH + 1,
-      `输出不该比原图大：${r.outW}×${r.outH} vs ${r.imgW}×${r.imgH}`);
-  });
-
-  await t('⭐ 裁剪真的取了那一块内容（不是每次取同一个角）', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(0);
-    /* ⚠️ rect 是**屏幕约定**：y=0 在画面**下**边、y=1 在上边
-       （依据：cropRectOnCanvas() 里 r.y=1 时框画在画布顶部）。
-       所以「画面右上角」= x 大、y 大 → { x: 0.5, y: 0.5 }，
-       对应原图里的**右上象限（绿）**。
-
-       ⚠️ 这条原来写的是 { x: 0.5, y: 0.5 } 却期望"白"（右下象限），
-       那是按"y 向下"写的。它当时能过，是因为取景框 0.5×0.5 居中取样
-       时正好落在四象限的**交点**附近，读到什么色全看取整 ——
-       属于"碰巧通过"。修好纵向偏移之后它就露出了真面目
-       （读到绿色 = 右上象限，正是 y=0.5 该有的结果）。
-
-       换个**明确落在单一象限内**的框，判据就不再依赖取整。 */
-    window.Studio.setCropRect({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
-    const c = window.Studio._canvas();
-    const g = c.getContext('webgl', { preserveDrawingBuffer: true });
-    const buf = new Uint8Array(4);
-    g.readPixels(Math.round(c.width * 0.5), Math.round(c.height * 0.5),
-                 1, 1, g.RGBA, g.UNSIGNED_BYTE, buf);
-    return { center: [buf[0], buf[1], buf[2]],
-             rect: window.Studio.crop.rect,
-             canvas: [c.width, c.height] };
-  `, r => {
-    // 画面右上 = 原图右上象限 = 绿
-    assert.ok(isGreen(r.center),
-      `取景框在画面右上，中心应该是右上象限的绿，实际 ${rgb(r.center)}`
-      + ' —— 偏红说明忽略了裁剪偏移（总是取原图左上角）');
-  });
-
-  /* ---------------- 采样位置（行编码图） ---------------- */
-
-  await t('⭐⭐ 采样区间落在正确的位置上（用行编码图量源行，不是看颜色）', SETUP + `
-    await load(makeRowCoded());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(0);
-    /* 取景框在画面**左下角**：x∈[0,0.5]、y∈[0,0.5]（y 是屏幕约定，0=底）。
-       于是应该采到原图左下角的 1/4：图像 v∈[0.5, 1]、u∈[0, 0.5]。
-
-       ⚠️⚠️ 取景框必须**在 y 上不居中**，否则这条测试是瞎的。
-       实测教训：第一版用的是「画面上半」（y=0.5, h=0.5，全宽）——
-       那个框中心正好在画面中心，两种 offY 公式**完全等价**
-       （框中心 - 0.5 = 0，差的符号项被消掉），
-       所以把 offY 换成错的符号，这条照样绿。
-       挑框的原则：让框中心明显偏离画面中心。 */
-    window.Studio.setCropRect({ x: 0, y: 0, w: 0.5, h: 0.5 });
-    const plan = window.Studio.cropRenderPlan(true);
-    const img = [window.Studio.image.width, window.Studio.image.height];
-    // 画面顶 / 底指向的源行（绿通道 = 行位置 / 255）
-    const top = px(0.5, 0.99), bot = px(0.5, 0.01);
-    return {
-      img,
-      plan: plan ? { sX: plan.sX, sY: plan.sY, offX: plan.offX, offY: plan.offY } : null,
-      srcVTop: top[1], srcVBot: bot[1],
-      srcUTop: top[0], srcUBot: bot[0]
-    };
-  `, r => {
-    /* 期望：画面顶 = 原图第 150 行（v≈0.5）、画面底 = 原图第 299 行（v≈1）。 */
-    const near = (a, b, tol, what) => {
-      assert.ok(Math.abs(a - b) <= tol,
-        `${what}：期望 ${b.toFixed(1)}，实际 ${a}（差 ${Math.abs(a - b).toFixed(1)}）`);
-    };
-    console.log(`        [采样] 源行 顶=${r.srcVTop}/255 底=${r.srcVBot}/255  `
-      + `(plan sY=${r.plan && r.plan.sY.toFixed(3)} offY=${r.plan && r.plan.offY.toFixed(3)})`);
-
-    // 绿通道 = 行位置，所以期望值是 127.5 和 255
-    near(r.srcVTop, 127.5, 12,
-      '取景框在画面左下，画面**顶**应该采到原图正中那一行');
-    near(r.srcVBot, 255, 12,
-      '取景框在画面左下，画面**底**应该采到原图最下面一行');
-    // 红通道全是 0（这张图没编码列），顺手确认读的不是别的东西
-    near(r.srcUTop, 0, 12, '行编码图的红通道应该恒为 0');
-  });
-
-  /* ---------------- 应用（烘焙） ---------------- */
-
-  await t('⭐ 应用裁剪：图片尺寸真的变了，且和计划一致', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(0);
-    window.Studio.setCropRect({ x: 0.25, y: 0.25, w: 0.5, h: 0.5 });
-    const plan = window.Studio.cropRenderPlan(true);
-    const before = [window.Studio.image.width, window.Studio.image.height];
-    const err = await window.Studio.applyCrop().then(() => null, e => String(e && e.message));
-    const after = [window.Studio.image.width, window.Studio.image.height];
-    return { before, after, plan: [plan.outW, plan.outH], err,
-             cropActive: !!window.Studio.crop,
-             canvas: [window.Studio._canvas().width, window.Studio._canvas().height] };
-  `, r => {
-    assert.equal(r.err, null, `applyCrop 抛异常了：${r.err}`);
-    assert.equal(r.cropActive, false, '应用后应该退出裁剪模式');
-    assert.ok(r.after[0] < r.before[0] && r.after[1] < r.before[1],
-      `裁剪后尺寸应该变小：${r.before} -> ${r.after}，计划 ${r.plan}，画布 ${r.canvas}`);
-    assert.ok(Math.abs(r.after[0] - r.plan[0]) <= 1 && Math.abs(r.after[1] - r.plan[1]) <= 1,
-      `实际尺寸应该等于渲染计划：${r.after} vs ${r.plan}`);
-  });
-
-  await t('⭐ 裁剪内容的上下朝向（取景框取画面上半 → 结果只有上半的色）', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(0);
-    /* 裁画面**上半**（原图 v∈[0,0.5]，也就是红+绿那两个象限）。
-       ⚠️ rect 是屏幕约定：y=0.5 是画面中线，y=1 是画面顶边。
-       所以 { y: 0.5, h: 0.5 } = 画面上半。
-
-       ⚠️ 这条曾经是**已知未解决**的红，症状是"采到了纵向相邻的区块"。
-       根因不在翻转，而在 cropRenderPlan 的 offY 少减了 sY/2 ——
-       整个采样区间上移了半个框高。详见 studio.js 里 offY 的推导注释和
-       test/_probe-crop-map.mjs（实测对照表，一次跑完全部场景）。
-
-       这里同时验**预览**和**烘焙后**，因为这两条路是分开实现的：
-       预览走 cropRenderPlan(false)，烘焙走 cropRenderPlan(true) + 手工行序。
-       只验预览的话，"应用完上下颠倒"这种错会漏掉（实际就漏过一次）。 */
-    window.Studio.setCropRect({ x: 0, y: 0.5, w: 1, h: 0.5 });
-
-    /* ⚠️ 读点要按**象限中心**读，不能贴边。
-       第一版读的是 (x=5, 顶) 和 (x=5, 底) —— 那是画面左缘，
-       左半列上下都该是红（原图左半是红/蓝），于是两条断言自相矛盾。
-       用 px(0.25, v) / px(0.75, v) 落在两个象限中心。 */
-    const c0 = window.Studio._canvas();
-    const preview = {
-      topL: px(0.25, 0.98), topR: px(0.75, 0.98),
-      botL: px(0.25, 0.02), botR: px(0.75, 0.02)
-    };
-    const previewSize = [c0.width, c0.height];
-
-    await window.Studio.applyCrop();
-    const applied = {
-      topL: px(0.25, 0.98), topR: px(0.75, 0.98),
-      botL: px(0.25, 0.02), botR: px(0.75, 0.02)
-    };
-    return { preview, applied, previewSize,
-             size: [window.Studio.image.width, window.Studio.image.height] };
-  `, r => {
-    const fmt = o => `顶左=${rgb(o.topL)} 顶右=${rgb(o.topR)} `
-      + `底左=${rgb(o.botL)} 底右=${rgb(o.botR)}`;
-    console.log('        [朝向] 预览 ' + fmt(r.preview));
-    console.log('        [朝向] 应用后 ' + fmt(r.applied));
-
-    /* 严格判据：裁**画面上半** → 采到原图上半 = 红（左）+ 绿（右）。
-       原来是宽松的"是红或绿就行"，那验不出翻转 ——
-       翻转后是"顶蓝底红"，也落在"红或绿"里，能蒙过去。 */
-    assert.ok(isRed(r.preview.topL), `预览顶左应该红，实际 ${rgb(r.preview.topL)}`);
-    assert.ok(isGreen(r.preview.topR), `预览顶右应该绿，实际 ${rgb(r.preview.topR)}`);
-    assert.ok(isRed(r.preview.botL), `预览底左应该红，实际 ${rgb(r.preview.botL)}`);
-    assert.ok(isGreen(r.preview.botR), `预览底右应该绿，实际 ${rgb(r.preview.botR)}`);
-
-    // 所见即所得
-    const same = Math.max(
-      ...[['topL'], ['topR'], ['botL'], ['botR']].map(([k]) =>
-        Math.max(...r.preview[k].map((v, i) => Math.abs(v - r.applied[k][i]))))
-    );
-    assert.ok(same <= 3,
-      `预览和应用后必须一致（所见即所得），实际最大通道差 ${same}`
-      + `（预览画布 ${r.previewSize.join('×')}）`);
-
-    /* 烘焙出来的图本身也要对 —— 不能只靠 canvas 显示正确。
-       这条是分开实现的（烘焙要手工处理 readPixels 的行序），
-       只验预览的话"应用完上下颠倒"会漏掉（实际就漏过一次）。 */
-    assert.ok(isRed(r.applied.topL) && isGreen(r.applied.topR),
-      `应用后画面顶部应该是红+绿，实际 ${rgb(r.applied.topL)} / ${rgb(r.applied.topR)}`
-      + `（图 ${r.size.join('×')}）`);
-    assert.ok(isRed(r.applied.botL) && isGreen(r.applied.botR),
-      `应用后画面底部应该是红+绿，实际 ${rgb(r.applied.botL)} / ${rgb(r.applied.botR)}`
-      + ' —— 如果顶蓝底红，说明烘焙时行序翻了');
-  });
-
-  /* ---------------- 90° 整转 ---------------- */
-
-  await t('⭐ 90° 整转：尺寸互换', SETUP + `
-    await load(makeQuad());
-    const before = [window.Studio.image.width, window.Studio.image.height];
-    await window.Studio.rotateQuarter(1);
-    const after = [window.Studio.image.width, window.Studio.image.height];
-    return { before, after };
-  `, r => {
-    assert.equal(r.after[0], r.before[1], `宽应该等于原来的高：${r.after} vs ${r.before}`);
-    assert.equal(r.after[1], r.before[0], `高应该等于原来的宽：${r.after} vs ${r.before}`);
-  });
-
-  await t('⭐ 90° 整转：内容真的转过去了（红从左上到右上）', SETUP + `
-    await load(makeQuad());
-    const before = { tl: px(...QUAD.tl), tr: px(...QUAD.tr) };
-    await window.Studio.rotateQuarter(1);
-    return {
-      before,
-      afterTL: px(...QUAD.tl), afterTR: px(...QUAD.tr),
-      afterBL: px(...QUAD.bl), afterBR: px(...QUAD.br)
-    };
-  `, r => {
-    /* 顺时针 90°：左上的红应该到右上。
-       等价地说 afterTL 应该是原来的左下（蓝）。 */
-    assert.ok(isRed(r.afterTR),
-      `顺时针转 90° 后右上应该是红（原来的左上），实际 ${rgb(r.afterTR)}；`
-      + `四象限 = 左上${rgb(r.afterTL)} 右上${rgb(r.afterTR)} `
-      + `左下${rgb(r.afterBL)} 右下${rgb(r.afterBR)}`);
-    assert.ok(isBlue(r.afterTL),
-      `顺时针转 90° 后左上应该是蓝（原来的左下），实际 ${rgb(r.afterTL)}`);
-  });
-
-  await t('⭐ 裁剪模式里转 90°：取景框回填整个画面，画面不被扭/不偏移', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(0);
-    await window.Studio.rotateQuarter(1);
-    const plan = window.Studio.cropRenderPlan(false);
-    return {
-      rect: window.Studio.crop.rect,
-      img: [window.Studio.image.width, window.Studio.image.height],
-      plan: plan ? { sX: plan.sX, sY: plan.sY, offX: plan.offX, offY: plan.offY,
-                     outW: plan.outW, outH: plan.outH } : null,
-      tl: px(0.25, 0.98), tr: px(0.75, 0.98),
-      bl: px(0.25, 0.02), br: px(0.75, 0.02)
-    };
-  `, r => {
-    /* 转了 90° 之后 enterCrop 会把取景框重置成整个内接矩形，
-       此时 s/off 必须是恒等（1 / 1 / 0 / 0）——
-       不是恒等的话说明"图片转了但采样参数还按旧的算"，
-       画面会被扭或整体偏掉。 */
-    assert.ok(r.plan, '没有渲染计划');
-    const near = (a, b) => Math.abs(a - b) < 1e-6;
-    assert.ok(near(r.plan.sX, 1) && near(r.plan.sY, 1),
-      `90° 后取景框占满画面，sX/sY 应该是 1，实际 ${r.plan.sX}/${r.plan.sY}`);
-    assert.ok(near(r.plan.offX, 0) && near(r.plan.offY, 0),
-      `90° 后取景框占满画面，offX/offY 应该是 0，实际 `
-      + `${r.plan.offX}/${r.plan.offY} —— 不是 0 说明采样区间整体偏了`);
-
-    /* 四象限内容：原图 左上=红 右上=绿 左下=蓝 右下=白，
-       顺时针 90° 之后应该变成 左上=蓝 右上=红 左下=白 右下=绿。
-       ⚠️ 判据必须**带颜色**。只断言"画面变了"或"四角不露白"
-       抓不到"上下颠倒/左右颠倒"，而这个功能恰恰错在朝向。 */
-    assert.ok(isBlue(r.tl), `90° 后左上应该是蓝（原左下），实际 ${rgb(r.tl)}`);
-    assert.ok(isRed(r.tr), `90° 后右上应该是红（原左上），实际 ${rgb(r.tr)}`);
-    assert.ok(isWhite(r.bl), `90° 后左下应该是白（原右下），实际 ${rgb(r.bl)}`);
-    assert.ok(isGreen(r.br), `90° 后右下应该是绿（原右上），实际 ${rgb(r.br)}`);
-    assert.equal(r.img[0], 300, `转 90° 后宽应该等于原高 300，实际 ${r.img[0]}`);
-    assert.equal(r.img[1], 400, `转 90° 后高应该等于原宽 400，实际 ${r.img[1]}`);
-  });
-
-  /* ---------------- 回归 ---------------- */
-
-  await t('取消裁剪后回到恒等变换', SETUP + `
-    await load(makeQuad());
-    const before = px(0.25, 0.75);
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(25);
-    const during = px(0.5, 0.5);
-    window.Studio.exitCrop(false);
-    const after = px(0.25, 0.75);
-    return { before, during, after, cropActive: !!window.Studio.crop };
-  `, r => {
-    assert.equal(r.cropActive, false, '取消后不该还在裁剪模式');
-    // ⚠️ 这条防的是"uniform 是全局状态，取消后没重置"——
-    // 表现是取消裁剪之后照片还是歪的
-    const d = Math.max(...r.before.map((v, i) => Math.abs(v - r.after[i])));
-    assert.ok(d <= 3, `取消裁剪后应该回到原样，实际最大通道差 ${d}`);
-  });
-
-  await t('回归：裁剪模式下调整功能仍然生效', SETUP + `
-    await load(makeQuad());
-    window.Studio.enterCrop();
-    window.Studio.setCropRotation(0);
-    const before = lum(px(0.25, 0.75));
-    window.Studio.setValue('uExposure', 1.0);
-    const after = lum(px(0.25, 0.75));
-    return { before, after };
-  `, r => {
-    assert.ok(r.after > r.before + 15,
-      `裁剪模式下曝光应该仍然生效：${r.before.toFixed(1)} -> ${r.after.toFixed(1)}`);
-  });
-
+    return out;
+  })()`);
+  await page.close().catch(() => {});
 } finally {
-  if (page) await page.close().catch(() => {});
-  if (chrome) shutdown(chrome);
+  shutdown(chrome);
   server.close();
 }
+
+const t = (name, fn) => {
+  try { fn(); pass++; console.log(`  ✅ ${name}`); }
+  catch (e) { fail++; console.log(`  ❌ ${name}\n     ${e.message}`); }
+};
+const isGreen = p => p[1] > 130 && p[0] < 120 && p[2] < 120;
+const isBlue = p => p[2] > 150 && p[0] < 120 && p[1] < 120;
+const isWhite = p => Math.min(...p) > 180;
+
+/* ---------------- ① 恒等 ---------------- */
+t('⭐ 不在几何编辑时是恒等变换（正常编辑不受影响）', () => {
+  assert.equal(R.identity.geomSnap, null,
+    '没进几何编辑时 geom 应该是 null，实际 '
+    + JSON.stringify(R.identity.geomSnap)
+    + '；exitCrop 前=' + R.identity.geomBeforeExit
+    + ' 后=' + R.identity.geomAfterExit);
+  const d = Math.max(...R.identity.before.map((v, i) =>
+    Math.abs(v - R.identity.after[i])));
+  assert.ok(d <= 3,
+    `进几何编辑（0°/1x/不翻转）后画面不该变：`
+    + `${rgb(R.identity.before)} → ${rgb(R.identity.after)}`);
+});
+
+/* ---------------- ② 初始状态 ---------------- */
+t('进裁剪时取景框覆盖整个视口，画布 = 视口', () => {
+  const r = R.initial.rect;
+  assert.ok(Math.abs(r.x) < 1e-6 && Math.abs(r.y) < 1e-6
+    && Math.abs(r.w - 1) < 1e-6 && Math.abs(r.h - 1) < 1e-6,
+    `取景框初始应该是满幅 (0,0,1,1)，实际 ${JSON.stringify(r)}`);
+  assert.equal(R.initial.canvas[0], R.initial.plan.bufW,
+    '画布宽应该等于视口宽');
+  assert.equal(R.initial.canvas[1], R.initial.plan.bufH,
+    '画布高应该等于视口高');
+});
+
+/* ---------------- ③ 拖框不平移 ---------------- */
+t('⭐⭐ 拖小取景框**不会让画面平移**（画布中心始终是图片中心）', () => {
+  /* ⚠️ 这条守的是 uImgOffset 恒为 0 那条不变量。
+     历史 bug：把 offset 写成"取景框中心相对图片中心的偏移"，
+     于是收小取景框时画面整体偏了 0.25 —— 满幅时看不出来。 */
+  const d = Math.max(...R.panTest.before.c.map((v, i) =>
+    Math.abs(v - R.panTest.after.c[i])));
+  assert.ok(d <= 3,
+    `取景框收小后画面中心不该变：${rgb(R.panTest.before.c)} → `
+    + `${rgb(R.panTest.after.c)}\n`
+    + `     rect=${JSON.stringify(R.panTest.rect)} `
+    + `plan.off=${JSON.stringify(R.panTest.plan && R.panTest.plan.off)}`);
+  assert.equal(R.panTest.plan.off[0], 0, 'offset.x 必须恒为 0');
+  assert.equal(R.panTest.plan.off[1], 0, 'offset.y 必须恒为 0');
+});
+
+t('取景框收小后输出尺寸跟着变小（输出 = 取景框那块）', () => {
+  const p = R.panTest.plan;
+  assert.ok(Math.abs(p.outW - 200) <= 1 && Math.abs(p.outH - 150) <= 1,
+    `0.5×0.5 的取景框应该输出 200×150，实际 ${p.outW}×${p.outH}`);
+});
+
+/* ---------------- ④ 应用裁剪 ---------------- */
+t('⭐ 应用裁剪：图片尺寸真的变成取景框那块', () => {
+  assert.equal(R.applyCrop.cropAfter.size[0], 200,
+    `400×300 取 0.5×0.5 应该得到 200 宽，实际 ${R.applyCrop.cropAfter.size[0]}`
+    + `（烘焙计划 ${JSON.stringify(R.applyCrop.cropAfter.beforeApply)}）`);
+  assert.equal(R.applyCrop.cropAfter.size[1], 150,
+    `应该得到 150 高，实际 ${R.applyCrop.cropAfter.size[1]}`);
+  assert.equal(R.applyCrop.cropAfter.geom, null,
+    '应用之后几何状态应该清掉（不能留着继续变换）');
+});
+
+t('⭐⭐ 应用裁剪取的是**取景框那一块**（读位置编码，两个方向都钉住）', () => {
+  /* 取景框取**画面右上**那 1/4。位置编码图 R = 图片 x 位置、G = 图片 y 位置。
+     所以结果里应该看到：
+       右半边的 R 明显大于左半边（x 方向没取反）
+       上下的 G 差一个明显量（y 方向没颠倒）
+     ⚠️ 不用"红块在不在"当判据：红块在图片左上，四个象限里有两个都会
+     碰上它，判据不干净。位置编码直接读数值，一次钉住两个方向。 */
+  const c = R.applyCrop.afterCorners;
+  const at = n => c.find(x => x.label === n).rgb;
+  const [bl, br, tl, tr] = [at('左下'), at('右下'), at('左上'), at('右上')];
+  const msg = c.map(x => `${x.label}=${rgb(x.rgb)}`).join(' ');
+  assert.ok(bl[0] < 170 && tl[0] < 170,
+    `结果左半边应该是图片左半（R 偏小），实际 ${msg}`);
+  assert.ok(br[0] > 200 && tr[0] > 200,
+    `结果右半边应该是图片右半（R 偏大），实际 ${msg}`);
+  const gTop = (tl[1] + tr[1]) / 2, gBot = (bl[1] + br[1]) / 2;
+  assert.ok(gTop < gBot - 20,
+    `结果上边应该是图片偏上（G 偏小），实际 上=${gTop.toFixed(0)} `
+    + `下=${gBot.toFixed(0)}（${msg}）—— 反了说明 y 方向颠倒了`);
+});
+
+/* ---------------- ⑤ 取消 ---------------- */
+t('⭐ 取消裁剪后回到恒等变换（不能留下歪的画面）', () => {
+  assert.equal(R.cancel.geom, null, '取消后 geom 应该是 null');
+  const d = Math.max(...R.cancel.before.map((v, i) =>
+    Math.abs(v - R.cancel.px[i])));
+  assert.ok(d <= 3,
+    `取消后画面应该回到原样：${rgb(R.cancel.before)} → ${rgb(R.cancel.px)}`);
+});
+
+/* ---------------- ⑥ 90° 整转 ---------------- */
+t('⭐ 90° 整转：尺寸互换', () => {
+  assert.deepEqual(R.quarter.size0, [400, 300], '基准尺寸应该是 400×300');
+  assert.ok(Math.abs(R.quarter.size[0] - 300) <= 1,
+    `转 90° 后宽应该是 300，实际 ${R.quarter.size[0]}`);
+  assert.ok(Math.abs(R.quarter.size[1] - 400) <= 1,
+    `转 90° 后高应该是 400，实际 ${R.quarter.size[1]}`);
+});
+
+t('⭐⭐ 90° 整转：内容真的顺时针转过去了（红从左上到右上）', () => {
+  const b = R.quarter.before, a = R.quarter.after;
+  assert.ok(isRed(b.tl), `基准左上应该红，实际 ${rgb(b.tl)}`);
+  assert.ok(isRed(a.tr),
+    `顺时针 90° 后右上应该是红（原来的左上），实际 ${rgb(a.tr)}；`
+    + `四象限 = 左上${rgb(a.tl)} 右上${rgb(a.tr)} `
+    + `左下${rgb(a.bl)} 右下${rgb(a.br)}`);
+  assert.ok(isBlue(a.tl), `左上应该是蓝（原来的左下），实际 ${rgb(a.tl)}`);
+  assert.ok(isWhite(a.bl), `左下应该是白（原来的右下），实际 ${rgb(a.bl)}`);
+  assert.ok(isGreen(a.br), `右下应该是绿（原来的右上），实际 ${rgb(a.br)}`);
+});
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);
 process.exit(fail ? 1 : 0);
