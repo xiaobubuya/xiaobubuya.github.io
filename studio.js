@@ -96,7 +96,8 @@
   const mask = new window.Mask();
   let useMask = false;
   let showMask = false;
-  let brushMode = false;      // 画笔工具是否激活（激活时画布上拖动是画画不是平移）
+  let maskTool = null;         // 'brush' | 'gradient' | 'radial' | null
+  let brushMode = false;       // = maskTool !== null（兼容旧引用）
 
   /* ================================================================
      shader
@@ -2202,6 +2203,10 @@
     if (!on && compareOn) setCompare(false);
     const b = $('stBrush');
     if (b) b.disabled = !on;
+    const g = $('stGradient');
+    if (g) g.disabled = !on;
+    const rd = $('stRadial');
+    if (rd) rd.disabled = !on;
     const s = $('stSeg');
     if (s) s.disabled = !on;
     const ip = $('stInpaint');
@@ -2320,23 +2325,39 @@
     ];
   }
 
-  function setBrushMode(on) {
-    brushMode = on && !!img;
+  function setMaskTool(tool, force) {
+    // force=true 时不 toggle（强制设置），否则点同一个按钮取消
+    if (!force && tool === maskTool) tool = null;
+    maskTool = tool;
+    brushMode = maskTool !== null;
     canvas.classList.toggle('brushing', brushMode);
-    const b = $('stBrush');
-    if (b) b.classList.toggle('on', brushMode);
+    // 三个按钮互斥
+    [['stBrush', 'brush'], ['stGradient', 'gradient'], ['stRadial', 'radial']].forEach(([id, t]) => {
+      const b = $(id);
+      if (b) b.classList.toggle('on', maskTool === t);
+    });
+    // 画笔选项只有画笔工具时显示
+    showMaskTool(maskTool !== null);
     syncMaskUI();
+  }
+
+  function setBrushMode(on) {
+    // force=true：强制设置，不 toggle（AI 抠人/去物完成后强制切到画笔）
+    setMaskTool(on ? 'brush' : null, true);
   }
 
   function initBrush() {
     let drawing = false;
 
     canvas.addEventListener('pointerdown', e => {
-      if (!brushMode || !img) return;
+      if (!maskTool || !img) return;
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
       drawing = true;
-      mask.begin(...toImageCoord(e));
+      const [x, y] = toImageCoord(e);
+      // 渐变：从起点到终点画渐变轴
+      // 径向：从中心向外拖动定义椭圆半径
+      mask.begin(x, y, maskTool);
       draw();
     });
 
@@ -2384,14 +2405,15 @@
 
     // 自定义光标：画一个和笔刷等大的圈。
     // 用 CSS 光标做不到跟随笔刷大小，所以用一个绝对定位的 div。
+    // 渐变/径向工具靠画布上的实时预览反馈，不显示光标。
     const cur = document.createElement('div');
     cur.className = 'st-cursor';
     cur.hidden = true;
     $('stStage').appendChild(cur);
-    canvas.addEventListener('pointerenter', () => { if (brushMode) cur.hidden = false; });
+    canvas.addEventListener('pointerenter', () => { if (maskTool === 'brush') cur.hidden = false; });
     canvas.addEventListener('pointerleave', () => { cur.hidden = true; });
     canvas.addEventListener('pointermove', e => {
-      if (!brushMode) { cur.hidden = true; return; }
+      if (maskTool !== 'brush') { cur.hidden = true; return; }
       cur.hidden = false;
       const r = canvas.getBoundingClientRect();
       const d = mask.radius * Math.min(r.width, r.height) * 2;
@@ -2415,9 +2437,11 @@
     const cov = mask.isEmpty ? 0 : mask.coverage();
     const info = $('stMaskInfo');
     if (info) {
+      const n = mask.strokes.length;
+      const kinds = mask.strokes.filter(s => s.kind && s.kind !== 'brush').length;
       info.textContent = mask.isEmpty
         ? '没涂任何区域'
-        : `已选 ${(cov * 100).toFixed(1)}% · ${mask.strokes.length} 笔`;
+        : `已选 ${(cov * 100).toFixed(1)}% · ${n} 笔` + (kinds ? `（含渐变/径向 ${kinds} 笔）` : '');
     }
     const uc = $('stUseMask');
     if (uc) {
@@ -2609,10 +2633,12 @@
   }
 
   function showMaskTool(on) {
+    // stBrushOpts = 涂/擦 + 反选（所有蒙版工具共用）
+    // stBrushOpts2 = 笔刷大小/硬度（只有画笔用）
     const opts = $('stBrushOpts');
     const opts2 = $('stBrushOpts2');
     if (opts) opts.hidden = !on;
-    if (opts2) opts2.hidden = !on;
+    if (opts2) opts2.hidden = !(on && maskTool === 'brush');
   }
 
   /* ================================================================
@@ -3523,8 +3549,15 @@
       }
       if (e.key.toLowerCase() === 'b' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
-        setBrushMode(!brushMode);
-        showMaskTool(brushMode);
+        setMaskTool('brush');
+      }
+      if (e.key.toLowerCase() === 'g' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setMaskTool('gradient');
+      }
+      if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setMaskTool('radial');
       }
       if (e.key.toLowerCase() === 'e' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
@@ -3577,12 +3610,18 @@
   }
 
   function initMaskEvents() {
-    // 画笔开关
+    // 三个蒙版工具互斥：画笔 / 渐变 / 径向
     $('stBrush').addEventListener('click', () => {
-      const on = !brushMode;
-      setBrushMode(on);
-      showMaskTool(on);
-      if (on) toast('拖动鼠标涂抹要调整的区域', 2600);
+      setMaskTool('brush');
+      if (maskTool === 'brush') toast('拖动鼠标涂抹要调整的区域', 2600);
+    });
+    $('stGradient').addEventListener('click', () => {
+      setMaskTool('gradient');
+      if (maskTool === 'gradient') toast('拖动：起点=选中侧，终点=未选中侧', 3200);
+    });
+    $('stRadial').addEventListener('click', () => {
+      setMaskTool('radial');
+      if (maskTool === 'radial') toast('拖动：从中心向外定义椭圆选区', 3200);
     });
 
     // 涂 / 擦
@@ -3756,6 +3795,8 @@
     setUseMask: setMaskActive,
     setShowMask(on) { showMask = on; const c = $('stShowMask'); if (c) c.checked = on; draw(); },
     setBrushMode,
+    setMaskTool,
+    get maskTool() { return maskTool; },
     /** 涂一笔：points 是 [[x,y],...] 归一化坐标 */
     paint(points, opts = {}) {
       if (!mask.canvas) return false;

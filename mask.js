@@ -84,11 +84,13 @@
        画一笔
        ------------------------------------------------------------ */
 
-    /** 开始新的一笔。x/y 是 0~1 归一化坐标 —— 这样换分辨率不用换算 */
-    begin(x, y) {
+    /** 开始新的一笔。x/y 是 0~1 归一化坐标 —— 这样换分辨率不用换算
+     *  kind: 'brush'（默认）| 'gradient' | 'radial' */
+    begin(x, y, kind) {
       if (!this.canvas) return;
       this._cur = {
         points: [[x, y]],
+        kind: kind || 'brush',
         radius: this.radius,
         hardness: this.hardness,
         opacity: this.opacity,
@@ -99,10 +101,27 @@
       this._onChange();
     }
 
-    /** 笔画中途加一个点 */
+    /** 笔画中途加一个点。
+     *  gradient/radial 只更新第二个点（替换不追加），画笔追加 */
     extend(x, y) {
       const s = this._cur;
       if (!s) return false;
+
+      // 渐变 / 径向：第二个点代表"另一端"或"外半径"，直接替换
+      if (s.kind === 'gradient' || s.kind === 'radial') {
+        if (s.kind === 'radial') {
+          // 径向：传入的是指针位置，要算相对中心的半径
+          const [cx, cy] = s.points[0];
+          x = Math.abs(x - cx);
+          y = Math.abs(y - cy);
+        }
+        s.points.length = 2;
+        s.points[1] = [x, y];
+        this._paint(s);
+        this.version++;
+        this._onChange();
+        return true;
+      }
 
       const last = s.points[s.points.length - 1];
       const dx = x - last[0], dy = y - last[1];
@@ -167,6 +186,8 @@
     _paint(s, ctx) {
       ctx = ctx || this.canvas.getContext('2d');
       if (s.bitmap) return this._paintBitmap(s, ctx);
+      if (s.kind === 'gradient') return this._paintGradient(s, ctx);
+      if (s.kind === 'radial') return this._paintRadial(s, ctx);
       if (s.points.length === 1) {
         this._dot(s, s.points[0], ctx);
         return;
@@ -204,6 +225,47 @@
       };
       im.onerror = () => { s._loading = false; };
       im.src = s.bitmap;
+    }
+
+    /** 线性渐变蒙版：从 points[0] 到 points[1] 画一条渐变轴。
+     *  起点侧全白（选中），终点侧全透明（未选中），中间平滑过渡。
+     *  ⚠️ Y 翻转和画笔一致：归一化坐标 y=1 是图片顶部。 */
+    _paintGradient(s, ctx) {
+      if (s.points.length < 2) return;
+      const p0 = s.points[0], p1 = s.points[s.points.length - 1];
+      const x1 = p0[0] * this.canvas.width, y1 = (1 - p0[1]) * this.canvas.height;
+      const x2 = p1[0] * this.canvas.width, y2 = (1 - p1[1]) * this.canvas.height;
+
+      ctx.save();
+      ctx.globalCompositeOperation = s.erase ? 'destination-out' : 'lighter';
+      const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.restore();
+    }
+
+    /** 径向蒙版：以 points[0] 为中心，points[1] 为外半径（归一化坐标）。
+     *  中心全白（选中），边缘全透明（未选中），椭圆形平滑过渡。 */
+    _paintRadial(s, ctx) {
+      if (s.points.length < 2) return;
+      const [cx, cy] = s.points[0];
+      const [rx, ry] = s.points[s.points.length - 1];
+      const cxp = cx * this.canvas.width, cyp = (1 - cy) * this.canvas.height;
+      const rxp = Math.max(1, rx * this.canvas.width), ryp = Math.max(1, ry * this.canvas.height);
+      const maxR = Math.max(rxp, ryp);
+
+      ctx.save();
+      ctx.globalCompositeOperation = s.erase ? 'destination-out' : 'lighter';
+      ctx.translate(cxp, cyp);
+      ctx.scale(rxp / maxR, ryp / maxR);
+      const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, maxR);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(-maxR, -maxR, maxR * 2, maxR * 2);
+      ctx.restore();
     }
 
     _dot(s, p, ctx) {
