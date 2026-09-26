@@ -201,9 +201,13 @@
       </div>
 
       <div class="st-mask-row">
-        <label class="st-switch small" title="用红色罩住选区，方便看涂在哪">
+        <!-- ⚠️ 文案是"强调"不是"显示"：选区**始终**有一层淡提示
+             （否则用户涂完看不见自己涂了哪，会以为画笔坏了 —— 实测过）。
+             这个勾选是在"看得清选区"和"看清楚照片"之间做取舍：
+             勾上 → 红罩加重 + 沿边界描亮边；不勾 → 只有淡提示。 -->
+        <label class="st-switch small" title="加重选区红罩并勾出边界（不勾也有一层淡提示）">
           <input type="checkbox" id="stShowMask">
-          <span>显示选区</span>
+          <span>强调选区</span>
         </label>
         <button id="stMaskUndo" class="st-mini" title="撤销上一笔（Cmd+Z）" disabled>↶</button>
         <button id="stMaskClear" class="st-mini" title="清空选区" disabled>✕</button>

@@ -134,6 +134,9 @@
     uniform float uUseMask;    // 1 = 调整只作用在蒙版内
     uniform float uMaskOverlay; // 1 = 显示蒙版本身（红色叠加）
     uniform vec2 uTexel;       // 1/图片宽高，锐化取邻居用
+    uniform vec2 uMaskTexel;  // 1/蒙版宽高。⚠️ 和 uTexel 不同：蒙版按短边
+                              // 1024 缩放，图片是原分辨率。拿 uTexel 去采蒙版
+                              // 会落在亚像素上，梯度≈0，描边永远画不出来。
     uniform float uAspect;     // 图片宽高比，暗角要按比例算才不变形
     /* ---------------- 几何变换（视口 + 显示变换） ----------------
        ⚠️ 这一版是**重写**过的（旧版有 uUvScale 双轴缩放 + uCropOffset），
@@ -534,12 +537,45 @@
         c = vUv.x < uSplit ? raw : c;
       }
 
-      // 蒙版可视化：涂过的地方罩一层红。
-      // 用 0.45 的不透明度而不是纯色，是为了还能看清底下照片的细节 ——
-      // 涂眼睛的时候需要看见眼睛在哪。
-      if (uMaskOverlay > 0.5) {
+      /* ================================================================
+         选区可视化：**淡提示常驻 + 勾选后强调**
+         ----------------------------------------------------------------
+         用户反馈的两轮（都很实在）：
+           第一轮"画笔涂抹没有什么反应，打开显示选区就是一片渐变"
+             → 默认关着，涂了看不见；羽化边又很宽，像一片糊。
+           第二轮（勾选之后）"只有一笔，直接红了好多"
+             → 红罩一开就整片压住照片，太抢眼。
+
+         所以拆成两档，而不是只有一个开关：
+           · **常驻淡提示**（0.16，且只罩住选区内）：不勾选也能看出
+             "哪里被选上了"，又几乎不影响看照片。这是"看得见"和
+             "不挡视线"之间的平衡点。
+           · **勾选后强调**（0.58 + 边界描边）：要精确对齐选区边界时用。
+             边界描边是关键 —— 0→1 的羽化过渡带本身没有边界可言，
+             但它的**梯度峰值**正是用户心里的"选区边"。
+         ⚠️ 颜色往暖黄偏一点：只叠纯红在**深色衣服**上几乎看不出来
+         （红罩在暗部不动），掺点亮色，暗部亮部都能看出选区在哪。 */
+      {
         float m = texture2D(uMask, vUv).r;
-        c = mix(c, vec3(1.0, 0.15, 0.15), m * 0.45);
+        // 品红：和暖调照片（日落 / 皮肤 / 室内暖光）对比鲜明。
+        // ⚠️ 原来用暖橙红，暖叠暖在日落照片上和原图暖光融为一体 ——
+        //    用户看到「涂了一小下、半张图都红了」，其实是分不清叠加色
+        //    和照片本身的暖光。品红在暖 / 冷 / 中性照片上都能一眼看出
+        //    选区到底盖住了多大一块。
+        vec3 mark = vec3(1.0, 0.30, 0.85);
+        // 常驻淡提示
+        c = mix(c, mark, m * 0.16);
+        if (uMaskOverlay > 0.5) {
+          c = mix(c, mark, m * 0.58);
+
+          // 边界描边：梯度大的地方就是"选区边"
+          float gx = texture2D(uMask, vUv + vec2(uMaskTexel.x, 0.0)).r
+                   - texture2D(uMask, vUv - vec2(uMaskTexel.x, 0.0)).r;
+          float gy = texture2D(uMask, vUv + vec2(0.0, uMaskTexel.y)).r
+                   - texture2D(uMask, vUv - vec2(0.0, uMaskTexel.y)).r;
+          float edge = smoothstep(0.02, 0.16, length(vec2(gx, gy)));
+          c = mix(c, vec3(1.0), edge * 0.8);   // 白色描边：暖黄在暖调照片上也会糊
+        }
       }
 
       gl_FragColor = vec4(c, 1.0);
@@ -753,6 +789,7 @@
     uniforms.uUseMask = gl.getUniformLocation(program, 'uUseMask');
     uniforms.uMaskOverlay = gl.getUniformLocation(program, 'uMaskOverlay');
     uniforms.uTexel = gl.getUniformLocation(program, 'uTexel');
+    uniforms.uMaskTexel = gl.getUniformLocation(program, 'uMaskTexel');
     uniforms.uAspect = gl.getUniformLocation(program, 'uAspect');
     uniforms.uRot = gl.getUniformLocation(program, 'uRot');
     uniforms.uFlip = gl.getUniformLocation(program, 'uFlip');
@@ -902,6 +939,9 @@
     // 用画布尺寸的话，拖一下窗口锐化半径就变了（预览和导出也不一致）。
     // 代价是屏幕预览时看着比导出略轻，取舍写在 shader 的 sharpen 注释里。
     gl.uniform2f(uniforms.uTexel, 1 / img.width, 1 / img.height);
+    // 蒙版边缘描边的步长：蒙版不是原分辨率，按短边 1024 缩放。
+    // 和 uTexel 分开——拿图片的 1/3440 去采 1024 的蒙版会落在亚像素上。
+    gl.uniform2f(uniforms.uMaskTexel, 1 / mask.canvas.width, 1 / mask.canvas.height);
     gl.uniform1f(uniforms.uAspect, img.width / img.height);
 
     /* 几何变换。`planOverride` 是给"烘焙/整转"用的：那两条路要按一个
@@ -2474,9 +2514,14 @@
     if (info) {
       const n = mask.strokes.length;
       const kinds = mask.strokes.filter(s => s.kind && s.kind !== 'brush').length;
+      /* ⚠️ 光给百分比不够：用户看到"已选 67.6%"会疑惑"我只是涂了一笔啊"——
+         因为百分比是**占整张图**的比例，而一键涂抹在 3440×1440 这种图上
+         本来就能扫掉几十万个像素（实测一条横贯画面中段的拖拽就是 4.3%）。
+         所以补一句口径说明，让这个数字可解释，而不是看着像 bug。 */
       info.textContent = mask.isEmpty
         ? '没涂任何区域'
-        : `已选 ${(cov * 100).toFixed(1)}% · ${n} 笔` + (kinds ? `（含渐变/径向 ${kinds} 笔）` : '');
+        : `已选 ${(cov * 100).toFixed(1)}%（占整张图）· ${n} 笔`
+          + (kinds ? `（含渐变/径向 ${kinds} 笔）` : '');
     }
     const uc = $('stUseMask');
     if (uc) {
