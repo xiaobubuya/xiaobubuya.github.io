@@ -2410,24 +2410,37 @@
 
     // 自定义光标：画一个和笔刷等大的圈。
     // 用 CSS 光标做不到跟随笔刷大小，所以用一个绝对定位的 div。
-    // 渐变/径向工具靠画布上的实时预览反馈，不显示光标。
+    //
+    // ⚠️ 必须对**所有**蒙版工具都显示，不能只给画笔：
+    //    #stCanvas.brushing 挂了 cursor:none 把系统光标藏掉（画布上拖动
+    //    不能滚动页面），而 .brushing 对画笔/渐变/径向**三个都生效**。
+    //    一旦这里按 maskTool 藏掉，渐变/径向下就是两个光标都没有 ——
+    //    表现是"点一下渐变，鼠标不见了"，完全没法瞄准起点。
+    //   （这里原来写着"渐变/径向靠画布实时预览"，但悬停时根本没有预览，
+    //     按下拖过 1% 才开始画 —— 注释描述的是不存在的东西。）
     const cur = document.createElement('div');
     cur.className = 'st-cursor';
     cur.hidden = true;
     $('stStage').appendChild(cur);
-    canvas.addEventListener('pointerenter', () => { if (maskTool === 'brush') cur.hidden = false; });
-    canvas.addEventListener('pointerleave', () => { cur.hidden = true; });
-    canvas.addEventListener('pointermove', e => {
-      if (maskTool !== 'brush') { cur.hidden = true; return; }
+
+    function showCursor(e) {
       cur.hidden = false;
       const r = canvas.getBoundingClientRect();
-      const d = mask.radius * Math.min(r.width, r.height) * 2;
-      cur.style.width = cur.style.height = Math.round(d) + 'px';
       const sr = $('stStage').getBoundingClientRect();
+      // 画笔：圈跟着笔刷半径走，能看到笔刷有多粗。
+      // 渐变/径向没有"笔刷半径"这个概念，给一个固定小圈当瞄准点。
+      const d = maskTool === 'brush'
+        ? mask.radius * Math.min(r.width, r.height) * 2
+        : 14;
+      cur.style.width = cur.style.height = Math.round(d) + 'px';
       cur.style.left = (e.clientX - sr.left - d / 2) + 'px';
       cur.style.top = (e.clientY - sr.top - d / 2) + 'px';
       cur.classList.toggle('erase', mask.mode === 'erase');
-    });
+    }
+
+    canvas.addEventListener('pointerenter', showCursor);
+    canvas.addEventListener('pointermove', showCursor);
+    canvas.addEventListener('pointerleave', () => { cur.hidden = true; });
   }
 
   /** 涂了东西就自动打开局部模式，否则用户会以为调整坏了 */

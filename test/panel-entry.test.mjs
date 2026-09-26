@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(ROOT, 'studio.html'), 'utf8');
 const js = fs.readFileSync(path.join(ROOT, 'studio.js'), 'utf8');
+const css = fs.readFileSync(path.join(ROOT, 'studio.css'), 'utf8');
 
 let pass = 0, fail = 0;
 const t = (name, fn) => {
@@ -101,6 +102,26 @@ t('没有"无保护地置 disabled = false"（会永久锁死按钮）', () => {
   assert.equal(bad.length, 0,
     `${bad.length} 处把 disabled 无条件置回 false —— `
     + `用户关掉之后它会自己又亮起来`);
+});
+
+t('系统光标被藏掉就必须有替代光标（回归：点渐变后鼠标不见）', () => {
+  // #stCanvas.brushing 挂了 cursor:none —— 系统光标被藏了，
+  // 靠自定义的 .st-cursor 圈顶替。但 .brushing 对画笔/渐变/径向
+  // **三个工具都生效**（brushMode = maskTool !== null）。
+  // 如果自定义光标按 maskTool 条件藏掉，那渐变/径向下两个光标都没了：
+  // "点一下渐变，鼠标就消失了"，完全没法瞄准起点，也不报任何错。
+  // 原来的注释还写着"渐变/径向靠画布实时预览"，但悬停时根本没有预览 ——
+  // 注释描述的是不存在的东西。
+  const hidesOsCursor = /#stCanvas\.brushing\s*\{[\s\S]*?cursor\s*:\s*none/i.test(css);
+  if (!hidesOsCursor) {
+    console.log('       ⏭  studio.css 没藏系统光标，跳过这条');
+    return;
+  }
+  // 替代光标必须无条件显示：不允许出现"按 maskTool 分支去动 cur.hidden"
+  const banned = js.match(/if\s*\(\s*maskTool[^)]*\)[\s\S]{0,60}cur\.hidden/g);
+  assert.equal(banned, null,
+    '自定义光标被按 maskTool 藏了，但系统光标已被 cursor:none 藏掉 —— '
+    + '渐变/径向下两个光标都没有：\n       ' + (banned || []).join('\n       '));
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);
