@@ -41,6 +41,7 @@ const BROWSER = [
   ['template-browser', '一键模板（Chrome 侧）/ 左右对比 / 进度条'],
   ['crop-browser', '裁剪 / 旋转（几何变换）'],
   ['straighten-browser', '自动水平校正（造已知倾斜的图验角度精度）'],
+  ['mask-ui-browser', '选区可见反馈（自动显示选区 / 红罩 / 光标圈）'],
   ['mask-browser', '蒙版与局部调整（需外部 harness）'],
   ['inpaint-browser', '去物链路（需外部 harness）']
 ];

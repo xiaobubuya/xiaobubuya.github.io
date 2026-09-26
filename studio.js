@@ -2427,11 +2427,28 @@
       cur.hidden = false;
       const r = canvas.getBoundingClientRect();
       const sr = $('stStage').getBoundingClientRect();
-      // 画笔：圈跟着笔刷半径走，能看到笔刷有多粗。
-      // 渐变/径向没有"笔刷半径"这个概念，给一个固定小圈当瞄准点。
-      const d = maskTool === 'brush'
-        ? mask.radius * Math.min(r.width, r.height) * 2
-        : 14;
+      /* 画笔：圈跟着笔刷半径走，能看到笔刷有多粗。
+         渐变/径向没有"笔刷半径"这个概念，给一个固定小圈当瞄准点。
+
+         ⚠️⚠️ 换算必须和**真正涂抹**用同一套基准，否则圈和笔下的范围
+         对不上，用户就会"明明涂在圈里却涂到旁边"。
+
+         涂抹那边（mask.js 的 _px）是 `radius * min(位图宽, 位图高)`，
+         而位图就是图片尺寸；所以归一化半径对应的**图片像素**半径是
+         `radius * min(img.width, img.height)`，再乘"画布显示宽度 /
+         图片宽度"换成屏幕像素。
+
+         这里原来写的是 `mask.radius * min(画布宽, 画布高) * 2` ——
+         拿**画布**短边当基准。画布和图片恰好同比例时两者数值相同
+         （757×568 的画布配 400×300 的图都是 1.333），所以本地很难发现；
+         舞台比图片更扁时圈就明显偏小。实测把画布拉成 894×300：
+         正确 53.6px，旧写法只有 24.0px（小一半多）。
+         是 test/mask-ui-browser.test.mjs 的"画布被拉成非图片比例时"
+         那条抓出来的（拿旧公式跑那条会红）。 */
+      const imgPxR = img ? mask.radius * Math.min(img.width, img.height) : 8;
+      const scale = img ? r.width / img.width : 1;
+      // 直径 = 半径 × 2
+      const d = maskTool === 'brush' ? imgPxR * scale * 2 : 14;
       cur.style.width = cur.style.height = Math.round(d) + 'px';
       cur.style.left = (e.clientX - sr.left - d / 2) + 'px';
       cur.style.top = (e.clientY - sr.top - d / 2) + 'px';
@@ -3628,18 +3645,45 @@
   }
 
   function initMaskEvents() {
+    /* ⚠️⚠️ 用户是不是**主动**关掉了"显示选区"。
+       选区类工具（画笔/渐变/径向）点进去时会自动把红罩打开 ——
+       理由：选区工具的反馈就是那个红罩，默认关着的话涂半天画面一片空白，
+       用户会判断成"画笔没反应"（这是实测到的真实反馈）。
+       但用户自己取消勾选之后就不能再强行打开，那是他在说
+       "我知道我在涂什么，别挡着我看照片"。 */
+    let userHidMask = false;
+
+    /** 进选区工具时自动亮出红罩（除非用户自己关过） */
+    const autoShowMask = () => {
+      if (userHidMask) return;
+      if (showMask) return;
+      showMask = true;
+      const c = $('stShowMask');
+      if (c) c.checked = true;
+      draw();
+    };
+
     // 三个蒙版工具互斥：画笔 / 渐变 / 径向
     $('stBrush').addEventListener('click', () => {
       setMaskTool('brush');
-      if (maskTool === 'brush') toast('拖动鼠标涂抹要调整的区域', 2600);
+      if (maskTool === 'brush') {
+        autoShowMask();
+        toast('拖动鼠标涂抹要调整的区域（红罩 = 选中的范围）', 3200);
+      }
     });
     $('stGradient').addEventListener('click', () => {
       setMaskTool('gradient');
-      if (maskTool === 'gradient') toast('拖动：起点=选中侧，终点=未选中侧', 3200);
+      if (maskTool === 'gradient') {
+        autoShowMask();
+        toast('拖动：起点=选中侧，终点=未选中侧', 3200);
+      }
     });
     $('stRadial').addEventListener('click', () => {
       setMaskTool('radial');
-      if (maskTool === 'radial') toast('拖动：从中心向外定义椭圆选区', 3200);
+      if (maskTool === 'radial') {
+        autoShowMask();
+        toast('拖动：从中心向外定义椭圆选区', 3200);
+      }
     });
 
     // 涂 / 擦
@@ -3655,7 +3699,12 @@
     });
 
     // 显示选区
+    /* ⚠️ 这里**只**更新 userHidMask（它是 initMaskEvents 顶部的闭包变量），
+       不要再写 `let userHidMask` —— 那会遮蔽掉外面那个，于是
+       "用户主动关过显示选区"这件事永远传不到 autoShowMask，
+       下一次点画笔又会把红罩强行打开。 */
     $('stShowMask').addEventListener('change', e => {
+      userHidMask = !e.target.checked;
       showMask = e.target.checked;
       draw();
     });
@@ -3823,7 +3872,17 @@
       if (opts.hardness != null) mask.hardness = opts.hardness;
       if (opts.mode) mask.mode = opts.mode;
 
-      mask.begin(points[0][0], points[0][1]);
+      /* ⚠️⚠️ 第 4 个参数（工具）**不能省**。
+         begin(x, y, tool) 不传 tool 时用的是"上一次的工具" ——
+         在画笔模式下点过渐变按钮之后它还是 'gradient'，于是"涂一笔"
+         实际画出来的是**渐变**（一整片平滑过渡）。
+         实测踩过：探针里量到"中心 255、1/4 处 0、画面上一片看不出边界的
+         渐变"，一度以为是蒙版纹理上传坏了，其实是这个测试辅助函数
+         少传了一个参数。
+         默认 'brush'（函数叫 paint，语义就是画笔），要用别的工具显式传
+         opts.tool。 */
+      const tool = opts.tool || 'brush';
+      mask.begin(points[0][0], points[0][1], tool);
       for (let i = 1; i < points.length; i++) mask.extend(points[i][0], points[i][1]);
       mask.end();
 

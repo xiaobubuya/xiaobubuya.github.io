@@ -71,14 +71,37 @@ function restoreFromHead(file) {
   }
 }
 
-if (isDirty('studio.js')) {
-  const ok = restoreFromHead('studio.js');
-  console.log(`  ⚠️  studio.js 有未提交改动${ok ? '，已从 HEAD 还原' : '，且还原失败'}`
-    + `\n     （上一次变异测试大概是被中途打断了。`
-    + `如果你本来就有未提交的改动，它已被覆盖 —— 抱歉，这是为了隔离上一轮的污染。）\n`);
+/**
+ * ⚠️⚠️ 「上一次变异被打断留下的残骸」和「开发者真实的未提交改动」
+ * 靠 git 是分不开的 —— 两者都是"文件是脏的"。
+ *
+ * 第一版的自检**只要脏就还原**，结果它把我自己刚写的一半功能
+ * （选区自动显示 + 光标圈基准修正）直接覆盖掉了：
+ * 我改完 studio.js 还没提交，就跑了一次 run-all，自检看到"脏"
+ * → 从 HEAD 还原 → 改动没了。**护栏把要保护的东西吃了。**
+ *
+ * 第二版改成"只看变异表的 to 片段在不在"，**还是误判**：
+ * 因为有一条变异的 to 本身就是基线代码 ——
+ *     name: '锐化整个没接上（main 里直接用 src）'
+ *     from: 'vec3 sharp = sharpen(src, u);'
+ *     to:   'vec3 sharp = src;'
+ * `to` 是"删掉锐化调用"的样子，但基线里本来就别处有 `vec3 sharp = src;`，
+ * 于是 includes(to) 命中，护栏第二次吃掉了改动。
+ *
+ * ⭐ 正确判据：**`from` 不在 且 `to` 在** —— 这才说明"本该在那儿的代码
+ * 被换成了变异版本"。真实未提交改动几乎不可能同时满足这两条；
+ * 万一正好在改那一行，还有下面的"备份 + 提示"兜底。
+ */
+function looksMutated(src) {
+  const hits = [];
+  for (const mu of MUTATIONS) {
+    // 没有 from 的变异（纯删除/结构性改动）用不了这套判据，跳过
+    if (!mu.to || !mu.from) continue;
+    if (!src.includes(mu.from) && src.includes(mu.to)) hits.push(mu.name);
+  }
+  return hits;
 }
 
-const original = fs.readFileSync(FILE, 'utf8');
 
 /** 每种变异：改坏一处关键逻辑，看**对应的**测试会不会红
  *
@@ -198,6 +221,43 @@ const MUTATIONS = [
     tests: ['adjust-browser.test.mjs']
   }
 ];
+
+{
+  const bak = path.join(ROOT, 'studio.js.mutation-leftover.bak');
+  const src0 = fs.readFileSync(FILE, 'utf8');
+  const hits = looksMutated(src0);
+  if (hits.length) {
+    /* 只在"确实是残骸"时还原，并且**先存一份备份**再动 ——
+       万一判据将来误判，用户的活还在。 */
+    try {
+      fs.copyFileSync(FILE, bak);
+      fs.writeFileSync(bak + '.why.txt',
+        '这个备份是 adjustments-negative.test.mjs 的启动自检留下的。\n'
+        + '它认为 studio.js 里有"上一次变异测试被打断"留下的残骸，命中的变异：\n'
+        + hits.map(h => '  · ' + h).join('\n')
+        + '\n\n如果你确认这些改动是你自己写的（比如你就在改这条逻辑），'
+        + '把 studio.js.mutation-leftover.bak 覆盖回 studio.js 即可。\n',
+        'utf8');
+    } catch { /* 备份失败也要继续，还原更重要 */ }
+    const ok = restoreFromHead('studio.js');
+    console.log(`  ⚠️  studio.js 里有变异残骸（命中 ${hits.length} 条变异），`
+      + `${ok ? '已从 HEAD 还原' : '但还原失败'}`
+      + `\n     残骸：${hits.slice(0, 3).join(' / ')}${hits.length > 3 ? ' …' : ''}`
+      + `\n     原文件已备份到 studio.js.mutation-leftover.bak（含 .why.txt 说明）\n`);
+  } else if (isDirty('studio.js')) {
+    /* 脏但**不含任何变异片段** → 那是开发者真实的未提交改动，
+       一个字都不许动。（第一版就是在这里覆盖了别人的活。） */
+    console.log('  ℹ️  studio.js 有未提交改动，但里面没有变异残骸 ——'
+      + ' 判定为你自己的改动，本测试不会碰它\n');
+  }
+}
+
+/* ⚠️ original 必须在**启动自检还原之前**读吗？不 ——
+   必须在**之后**读，这样它才等于"这一轮真正要用的内容"。
+   （自检只会把"变异残骸"换成 HEAD 版本；真实未提交改动它不碰。）
+   顺序写成"自检在 MUTATIONS 之后、original 在这里"是刻意的。 */
+const original = fs.readFileSync(FILE, 'utf8');
+
 
 /** 跑一次被测测试，返回失败项数；被测测试非零退出会抛，所以自己接住 */
 function runTest(file) {
