@@ -41,6 +41,7 @@ const el = {
   viewer: $('viewer'), viewerStage: $('viewerStage'), viewerImg: $('viewerImg'),
   viewerSpinner: $('viewerSpinner'), viewerPos: $('viewerPos'),
   viewerTime: $('viewerTime'), viewerClose: $('viewerClose'),
+  viewerEdit: $('viewerEdit'), viewerAdd: $('viewerAdd'),
   viewerPrev: $('viewerPrev'), viewerNext: $('viewerNext'),
 
   show: $('show'), showImg: $('showImg'), showBar: $('showBar'),
@@ -209,6 +210,17 @@ async function enterApp() {
 
   addEventListener('scroll', () => { el.btnTop.hidden = scrollY < 900; }, { passive: true });
   addEventListener('resize', debounce(relayout, 120));
+
+  // 恢复上次离开时的滚动位置（切 tab 回来不用从头翻）
+  const saved = sessionStorage.getItem('album_scroll');
+  if (saved && state.photos.length > 0) {
+    setTimeout(() => scrollTo(0, parseInt(saved, 10)), 100);
+  }
+
+  // 离开页面时保存滚动位置
+  addEventListener('beforeunload', () => {
+    sessionStorage.setItem('album_scroll', String(scrollY));
+  });
 }
 
 /* ================================================================
@@ -429,6 +441,119 @@ function step(delta) {
 el.viewerClose.addEventListener('click', closeViewer);
 el.viewerPrev.addEventListener('click', () => step(-1));
 el.viewerNext.addEventListener('click', () => step(1));
+
+/* 「修这张」：带 ?photo=<key> 跳到修图页 */
+el.viewerEdit.addEventListener('click', () => {
+  const p = state.photos[state.viewerIndex];
+  if (!p) return;
+  location.href = 'studio.html?photo=' + p.k;
+});
+
+/* 「加入相册」：打开选择相册的面板 */
+el.viewerAdd.addEventListener('click', () => {
+  const p = state.photos[state.viewerIndex];
+  if (!p) return;
+  openAddToAlbum(p.k);
+});
+
+/* ================================================================
+   加入相册 —— 从大图查看器把照片加到指定相册的第一页
+   ================================================================ */
+async function openAddToAlbum(photoKey) {
+  // 拉相册列表
+  let albums = [];
+  try {
+    const d = await (await api('/api/albums')).json();
+    albums = d.albums || [];
+  } catch {
+    toast('加载相册失败');
+    return;
+  }
+  if (!albums.length) {
+    toast('还没有相册，先去相册页创建一个');
+    return;
+  }
+
+  // 造一个简单弹窗
+  const sheet = document.createElement('div');
+  // on-top：这是从大图查看器（z-index 90）里弹出来的，必须盖过它，见 nav.css
+  sheet.className = 'nav-sheet on-top';
+  sheet.id = 'addToAlbumSheet';
+  const mask = document.createElement('div');
+  mask.className = 'nav-sheet-mask';
+  mask.addEventListener('click', () => sheet.remove());
+  sheet.appendChild(mask);
+
+  const body = document.createElement('div');
+  body.className = 'nav-sheet-body';
+  body.appendChild(Object.assign(document.createElement('div'), {
+    className: 'nav-sheet-title', textContent: '加入相册'
+  }));
+
+  for (const al of albums) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'nav-sheet-item';
+    b.textContent = al.title + (al.pageCount ? ' · ' + al.pageCount + ' 页' : ' · 空');
+    b.addEventListener('click', async () => {
+      sheet.remove();
+      await addPhotoToAlbum(al.id, photoKey);
+    });
+    body.appendChild(b);
+  }
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'nav-sheet-item';
+  cancel.textContent = '取消';
+  cancel.addEventListener('click', () => sheet.remove());
+  body.appendChild(cancel);
+
+  sheet.appendChild(body);
+  document.body.appendChild(sheet);
+}
+
+async function addPhotoToAlbum(albumId, photoKey) {
+  try {
+    // 拉第一页的排版
+    const res = await api('/api/albums/' + albumId + '/pages');
+    const d = await res.json();
+    const page = d.pages && d.pages[0];
+    if (!page) { toast('相册没有页面'); return; }
+
+    const layout = page.layout;
+    const items = layout.items || [];
+    if (items.length >= 40) { toast('这一页最多 40 个元素'); return; }
+
+    // 默认放中间，宽占 40%，按原图比例给高度
+    const p = state.photos.find(x => x.k === photoKey);
+    const w = 0.40;
+    const h = p ? (w * (p.h / p.w)) : 0.3;
+
+    items.push({
+      id: 'it_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4),
+      photo: photoKey,
+      x: (1 - w) / 2,
+      y: (1 - h) / 2,
+      w, h, rot: 0, z: items.length,
+      fit: 'cover', radius: 0, caption: ''
+    });
+
+    // 保存
+    const saveRes = await api('/api/albums/' + albumId + '/pages/0', {
+      method: 'PUT',
+      body: JSON.stringify({ baseVersion: page.version, layout })
+    });
+    if (!saveRes.ok) {
+      const err = await saveRes.json().catch(() => ({}));
+      toast('保存失败：' + (err.error || '未知错误'));
+      return;
+    }
+    toast('已加入相册');
+  } catch (e) {
+    toast('加入相册失败：' + (e && e.message ? e.message : e));
+  }
+}
 
 addEventListener('keydown', e => {
   if (el.viewer.hidden) return;

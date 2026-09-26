@@ -1194,7 +1194,23 @@
 
     // 带 ?id=xxx 直接进编辑器
     const id = new URLSearchParams(location.search).get('id');
-    if (id) await openAlbum(id);
-    else { await loadAlbums(); show('list'); }
+    if (id) {
+      await openAlbum(id);
+    } else {
+      await loadAlbums();
+      show('list');
+      // 恢复上次离开时的相册（切 tab 回来不用从头找）
+      try {
+        const saved = sessionStorage.getItem('album_last_open');
+        if (saved) await openAlbum(saved);
+      } catch { /* 静默 */ }
+    }
+
+    // 离开页面时保存当前相册
+    addEventListener('beforeunload', () => {
+      if (S.album && S.album.id) {
+        sessionStorage.setItem('album_last_open', S.album.id);
+      }
+    });
   })();
 })();

@@ -3669,6 +3669,61 @@
     }
   })();
 
+  /* ================================================================
+     深链：?photo=<key>
+     ----------------------------------------------------------------
+     从大图查看器点「修这张」会带 ?photo=<key> 跳到这里。
+     启动时检查参数，有的话拉元数据 + 拉图，直接进编辑器。
+     ⚠️ 必须在 boot() 之后跑：boot 里初始化了 GL、蒙版、事件绑定，
+        深链加载图片时要用到这些。
+     ================================================================ */
+  (async function loadDeepLink() {
+    const key = new URLSearchParams(location.search).get('photo');
+    if (!key || !/^[a-f0-9]{16}$/.test(key)) return;
+
+    busy(true, '加载照片…');
+    try {
+      // 先拉元数据（顺便验存在性）
+      const metaRes = await fetch(API_BASE + '/api/photos/' + key, { credentials: 'include' });
+      if (!metaRes.ok) throw new Error('照片不存在或已删除');
+      const { photo } = await metaRes.json();
+
+      // 拉 preview 档（修图用）
+      const imgRes = await fetch(API_BASE + '/api/img/preview/' + key, { credentials: 'include' });
+      if (!imgRes.ok) throw new Error('图片加载失败');
+      const blob = await imgRes.blob();
+      const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' }).catch(() => createImageBitmap(blob));
+
+      if (img && img.close) img.close();
+      img = bmp;
+      fileName = key.slice(0, 8) + '.webp';
+
+      mask.clear();
+      mask.resize(img.width, img.height);
+      setMaskActive(false);
+      setBrushMode(false);
+      showMaskTool(false);
+
+      gl.bindTexture(gl.TEXTURE_2D, imageTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+
+      $('stDrop').classList.add('hidden');
+      canvas.classList.remove('hidden');
+      document.title = photo.takenDay + ' · 修图';
+      $('stTitle').textContent = photo.takenDay + ' ' + (photo.uploadedBy || '');
+      enableUI();
+      updateInfo();
+      draw();
+
+      // 清掉 URL 参数（刷新不会重复加载，后退不会回到带参数的状态）
+      history.replaceState(null, '', location.pathname);
+    } catch (e) {
+      toast('深链加载失败：' + (e && e.message ? e.message : e), 4000);
+    } finally {
+      busy(false);
+    }
+  })();
+
   // 给自动化测试留的口子。
   //
   // ⚠️ setValue 必须走「改值 + 刷新界面 + 重画」这条完整路径，
