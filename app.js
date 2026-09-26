@@ -514,44 +514,52 @@ async function openAddToAlbum(photoKey) {
 }
 
 async function addPhotoToAlbum(albumId, photoKey) {
-  try {
-    // 拉第一页的排版
-    const res = await api('/api/albums/' + albumId + '/pages');
-    const d = await res.json();
-    const page = d.pages && d.pages[0];
-    if (!page) { toast('相册没有页面'); return; }
+  // baseVersion 校验是后端乐观并发（PUT /pages/:index 用 version 对账）。
+  // 两人同时改同一页时可能撞车（409 conflict）：此时不能直接保存失败，
+  // 要重拉最新的排版，把元素按当前坐标重放进去再存。
+  for (let attempt = 0; ; attempt++) {
+    try {
+      // 拉第一页的排版
+      const res = await api('/api/albums/' + albumId + '/pages');
+      const d = await res.json();
+      const page = d.pages && d.pages[0];
+      if (!page) { toast('相册没有页面'); return; }
 
-    const layout = page.layout;
-    const items = layout.items || [];
-    if (items.length >= 40) { toast('这一页最多 40 个元素'); return; }
+      const layout = page.layout;
+      const items = layout.items || [];
+      if (items.length >= 40) { toast('这一页最多 40 个元素'); return; }
 
-    // 默认放中间，宽占 40%，按原图比例给高度
-    const p = state.photos.find(x => x.k === photoKey);
-    const w = 0.40;
-    const h = p ? (w * (p.h / p.w)) : 0.3;
+      // 默认放中间，宽占 40%，按原图比例给高度
+      const p = state.photos.find(x => x.k === photoKey);
+      const w = 0.40;
+      const h = p ? (w * (p.h / p.w)) : 0.3;
 
-    items.push({
-      id: 'it_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4),
-      photo: photoKey,
-      x: (1 - w) / 2,
-      y: (1 - h) / 2,
-      w, h, rot: 0, z: items.length,
-      fit: 'cover', radius: 0, caption: ''
-    });
+      const newItem = {
+        id: 'it_' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4),
+        photo: photoKey,
+        x: (1 - w) / 2,
+        y: (1 - h) / 2,
+        w, h, rot: 0, z: items.length,
+        fit: 'cover', radius: 0, caption: ''
+      };
+      // 拷贝一份再 push，避免直接改到从服务端拿到的对象上出错时留脏数据
+      const nextItems = items.concat([newItem]);
 
-    // 保存
-    const saveRes = await api('/api/albums/' + albumId + '/pages/0', {
-      method: 'PUT',
-      body: JSON.stringify({ baseVersion: page.version, layout })
-    });
-    if (!saveRes.ok) {
+      // 保存
+      const saveRes = await api('/api/albums/' + albumId + '/pages/0', {
+        method: 'PUT',
+        body: JSON.stringify({ baseVersion: page.version, layout: { ...layout, items: nextItems } })
+      });
+      if (saveRes.ok) { toast('已加入相册'); return; }
+
       const err = await saveRes.json().catch(() => ({}));
+      if (err.error === 'conflict' && attempt < 2) continue;   // 加新元素不产生交错，直接重放即可
       toast('保存失败：' + (err.error || '未知错误'));
       return;
+    } catch (e) {
+      toast('加入相册失败：' + (e && e.message ? e.message : e));
+      return;
     }
-    toast('已加入相册');
-  } catch (e) {
-    toast('加入相册失败：' + (e && e.message ? e.message : e));
   }
 }
 

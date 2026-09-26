@@ -3685,6 +3685,7 @@
     try {
       // 先拉元数据（顺便验存在性）
       const metaRes = await fetch(API_BASE + '/api/photos/' + key, { credentials: 'include' });
+      if (metaRes.status === 401) throw new Error('还没登录，请先在相册里登录');
       if (!metaRes.ok) throw new Error('照片不存在或已删除');
       const { photo } = await metaRes.json();
 

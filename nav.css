@@ -282,6 +282,8 @@ body.nav-mode-brand .nav-top-inner { justify-content: flex-start; }
   inset: 0;
   background: rgba(0, 0, 0, .32);
 }
+/* 从大图查看器（z-index 90）里弹出来的面板要盖过它，见 app.js openAddToAlbum */
+.nav-sheet.on-top { z-index: 91; }
 .nav-sheet-body {
   position: relative;
   width: min(420px, 92vw);
