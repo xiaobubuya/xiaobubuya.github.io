@@ -93,6 +93,21 @@
       <button id="stPanelToggle" class="st-mini" title="收起/展开">▸</button>
     </div>
 
+    <!-- ===================== 预设 =====================
+         参考像素蛋糕：分类 tab + 色块预览卡片 + 一键应用。
+         放在最顶部，因为预设是 80% 用户修图的入口。 -->
+    <section class="st-acc" id="stAccPreset">
+      <button class="st-acc-head" id="stAccPresetHead" aria-expanded="true">
+        <span class="st-acc-icon">🎨</span>
+        <span class="st-acc-name">预设</span>
+        <span class="st-acc-note">一键套风格</span>
+      </button>
+      <div class="st-acc-body" id="stAccPresetBody">
+        <div class="st-preset-cats" id="stPresetCats"></div>
+        <div class="st-preset-grid" id="stPresetGrid"></div>
+      </div>
+    </section>
+
     <!-- ================================================================
          三个**可折叠**区域：常规修图 / AI 修图 / 裁剪旋转
          ----------------------------------------------------------------
@@ -112,6 +127,7 @@
     <section class="st-acc" id="stAccBasic">
       <button class="st-acc-head" id="stAccBasicHead" aria-expanded="true">
         <span class="st-acc-caret">▾</span>
+        <span class="st-acc-icon">⚙️</span>
         <span class="st-acc-name">常规修图</span>
         <span class="st-acc-note">本地实时</span>
       </button>
@@ -136,6 +152,7 @@
     <section class="st-acc" id="stAccAi">
       <button class="st-acc-head" id="stAccAiHead" aria-expanded="true">
         <span class="st-acc-caret">▾</span>
+        <span class="st-acc-icon">✨</span>
         <span class="st-acc-name">AI 修图</span>
         <span class="st-acc-note">需联网</span>
       </button>
@@ -224,6 +241,7 @@
     <section class="st-acc" id="stAccCrop">
       <button class="st-acc-head" id="stAccCropHead" aria-expanded="true">
         <span class="st-acc-caret">▾</span>
+        <span class="st-acc-icon">✂️</span>
         <span class="st-acc-name">裁剪</span>
         <span class="st-acc-note">选保留哪一块</span>
       </button>
@@ -245,6 +263,7 @@
     <section class="st-acc" id="stAccRot">
       <button class="st-acc-head" id="stAccRotHead" aria-expanded="true">
         <span class="st-acc-caret">▾</span>
+        <span class="st-acc-icon">↻</span>
         <span class="st-acc-name">旋转 / 翻转</span>
         <span class="st-acc-note">纯角度，不裁切</span>
       </button>

@@ -80,6 +80,45 @@
     { key: 'uGrain',      name: '颗粒',   group: '质感', min: 0,   max: 1,  step: 0.01, def: 0 },
   ];
 
+  /* ================================================================
+     预设
+     ----------------------------------------------------------------
+     预设就是一组参数值。用户点一下，所有滑块跳到预设值。
+     按类别分组（婚纱/写真/旅拍/胶片/黑白/日常），方便快速找到想要的风格。
+     hue 字段用于生成卡片预览色块（CSS 渐变），不依赖外部图片。
+     ================================================================ */
+  const PRESET_CATS = ['全部','婚纱','写真','旅拍','胶片','黑白','日常'];
+  const PRESETS = [
+    { id:'wedding-soft', name:'柔光婚纱', cat:'婚纱', hue:'#f4dce4',
+      v:{ uExposure:0.08, uContrast:-0.05, uSaturation:-0.03, uHighlights:0.10, uShadows:0.05, uCurveFade:0.08, uGrain:0.06 } },
+    { id:'wedding-warm', name:'暖调婚纱', cat:'婚纱', hue:'#f7e0c8',
+      v:{ uExposure:0.05, uContrast:0.03, uSaturation:0.02, uTemp:0.06, uHighlights:0.05, uVignette:0.12, uGrain:0.04 } },
+    { id:'wedding-gold', name:'金色婚纱', cat:'婚纱', hue:'#f0d8a0',
+      v:{ uExposure:0.06, uContrast:0.04, uSaturation:0.04, uTemp:0.10, uHighlights:0.06, uShadows:0.03, uCurveFade:0.05 } },
+    { id:'portrait-warm', name:'暖调写真', cat:'写真', hue:'#f5dcc0',
+      v:{ uExposure:0.03, uContrast:0.05, uSaturation:0.04, uTemp:0.06, uHslSat:0.03, uVignette:0.08 } },
+    { id:'portrait-soft', name:'柔光写真', cat:'写真', hue:'#eee8e0',
+      v:{ uExposure:0.06, uContrast:-0.03, uSaturation:0, uHighlights:0.08, uShadows:0.04, uCurveFade:0.06 } },
+    { id:'portrait-clean', name:'清透写真', cat:'写真', hue:'#e8eef0',
+      v:{ uExposure:0.04, uContrast:0.06, uSaturation:0.03, uHighlights:0.04, uShadows:0.02, uSharpness:0.06 } },
+    { id:'travel-vivid', name:'旅拍鲜艳', cat:'旅拍', hue:'#5ba8d8',
+      v:{ uExposure:0.04, uContrast:0.08, uSaturation:0.12, uHighlights:0.03, uShadows:0.02, uSharpness:0.08 } },
+    { id:'travel-morning', name:'晨光旅拍', cat:'旅拍', hue:'#e8c8a0',
+      v:{ uExposure:0.06, uContrast:0.03, uSaturation:0.06, uTemp:0.10, uHighlights:0.05, uShadows:0.04 } },
+    { id:'film-fade', name:'褪色胶片', cat:'胶片', hue:'#c8b898',
+      v:{ uExposure:0.02, uContrast:-0.08, uSaturation:-0.10, uCurveFade:0.25, uGrain:0.25 } },
+    { id:'film-portrait', name:'人像胶片', cat:'胶片', hue:'#d8c0a0',
+      v:{ uExposure:0.03, uContrast:-0.05, uSaturation:-0.05, uCurveFade:0.15, uGrain:0.20, uTemp:0.03 } },
+    { id:'bw-classic', name:'经典黑白', cat:'黑白', hue:'#888888',
+      v:{ uExposure:0.03, uContrast:0.12, uSaturation:-1, uSharpness:0.10, uVignette:0.20 } },
+    { id:'bw-soft', name:'柔调黑白', cat:'黑白', hue:'#999999',
+      v:{ uExposure:0.05, uContrast:-0.05, uSaturation:-1, uCurveFade:0.10, uVignette:0.15 } },
+    { id:'daily-clean', name:'清透日常', cat:'日常', hue:'#e0e8e0',
+      v:{ uExposure:0.05, uContrast:0.02, uSaturation:0.03, uHighlights:0.05, uShadows:0.02 } },
+    { id:'daily-warm', name:'暖调日常', cat:'日常', hue:'#f0dcc0',
+      v:{ uExposure:0.03, uContrast:0, uSaturation:0.05, uTemp:0.08, uHighlights:0.03 } },
+  ];
+
   const values = {};
   ADJUSTMENTS.forEach(a => { values[a.key] = a.def; });
 
@@ -2271,6 +2310,12 @@
     // 没图的时候几何状态必须清掉，否则"打开新图但还在裁剪模式里"
     if (!on && geom) { geom = null; showCropUI(false); showRotateUI(false); }
     if (!on && typeof syncMaskUI === 'function') syncMaskUI();
+    // 预设：没图时卡片不可点
+    if (!on) {
+      document.querySelectorAll('.st-preset-card').forEach(el => { el.disabled = true; });
+    } else {
+      document.querySelectorAll('.st-preset-card').forEach(el => { el.disabled = false; });
+    }
   }
 
   /* ================================================================
@@ -2327,7 +2372,8 @@
       input.addEventListener('input', () => {
         values[a.key] = parseFloat(input.value);
         show();
-        draw();          // 只重画，不重新布局 —— 拖动时要的是极致跟手
+        draw();
+        onManualAdjust();  // 手动调滑块 → 取消预设高亮
       });
 
       // 双击名字复位
@@ -2362,6 +2408,98 @@
 
   function isChanged() {
     return ADJUSTMENTS.some(a => Math.abs(values[a.key] - a.def) > 1e-6);
+  }
+
+  /* ================================================================
+     预设
+     ================================================================ */
+  let presetActiveId = null;  // 当前应用的预设 id（null = 无）
+  let presetCat = '全部';      // 当前选中的分类
+
+  function applyPreset(preset) {
+    // 重置所有值到默认
+    for (const a of ADJUSTMENTS) values[a.key] = a.def;
+    // 应用预设值
+    for (const [key, val] of Object.entries(preset.v)) {
+      if (key in values) values[key] = val;
+    }
+    presetActiveId = preset.id;
+    // 刷新滑块 + 重画
+    refreshSliders();
+    draw();
+    // 更新预设卡片高亮
+    updatePresetHighlight();
+    toast(`已应用「${preset.name}」`);
+  }
+
+  function updatePresetHighlight() {
+    document.querySelectorAll('.st-preset-card').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === presetActiveId);
+    });
+  }
+
+  /** 用户手动调滑块时，取消预设高亮 */
+  function onManualAdjust() {
+    if (presetActiveId) {
+      presetActiveId = null;
+      updatePresetHighlight();
+    }
+  }
+
+  function buildPresetUI() {
+    const catsBox = $('stPresetCats');
+    const gridBox = $('stPresetGrid');
+    if (!catsBox || !gridBox) return;
+
+    // 分类 tab
+    catsBox.innerHTML = '';
+    for (const cat of PRESET_CATS) {
+      const btn = document.createElement('button');
+      btn.className = 'st-preset-tab' + (cat === presetCat ? ' on' : '');
+      btn.textContent = cat;
+      btn.addEventListener('click', () => {
+        presetCat = cat;
+        buildPresetUI();
+      });
+      catsBox.appendChild(btn);
+    }
+
+    // 预设卡片
+    gridBox.innerHTML = '';
+    const list = presetCat === '全部' ? PRESETS : PRESETS.filter(p => p.cat === presetCat);
+    for (const p of list) {
+      const card = document.createElement('button');
+      card.className = 'st-preset-card' + (p.id === presetActiveId ? ' active' : '');
+      card.dataset.id = p.id;
+      card.disabled = !img;
+
+      // 色块预览
+      const swatch = document.createElement('div');
+      swatch.className = 'st-preset-swatch';
+      swatch.style.background = `linear-gradient(135deg, ${p.hue}, ${shadeColor(p.hue, -30)})`;
+
+      // 名称
+      const name = document.createElement('span');
+      name.className = 'st-preset-name';
+      name.textContent = p.name;
+
+      card.append(swatch, name);
+      card.addEventListener('click', () => {
+        if (!img) return;
+        applyPreset(p);
+      });
+      gridBox.appendChild(card);
+    }
+  }
+
+  /** 把 hex 颜色变暗（用于色块渐变） */
+  function shadeColor(hex, percent) {
+    const num = parseInt(hex.slice(1), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = Math.max(0, Math.min(255, (num >> 16) + amt));
+    const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amt));
+    const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
+    return '#' + (0x1000000 + (R << 16) + (G << 8) + B).toString(16).slice(1);
   }
 
   /* ================================================================
@@ -3219,7 +3357,7 @@
     }
   }
 
-  /** 由主进程下发的模板表生成按钮 */
+  /** 由主进程下发的模板表生成缩略图卡片 */
   function renderTemplateRow() {
     const row = $('stTemplateRow');
     if (!row) return;
@@ -3228,13 +3366,25 @@
     row.hidden = false;
     row.innerHTML = '';
     list.forEach((t, i) => {
-      const b = document.createElement('button');
-      b.textContent = t.name;
-      // desc 放到 title 里：面板窄，一屏放不下 8 个带说明的卡片
-      b.title = t.desc || t.name;
-      b.dataset.tpl = t.id;
-      b.addEventListener('click', () => applyTemplate(i));
-      row.appendChild(b);
+      const card = document.createElement('button');
+      card.className = 'st-tpl-card';
+      card.dataset.tpl = t.id;
+
+      // 缩略图：用模板名生成渐变色块（后续替换为真实预览图）
+      const thumb = document.createElement('div');
+      thumb.className = 'st-tpl-thumb';
+      const hue = (i * 47 + 200) % 360;  // 每个模板一个不同色相
+      thumb.style.background = `linear-gradient(135deg, hsl(${hue},40%,70%), hsl(${hue},50%,55%))`;
+
+      // 名称
+      const name = document.createElement('span');
+      name.className = 'st-tpl-name';
+      name.textContent = t.name;
+      name.title = t.desc || t.name;
+
+      card.append(thumb, name);
+      card.addEventListener('click', () => applyTemplate(i));
+      row.appendChild(card);
     });
   }
 
@@ -3808,6 +3958,7 @@
       mask.onchange = () => { syncMaskUI(); };
       initGL();
       buildSliders();
+      buildPresetUI();
       initEvents();
       initCropUI();
       initRotateUI();

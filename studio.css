@@ -7,7 +7,9 @@
 
 .studio-page{
   --sbg:#141416; --spanel:#1e1e21; --spanel2:#26262a;
+  --scard:#2a2a2e;
   --sline:rgba(255,255,255,.10);
+  --scard-hi:rgba(255,255,255,.15);
   --sink:#f0eeec; --sink2:#9b9893;
   --saccent:#5b9bd5;
   margin:0;height:100dvh;overflow:hidden;
@@ -288,6 +290,10 @@
   flex:none;width:11px;font-size:10px;color:var(--sink2);
 }
 .st-acc-name{flex:none}
+.st-acc-icon{
+  flex:none;font-size:13px;width:16px;text-align:center;
+  opacity:.85;
+}
 .st-acc-note{
   flex:1;font-size:10.5px;font-weight:400;
   color:var(--sink2);opacity:.75;
@@ -307,6 +313,58 @@
 .st-mask-note{
   flex:1;font-size:10.5px;color:var(--sink2);opacity:.75;
   text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+/* ---------------- 预设 ---------------- */
+/* 分类 tab：横向排列，超出时滚动 */
+.st-preset-cats{
+  display:flex;gap:4px;overflow-x:auto;
+  padding:0 0 4px;
+  scrollbar-width:none;
+}
+.st-preset-cats::-webkit-scrollbar{display:none}
+.st-preset-tab{
+  flex:none;height:26px;padding:0 10px;
+  font:inherit;font-size:11.5px;line-height:1;
+  color:var(--sink2);background:none;
+  border:1px solid var(--sline);border-radius:13px;
+  cursor:pointer;white-space:nowrap;
+  transition:background .12s,color .12s,border-color .12s;
+}
+.st-preset-tab:hover{color:var(--sink);border-color:rgba(255,255,255,.18)}
+.st-preset-tab.on{
+  background:#33333a;color:#fff;border-color:transparent;
+}
+
+/* 预设卡片网格：2 列 */
+.st-preset-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+}
+.st-preset-card{
+  display:flex;flex-direction:column;align-items:stretch;
+  padding:0;border:1px solid var(--sline);border-radius:8px;
+  background:var(--scard);cursor:pointer;overflow:hidden;
+  transition:border-color .15s,box-shadow .15s;
+  font:inherit;color:var(--sink);
+}
+.st-preset-card:hover:not(:disabled){border-color:var(--scard-hi)}
+.st-preset-card.active{
+  border-color:var(--saccent);
+  box-shadow:0 0 0 1px var(--saccent);
+}
+.st-preset-card:disabled{opacity:.35;cursor:default}
+
+/* 色块预览 */
+.st-preset-swatch{
+  height:44px;width:100%;
+  flex:none;
+}
+/* 预设名称 */
+.st-preset-name{
+  display:block;padding:5px 6px 6px;
+  font-size:10.5px;line-height:1.2;
+  color:var(--sink);text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 
 /* ---------------- 裁剪 / 旋转 ---------------- */
@@ -343,22 +401,33 @@
   touch-action:none;
 }
 
-/* ---------------- 一键模板 ---------------- */
+/* ---------------- 一键模板（缩略图卡片） ---------------- */
 .st-tpl{
-  flex:none;display:flex;flex-wrap:wrap;gap:5px;
+  flex:none;display:flex;flex-wrap:wrap;gap:6px;
   padding:2px 14px 10px;
 }
-.st-tpl button{
-  font:inherit;font-size:11px;line-height:1;
-  padding:6px 9px;border-radius:14px;cursor:pointer;
-  color:var(--sink2);background:var(--spanel2);
-  border:1px solid var(--sline);
-  white-space:nowrap;
+.st-tpl-card{
+  display:flex;flex-direction:column;align-items:stretch;
+  width:62px;padding:0;border:1px solid var(--sline);border-radius:7px;
+  background:var(--scard);cursor:pointer;overflow:hidden;
+  font:inherit;color:var(--sink);
+  transition:border-color .15s,box-shadow .15s;
 }
-.st-tpl button:hover{color:var(--sink);border-color:var(--saccent)}
-.st-tpl button:disabled{opacity:.4;cursor:not-allowed}
-/* 正在应用的那个模板 */
-.st-tpl button.on{background:var(--saccent);color:#fff;border-color:var(--saccent)}
+.st-tpl-card:hover:not(:disabled){border-color:var(--saccent)}
+.st-tpl-card:disabled{opacity:.4;cursor:not-allowed}
+.st-tpl-card.on{
+  border-color:var(--saccent);
+  box-shadow:0 0 0 1px var(--saccent);
+}
+.st-tpl-thumb{
+  height:42px;width:100%;flex:none;
+}
+.st-tpl-name{
+  display:block;padding:3px 4px 4px;
+  font-size:9.5px;line-height:1.1;
+  color:var(--sink);text-align:center;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 
 /* ---------------- 处理进度 ---------------- */
 .st-progress{
