@@ -337,8 +337,15 @@ function makeCell(p) {
 
 /* ---- 行优先瀑布流：用已知宽高比预算高度，图片加载前就占好位，无 CLS ---- */
 function relayout() {
+  /* ⚠️ 日期标题是 sticky 的，它的 top 要避开**所有**固定在上方的条：
+     页面自己的 .topbar + 全局导航的顶栏（`.nav-top`）。
+     漏掉导航那一段的症状是：往上滚时日期标题滑到导航底下被压住。
+     ⚠️ 导航在手机上是在底部的（`.nav-top` 不可见），
+     这时它不该占位 —— 所以按实际可见高度加，而不是按 CSS 变量加。 */
   const topbarH = document.querySelector('.topbar').offsetHeight;
-  document.querySelectorAll('.day-title').forEach(t => { t.style.top = topbarH + 'px'; });
+  const navEl = document.querySelector('.nav-top');
+  const navH = (navEl && navEl.getBoundingClientRect().height) || 0;
+  document.querySelectorAll('.day-title').forEach(t => { t.style.top = (topbarH + navH) + 'px'; });
 
   const gap = 8, row = 8;
 
@@ -365,6 +372,10 @@ function openViewer(i) {
   state.viewerIndex = i;
   el.viewer.hidden = false;
   document.body.style.overflow = 'hidden';
+  /* ⚠️ 沉浸态要藏掉底部 tab：大图查看器自己的操作栏就贴在屏幕底部，
+     两者叠在一起会互相压住（导航在下、操作栏在上，点不到关闭）。
+     约定在 nav.js 的 `immersive()` 里，页面不用知道怎么藏。 */
+  if (window.AlbumNav) AlbumNav.immersive(true);
   showViewerImage();
 }
 
@@ -373,6 +384,7 @@ function closeViewer() {
   el.viewerImg.removeAttribute('src');
   document.body.style.overflow = '';
   state.viewerIndex = -1;
+  if (window.AlbumNav) AlbumNav.immersive(false);
 }
 
 function showViewerImage() {
@@ -461,6 +473,8 @@ el.btnSlideshow.addEventListener('click', () => {
   showSlide();
   scheduleSlide();
   document.body.style.overflow = 'hidden';
+  // 幻灯片也是沉浸态：藏掉底部 tab（它自己的控制条在同一个位置）
+  if (window.AlbumNav) AlbumNav.immersive(true);
 });
 
 function showSlide() {
@@ -496,6 +510,7 @@ function exitShow() {
   el.show.hidden = true;
   el.showImg.removeAttribute('src');
   document.body.style.overflow = '';
+  if (window.AlbumNav) AlbumNav.immersive(false);
 }
 
 el.showExit.addEventListener('click', exitShow);

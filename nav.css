@@ -183,6 +183,19 @@
    ================================================================ */
 body.has-nav > .app { padding-top: var(--nav-h); }
 
+/* ⚠️⚠️ 页面自己的 sticky 顶栏必须**避开**导航顶栏。
+   `.topbar`（照片流 / 相册列表）与 `.edit-bar`（相册编辑器）都是
+   `position:sticky; top:0` —— 它们会粘在视口顶端，而导航顶栏也固定在
+   顶端且 z-index 更高（50 > 30）→ 滚起来时页面顶栏会**滑到导航底下**
+   被压住，看着像"顶栏消失了"。
+   所以把它们的 top 挪到导航下面。只动 top，不动别的属性 ——
+   改动面最小，也不用碰各页面自己的 CSS。
+   ⚠️ 只在 ≥900px 生效：手机上没有顶栏导航（它是底部 tab）。 */
+@media (min-width: 900px) {
+  body.has-nav .topbar,
+  body.has-nav .edit-bar { top: calc(var(--nav-h) - 1px); }
+}
+
 /* flex 柱状布局：dvh 减掉导航高度，让内部 flex:1 自己收缩 */
 @media (min-width: 900px) {
   body.has-nav.studio-page { height: calc(100dvh - var(--nav-h)); }

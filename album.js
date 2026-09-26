@@ -93,6 +93,11 @@
     el('editView').hidden = view !== 'edit';
     el('readView').hidden = view !== 'read';
     document.body.style.overflow = view === 'edit' ? 'hidden' : '';
+    /* ⚠️ 翻页预览（read）是**沉浸态**：阅读器自己的操作栏
+       (.read-bar) 就贴着屏幕底部，和全局导航的底部 tab 会互相压住。
+       所以进 read 藏掉导航、回 list/edit 再放出来。
+       约定在 nav.js 的 immersive() 里，这里不需要知道怎么藏。 */
+    if (window.AlbumNav) AlbumNav.immersive(view === 'read');
     if (view === 'edit') {
       requestAnimationFrame(() => { fitCanvas(); relayoutTray(); });
     }
