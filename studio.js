@@ -878,7 +878,14 @@
     if (!data) return;
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, maskTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    // ⚠️ 必须用 9 参数形式传 data.data（TypedArray），不能用 6 参数传 ImageData。
+    // 6 参数形式依赖浏览器自动重载识别，但在某些 SwiftShader/Chrome 组合下
+    // 会被误判为 9 参数形式：width=gl.RGBA(36293)、height=gl.UNSIGNED_BYTE(5121)，
+    // 上传静默失败，纹理保持未初始化状态——shader 采样返回 1.0，整张图品红。
+    // 表现是「覆盖率 10.8% 但视觉上 100% 品红」，极难排查。
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA,
+      data.width, data.height, 0,
+      gl.RGBA, gl.UNSIGNED_BYTE, data.data);
     mask._uploadedVersion = mask.version;
     gl.activeTexture(gl.TEXTURE0);
   }

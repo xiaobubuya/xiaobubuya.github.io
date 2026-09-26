@@ -16,7 +16,7 @@
 // 所以「改了 ASSETS 里任何一个文件就得升」应当当成提交前的固定检查项
 // （studio.* 和 mask.js 都算）
 // 现在 test/sw-version.test.mjs 会守住它。
-const SHELL = 'shell-v32';
+const SHELL = 'shell-v33';
 const ASSETS = [
   '/',
   '/index.html',
