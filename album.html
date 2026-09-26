@@ -10,6 +10,8 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="album.css">
+<!-- 全局导航（导航层统一在 nav.js/nav.css 里，别在各页面重写） -->
+<link rel="stylesheet" href="nav.css">
 <title>相册 · 我们的婚纱照</title>
 </head>
 <body class="album-page">
@@ -205,6 +207,21 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<!-- ============================ 全局导航配置 ============================
+     ⚠️ 必须在引 nav.js **之前**声明：nav.js 启动时读它来渲染顶栏右侧的
+     动作按钮。点击以 `nav:action` 事件发到 window，由 album.js 处理。
+     "新建相册"原来是个悬浮 ＋（#btnNewAlbum）—— 它留在原处（手机上
+     悬浮按钮更好按），但顶栏也放一个：桌面端不该只有一个悬浮球。
+     ================================================================ -->
+<script>
+window.AlbumNavPage = {
+  actions: [
+    { key: 'newAlbum', label: '新建相册', icon: '＋', kind: 'primary',
+      title: '新建一本相册' }
+  ]
+};
+</script>
+<script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="autolayout.js"></script>
 <script src="orient.js"></script>

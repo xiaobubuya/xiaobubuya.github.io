@@ -1113,6 +1113,23 @@
     setTimeout(() => el('newTitle').focus(), 120);
   });
 
+  /* ================================================================
+     全局导航（nav.js）的动作
+     ----------------------------------------------------------------
+     ⚠️ 导航只负责"我在哪、能去哪"，具体动作归页面 ——
+     所以这里是页面**接收** nav:action，而不是让 nav.js 知道新建相册怎么做。
+     复用上面那个函数：两处入口（悬浮 ＋ / 顶栏按钮）走同一套逻辑，
+     不然迟早一边改了另一边忘。
+     ================================================================ */
+  window.addEventListener('nav:action', e => {
+    const a = e.detail && e.detail.action;
+    if (a === 'newAlbum') {
+      // 只有在列表页才允许新建；编辑器里点了先回列表（语义更直觉）
+      if (S.view !== 'list') show('list');
+      el('btnNewAlbum').click();
+    }
+  });
+
   el('newRatio').addEventListener('click', e => {
     const b = e.target.closest('button[data-r]');
     if (!b) return;

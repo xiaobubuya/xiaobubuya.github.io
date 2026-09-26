@@ -195,6 +195,8 @@ async function boot() {
 async function enterApp() {
   el.login.hidden = true;
   el.app.hidden = false;
+  // 登录成功才把导航亮出来（登录页上它一直是 hidden 的，见 nav.js）
+  if (window.AlbumNav) AlbumNav.show(true);
   el.sheetFoot.textContent = IS_LOCAL ? `开发模式 · ${API}` : `已登录：${state.user}`;
 
   await loadDays();
@@ -509,6 +511,28 @@ document.addEventListener('visibilitychange', () => {
   state.paused = document.hidden;
   el.showToggle.textContent = state.paused ? '▶' : '❚❚';
   scheduleSlide();
+});
+
+/* ================================================================
+   全局导航（nav.js）的动作
+   ----------------------------------------------------------------
+   ⚠️ 导航只负责"我在哪、能去哪"，具体动作归页面 ——
+   所以这里是页面**接收** nav:action 事件，而不是让 nav.js 知道上传怎么走。
+   这样以后把"上传"挪到别的位置（甚至手机底部），这里一行都不用改。
+   ================================================================ */
+window.addEventListener('nav:action', e => {
+  const a = e.detail && e.detail.action;
+  if (a === 'upload') {
+    // ⚠️ upload.js 还没装好时点了不该报错，只提示
+    if (window.AlbumUpload && AlbumUpload.pick) AlbumUpload.pick();
+    else toast('上传还没准备好，稍等一下');
+  } else if (a === 'slideshow') {
+    el.btnSlideshow.click();          // 复用既有逻辑，别抄一遍
+  } else if (a === 'reload') {
+    location.reload();
+  } else if (a === 'logout') {
+    logout();
+  }
 });
 
 /* ================================================================

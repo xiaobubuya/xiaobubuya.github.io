@@ -34,6 +34,10 @@
    补的判据（下面第 ② 条）：再看**最近 N 个提交**里有没有"动了外壳
    但没升 SHELL"的组合。不追求完备（很久以前的历史不去追），
    只要求"提交之后漏检"这条路被堵住。
+
+   ⚠️ 第 ③ 条：ASSETS 必须覆盖根目录**所有** js/css。
+   这条抓过一次真实遗漏 —— 加全局导航 `nav.js` / `nav.css` 时忘了把它们
+   放进 ASSETS（只有新加文件时才会触发，所以很容易漏）。
    ================================================================ */
 import { strict as assert } from 'node:assert';
 import fs from 'node:fs';
@@ -91,7 +95,7 @@ t('ASSETS 里列了 studio.js / studio.css / studio.html', () => {
   }
 });
 
-t('⭐ ASSETS 覆盖了仓库根目录下所有会被页面引用的 js/css', () => {
+t('② ASSETS 覆盖了仓库根目录下所有会被页面引用的 js/css', () => {
   /* 判据：根目录下所有 .js / .css（除了 sw.js 自己和测试目录）
      都应该在 ASSETS 里。漏一个的症状是「在线能用、离线白屏」，
      而这种只在无网时暴露的问题很难被发现。 */
@@ -108,8 +112,7 @@ t('⭐ ASSETS 覆盖了仓库根目录下所有会被页面引用的 js/css', ()
 /** 把 SHELL 的序号抠成数字，方便比大小 */
 const shellNum = s => Number(String(s || '').replace(/\D/g, '')) || 0;
 
-t('① 工作区改了外壳文件 → SHELL 必须同时升（相对 HEAD）', () => {
-  const headSw = git(['show', 'HEAD:sw.js']);
+t('① 工作区改了外壳文件 → SHELL 必须同时升（相对 HEAD）', () => {  const headSw = git(['show', 'HEAD:sw.js']);
   if (headSw === null) {
     console.log('       ⏭  取不到 HEAD:sw.js（不在 git 仓库里？），跳过这条');
     return;

@@ -10,6 +10,10 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="studio.css">
+<!-- 全局导航（导航层统一在 nav.js/nav.css 里，别在各页面重写）。
+     ⚠️ 它放在 studio.css **之后**：修图页是暗色的，nav.css 里针对
+     .studio-page 的覆盖要能压过默认的浅色。 -->
+<link rel="stylesheet" href="nav.css">
 <title>修图 · 相册工作台</title>
 </head>
 <body class="studio-page">
@@ -281,6 +285,16 @@
 <input type="file" id="stFile" accept="image/*" hidden>
 <div id="stToast" class="toast" hidden></div>
 
+<!-- ============================ 全局导航配置 ============================
+     ⚠️ 必须在引 nav.js **之前**声明。
+     "打开图片"和"导出"原来在 .st-bar 里 —— 它们留在原处（修图页自己的
+     工具条），这里**不重复**放，避免同一个动作两个按钮。
+     ⚠️ .st-bar 的窄屏测试（test/topbar.test.mjs）会逐个子元素量间隙，
+     往里加元素很容易假红，所以导航一律插到 body 上（nav.js 的做法），
+     不动 .st-bar。
+     ================================================================ -->
+<script>window.AlbumNavPage = { actions: [] };</script>
+<script src="nav.js"></script>
 <script src="mask.js"></script>
 <script src="studio.js"></script>
 </body>

@@ -15,13 +15,18 @@
 // 但**忘了升这里**（4335d06、82f2597），线上会一直在跑旧外壳。
 // 所以「改了 studio.* 就得升」应当当成提交前的固定检查项 ——
 // 现在 test/sw-version.test.mjs 会守住它。
-const SHELL = 'shell-v18';
+const SHELL = 'shell-v19';
 const ASSETS = [
   '/',
   '/index.html',
   '/album.html',
   '/styles.css',
   '/album.css',
+  // 全局导航。⚠️ 每个页面都引它，漏一个的症状是
+  // 「在线正常、离线打开没有导航条」—— SW 只是没缓存，在线时浏览器
+  // 自己去网络拿得到，所以很难发现（upload.js 就这么漏过一次）。
+  '/nav.css',
+  '/nav.js',
   '/common.js',
   '/app.js',
   '/album.js',

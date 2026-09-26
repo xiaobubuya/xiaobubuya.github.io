@@ -11,6 +11,9 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="album.css">
+<!-- 全局导航。分享页用 brand 模式（只有品牌位，没有三个 tab）——
+     亲友点开一本相册，给他们"照片/相册/修图"没有意义（会被弹回登录）。 -->
+<link rel="stylesheet" href="nav.css">
 <title>相册</title>
 
 <!-- ================================================================
@@ -67,6 +70,13 @@
   </div>
 </div>
 
+<!-- ============================ 全局导航配置 ============================
+     ⚠️ mode: 'brand' —— 只显示品牌位（点它回首页），不显示三个 tab。
+     理由：这是**给亲友看**的只读分享页，他们没登录，
+     点"相册/修图"只会被弹回登录页，那是错误的引导。
+     ================================================================ -->
+<script>window.AlbumNavPage = { mode: 'brand' };</script>
+<script src="nav.js"></script>
 <script src="orient.js"></script>
 <script src="reader.js"></script>
 <script src="share.js"></script>

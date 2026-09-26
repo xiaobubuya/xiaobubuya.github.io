@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>导航测试装置</title>
+<link rel="stylesheet" href="../../styles.css">
+<!-- 和真实页面一样：导航样式放在页面样式之后。
+     ⚠️⚠️ 路径必须是 `../../`：这个装置在 test/fixtures/ 下，
+     相对路径是从**装置自己的目录**算的。第一版写成 `nav.css`，
+     于是去找 `/test/fixtures/nav.css` —— 404，导航完全不出现，
+     而报错是"15 秒没等到 AlbumNav"，看着像 JS 坏了。
+     教训：fixture 里的相对路径很容易差一层目录。 -->
+<link rel="stylesheet" href="../../nav.css">
+</head>
+<!-- ================================================================
+     导航测试装置（test fixture）
+     ----------------------------------------------------------------
+     为什么不直接量 album.html / studio.html：
+
+     那两个页面开头都跑 `await A.requireAuth()`，**没有登录态就
+     `location.replace('/?next=…')` 跳回首页**。所以"量 album 页的导航"
+     实际上量到的是**首页的导航** —— 而且它还有个更迷惑的表现：
+     `window.AlbumNavPage` 读到的仍是 album 的配置（跳转前那个脚本
+     已经执行了），于是看起来"页面是对的、只是高亮错了"。实测踩过。
+
+     要量真页面就得有真会话（起 8787 的 API + 真口令），那会把
+     "导航"和"登录"耦合起来 —— 导航测试挂掉的原因应该是导航改了，
+     不该是 API 没起来。
+
+     所以分工：**导航层的渲染/高亮/响应式在这个装置里量**（它用和
+     真实页面完全相同的引入方式），**真实页面的接线**用静态断言守
+     （见 nav-browser.test.mjs 里"页面接线"那几条）。
+     ================================================================ -->
+<body class="album-page">
+
+<!-- 模拟"未登录"：nav.js 看到 #login 可见就把整层导航藏起来 -->
+<div id="login" class="login" hidden>
+  <form class="login-card"><h1>登录</h1></form>
+</div>
+
+<div id="app" class="app" hidden>
+  <main id="timeline" class="timeline"></main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- ================================================================
+     声明 window.AlbumNavPage —— 和真实页面一样，在引 nav.js **之前**。
+     内容由查询串决定，一套装置测四种模式（不用抄四份 HTML）：
+       ?mode=login  → 登录前（#login 可见，导航该整体隐藏）
+       ?mode=in     → 登录后的照片页（默认）
+       ?mode=album  → 登录后的相册页（高亮"相册"，带"新建相册"动作）
+       ?mode=share  → 分享页（brand 模式：只有品牌位，没有 tab）
+     ⚠️ 必须**同步**（普通 <script>，不能 defer/async）：nav.js 在
+     自己的启动流程里就读 window.AlbumNavPage，晚一步声明等于没声明
+     （会按默认 full 渲染，测试全假红）。
+     ================================================================ -->
+<script>
+(function () {
+  var m = new URLSearchParams(location.search).get('mode') || 'in';
+  if (m === 'login') {
+    window.AlbumNavPage = { actions: [] };
+    document.getElementById('login').hidden = false;   // 让 nav.js 看到"未登录"
+    return;
+  }
+  if (m === 'album') {
+    window.AlbumNavPage = {
+      /* ⚠️ path 覆盖是给装置的：这个文件的真实路径
+         (/test/fixtures/nav.html) 不对应任何页面，高亮会全是 null。
+         声明"假装我在相册页"，这样被验证的是**正式的高亮逻辑**，
+         而不是测试自己重算一遍。 */
+      path: '/album.html',
+      actions: [
+        { key: 'newAlbum', label: '新建相册', icon: '＋', kind: 'primary' }
+      ]
+    };
+    return;
+  }
+  if (m === 'share') {
+    window.AlbumNavPage = { mode: 'brand' };
+    return;
+  }
+  window.AlbumNavPage = {
+    // 照片页：装置的真实路径不对应任何页面，所以显式声明
+    path: '/',
+    actions: [
+      { key: 'upload', label: '上传', icon: '＋', kind: 'primary' }
+    ]
+  };
+})();
+</script>
+<script src="../../nav.js"></script>
+</body>
+</html>

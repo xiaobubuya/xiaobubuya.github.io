@@ -11,6 +11,8 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="styles.css">
+<!-- 全局导航（导航层统一在 nav.js/nav.css 里，别在各页面重写） -->
+<link rel="stylesheet" href="nav.css">
 <title>我们的婚纱照</title>
 
 <!-- ================================================================
@@ -147,6 +149,20 @@
   <div class="up-list" id="upList"></div>
 </div>
 
+<!-- ============================ 全局导航配置 ============================
+     ⚠️ 必须在引 nav.js **之前**声明：nav.js 启动时读它来渲染顶栏右侧的
+     动作按钮（这里就是"上传"）。
+     点击会以 `nav:action` 事件发到 window 上，由 app.js 处理 ——
+     这样按钮放在顶栏还是别处，app.js 都不用改。
+     ================================================================ -->
+<script>
+window.AlbumNavPage = {
+  actions: [
+    { key: 'upload', label: '上传', icon: '＋', kind: 'primary', title: '上传照片' }
+  ]
+};
+</script>
+<script src="nav.js"></script>
 <script src="upload.js"></script>
 <script src="app.js"></script>
 </body>
