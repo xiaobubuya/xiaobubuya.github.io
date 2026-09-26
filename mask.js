@@ -121,13 +121,15 @@
         }
         s.points.length = 2;
         s.points[1] = [x, y];
-        // ⚠️ 不能像画笔那样增量画。渐变/径向是一次**整画布**填充，
-        //    而且用 lighter（加法）：每拖一步再叠一遍，中间那段的白
-        //    就越来越饱和（拖两下中点从 128 变 255，平滑过渡变成硬边）。
-        //    更麻烦的是 end() 不设 dirty，toTextureData() 一看「干净」
-        //    就跳过重绘 —— 脏画布一直留着，上传的纹理也永远是错的。
+        // ⚠️ 不能像画笔那样增量画（这里曾经就是 _paint(s)）。渐变/径向是
+        //    一次**整画布**填充，而且用 lighter（加法）：每拖一步再叠一遍，
+        //    中间那段的白就越来越饱和（拖两下中点从 128 变 255，
+        //    平滑过渡变成硬边）。
         // 所以这里只更新点并标脏，全量重绘交给随后的 draw() 那一次
         // render()（render 会清空后按 strokes 重放，天然不累加）。
+        // ⚠️ 必须**自己**标脏：end() 不设 dirty（见下面的 end()），
+        //    这里漏标的话 toTextureData() 会以为画布是干净的而跳过重绘，
+        //    脏画布一直留着，上传到 GPU 的纹理也永远是错的。
         this.dirty = true;
         this.version++;
         this._onChange();
@@ -152,8 +154,13 @@
       const s = this._cur;
       this._cur = null;
       if (!s) return false;
-      // 渐变 / 径向只点了没拖：压根没画出东西，不该进历史 ——
+      // 渐变 / 径向只点了没拖：不该进历史 ——
       // 否则笔数虚增、撤销要多按一次，空笔画还能把 MAX_STROKES 占满。
+      // （位图这边本来就没画东西：begin() 虽然调了 _paint()，但
+      //   _paintGradient/_paintRadial 在 points.length < 2 时直接 return。
+      //   所以这里丢掉的只是一条空记录，不是已经画上去的印子。）
+      // ⚠️ 注意 end() **不设 dirty**（和上面 extend() 不同）：这里丢的这笔
+      //    本来就没画出来，不需要重绘；真要重绘也由调用方负责。
       if (s.kind && s.kind !== 'brush' && s.points.length < 2) return false;
       this.strokes.push(s);
       if (this.strokes.length > MAX_STROKES) this.strokes.shift();

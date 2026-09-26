@@ -513,11 +513,15 @@ async function openAddToAlbum(photoKey) {
   document.body.appendChild(sheet);
 }
 
+/* 「加入相册」撞乐观并发的重试上限（含第一次，共 3 次）。
+   放成常量而不是裸数字：这个值要和下面对失败提示的措辞对上。 */
+const ADD_TO_ALBUM_MAX_TRIES = 3;
+
 async function addPhotoToAlbum(albumId, photoKey) {
   // baseVersion 校验是后端乐观并发（PUT /pages/:index 用 version 对账）。
   // 两人同时改同一页时可能撞车（409 conflict）：此时不能直接保存失败，
   // 要重拉最新的排版，把元素按当前坐标重放进去再存。
-  for (let attempt = 0; ; attempt++) {
+  for (let attempt = 0; attempt < ADD_TO_ALBUM_MAX_TRIES; attempt++) {
     try {
       // 拉第一页的排版
       const res = await api('/api/albums/' + albumId + '/pages');
@@ -553,8 +557,15 @@ async function addPhotoToAlbum(albumId, photoKey) {
       if (saveRes.ok) { toast('已加入相册'); return; }
 
       const err = await saveRes.json().catch(() => ({}));
-      if (err.error === 'conflict' && attempt < 2) continue;   // 加新元素不产生交错，直接重放即可
-      toast('保存失败：' + (err.error || '未知错误'));
+      // conflict：重拉最新排版再重放。加新元素不产生交错，直接重来即可。
+      // ⚠️ attempt 从 0 起，所以"还有下次"是 attempt < MAX-1。
+      if (err.error === 'conflict' && attempt < ADD_TO_ALBUM_MAX_TRIES - 1) continue;
+
+      // 重试次数用尽仍然冲突时要说清楚**这张照片没加进去**，
+      // 否则用户只看到一句 conflict，会以为加成功了（或者以为丢的是相册数据）。
+      toast(err.error === 'conflict'
+        ? `保存冲突，已重试 ${ADD_TO_ALBUM_MAX_TRIES} 次仍未成功，这张照片没有加入相册，请重试`
+        : '保存失败：' + (err.error || '未知错误'), 3600);
       return;
     } catch (e) {
       toast('加入相册失败：' + (e && e.message ? e.message : e));
