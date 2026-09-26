@@ -118,6 +118,17 @@
           const minR = 0.03;
           x = Math.max(minR, Math.abs(x - cx));
           y = Math.max(minR, Math.abs(y - cy));
+        } else {
+          // 渐变：第二个点是"另一端"。
+          // ⚠️ 这里必须有一个**死区**，径向用的是最小半径，渐变用不上：
+          //    canvas 的线性渐变在端点之外是**夹逼**的（投影 t<0 全取 stop0，
+          //    t>1 全取 stop1），而 _paintGradient 的 fillRect 铺满整张画布 ——
+          //    所以哪怕只拖 1 像素，"起点侧"就是**整整半个画面**全被选中。
+          // 表现是"点一下整张图全变红、覆盖率一下冲到 90%+"，不报任何错。
+          // 手抖产生的那点距离不算一次拖动（和画笔的 minStep 一个道理），
+          // 剩下的 1 点笔画会被 end() 丢掉（见 end() 的 <2 点过滤）。
+          const [ax, ay] = s.points[0];
+          if (Math.hypot(x - ax, y - ay) < 0.01) return false;
         }
         s.points.length = 2;
         s.points[1] = [x, y];

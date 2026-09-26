@@ -510,6 +510,30 @@ t('渐变/径向只点不拖：不产生空笔画', () => {
   assert.equal(m.strokes.length, 1);
 });
 
+t('渐变：手抖级别的拖动不算一笔（回归：点一下就选中半张图）', () => {
+  // 渐变之前没有死区：拖 1 像素也生成一次整画布填充。而 canvas 的线性
+  // 渐变在端点之外是**夹逼**的（投影 t<0 全取 stop0，t>1 全取 stop1），
+  // _paintGradient 的 fillRect 又铺满整张画布 —— 所以哪怕只拖 1 像素，
+  // "起点侧"就是整整半个画面全被选中。十笔叠起来覆盖率冲到 90%+，
+  // 表现是"点一下整张图全变红"，而且不报任何错。
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.5, 0.5, 'gradient');
+  assert.equal(m.extend(0.505, 0.5), false, '死区内的拖动应该被拒');
+  assert.equal(m.end(), false, '没拖出死区就不该算一笔');
+  assert.equal(m.strokes.length, 0, '死区拖动不该进历史');
+  assert.equal(m.isEmpty, true, '死区拖动不该算有内容');
+
+  // 死区之外仍然正常画出半平面，不能把这个功能掐掉
+  const m2 = new Mask();
+  m2.resize(400, 400);
+  m2.begin(0.5, 0.5, 'gradient');
+  assert.equal(m2.extend(0.58, 0.5), true, '超过死区应该正常更新终点');
+  assert.equal(m2.end(), true);
+  assert.equal(m2.strokes.length, 1);
+  assert.ok(m2.coverage() > 0.3, `拖出死区应该真选到一大片，实际 ${m2.coverage()}`);
+});
+
 t('径向可以擦除（destination-out 路径）', () => {
   const m = new Mask();
   m.resize(400, 400);
