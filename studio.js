@@ -2215,6 +2215,11 @@
     if (u) u.disabled = !on || mask.isEmpty;
     const cr = $('stCrop');
     if (cr) cr.disabled = !on;
+    // 旋转/翻转是裁剪的姊妹入口（共用同一份 geom），也得跟着图有没有一起开关。
+    // ⚠️ 漏掉这一行的话按钮永远 disabled，整个旋转面板点不进来 ——
+    //    症状是"旋转/翻转怎么用"，其实是入口被焊死了，而且静默、不报错。
+    const rb = $('stRotateBtn');
+    if (rb) rb.disabled = !on;
     // 没图的时候裁剪状态必须清掉，否则"打开新图但还在裁剪模式里"
     // 没图的时候几何状态必须清掉，否则"打开新图但还在裁剪模式里"
     if (!on && geom) { geom = null; showCropUI(false); showRotateUI(false); }
