@@ -110,10 +110,14 @@
       // 渐变 / 径向：第二个点代表"另一端"或"外半径"，直接替换
       if (s.kind === 'gradient' || s.kind === 'radial') {
         if (s.kind === 'radial') {
-          // 径向：传入的是指针位置，要算相对中心的半径
+          // 径向：传入的是指针位置，要算相对中心的半径。
+          // ⚠️ 必须留一个最小半径：纯横向（或纯纵向）拖动时有一个分量
+          //    恰好是 0，若只兜底到 1 个像素，椭圆会塌成一条线 ——
+          //    画布看起来毫无反应，而且不报任何错。
           const [cx, cy] = s.points[0];
-          x = Math.abs(x - cx);
-          y = Math.abs(y - cy);
+          const minR = 0.03;
+          x = Math.max(minR, Math.abs(x - cx));
+          y = Math.max(minR, Math.abs(y - cy));
         }
         s.points.length = 2;
         s.points[1] = [x, y];
@@ -141,6 +145,9 @@
       const s = this._cur;
       this._cur = null;
       if (!s) return false;
+      // 渐变 / 径向只点了没拖：压根没画出东西，不该进历史 ——
+      // 否则笔数虚增、撤销要多按一次，空笔画还能把 MAX_STROKES 占满。
+      if (s.kind && s.kind !== 'brush' && s.points.length < 2) return false;
       this.strokes.push(s);
       if (this.strokes.length > MAX_STROKES) this.strokes.shift();
       this.version++;

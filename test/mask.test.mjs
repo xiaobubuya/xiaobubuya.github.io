@@ -14,9 +14,31 @@ import { strict as assert } from 'node:assert';
 /* ---------------- 最小 canvas 桩件 ---------------- */
 function makeCtx(canvas) {
   const px = new Float32Array(canvas.width * canvas.height);   // 灰度，1 = 白
-  const st = { gco: 'source-over', alpha: 1, fill: '#fff' };
+  // tx/ty/sx/sy 是仿射变换。渐变/径向蒙版靠 translate+scale 把圆拉成椭圆，
+  // 不实现这两个的话，径向蒙版在测试里根本画不出来。
+  const st = { gco: 'source-over', alpha: 1, fill: '#fff', tx: 0, ty: 0, sx: 1, sy: 1 };
+  const stack = [];
 
   const inBounds = (x, y) => x >= 0 && y >= 0 && x < canvas.width && y < canvas.height;
+
+  /** fillStyle 在设备像素 (dx, dy) 处的透明度。
+   *  渐变是在**填充坐标**里定义的，所以先把设备坐标反变换回填充坐标。 */
+  function fillAlpha(f, dx, dy) {
+    const x = (dx - st.tx) / st.sx, y = (dy - st.ty) / st.sy;
+    if (f && f._linear) {
+      const ax = f.x2 - f.x1, ay = f.y2 - f.y1;
+      const len2 = ax * ax + ay * ay;
+      const t = len2 < 1e-9 ? 1 : Math.min(1, Math.max(0, ((x - f.x1) * ax + (y - f.y1) * ay) / len2));
+      return 1 - t;                        // stop 0 = 白，stop 1 = 透明
+    }
+    if (f && f._radial) {
+      const r = Math.hypot(x - f.cx, y - f.cy);
+      if (r <= f.r0) return 1;
+      if (r >= f.r1) return 0;
+      return 1 - (r - f.r0) / Math.max(1e-6, f.r1 - f.r0);
+    }
+    return 1;                              // 纯色
+  }
 
   function stamp(cx, cy, r, hard) {
     const solid = r * (hard == null ? 0.5 : hard);
@@ -38,7 +60,10 @@ function makeCtx(canvas) {
 
   return {
     _px: px,
-    save() {}, restore() {},
+    save() { stack.push(Object.assign({}, st)); },
+    restore() { if (stack.length) Object.assign(st, stack.pop()); },
+    translate(x, y) { st.tx += x * st.sx; st.ty += y * st.sy; },
+    scale(sx, sy) { st.sx *= sx; st.sy *= sy; },
     set globalCompositeOperation(v) { st.gco = v; },
     get globalCompositeOperation() { return st.gco; },
     set globalAlpha(v) { st.alpha = v; },
@@ -46,10 +71,18 @@ function makeCtx(canvas) {
     set fillStyle(v) { st.fill = v; },
     get fillStyle() { return st.fill; },
     clearRect() { px.fill(0); },
+    // 矩形在**填充坐标**里，落到画布上要正向变换一次；
+    // 颜色按 fillStyle 逐像素算，纯色时 fillAlpha 恒为 1
     fillRect(x, y, w, h) {
-      if (st.gco === 'destination-out') return;
       for (let j = y; j < y + h; j++) {
-        for (let i = x; i < x + w; i++) if (inBounds(i, j)) px[j * canvas.width + i] = st.alpha;
+        for (let i = x; i < x + w; i++) {
+          const dx = i * st.sx + st.tx, dy = j * st.sy + st.ty;
+          if (!inBounds(Math.floor(dx), Math.floor(dy))) continue;
+          const a = st.alpha * fillAlpha(st.fill, dx + 0.5, dy + 0.5);
+          const o = Math.floor(dy) * canvas.width + Math.floor(dx);
+          if (st.gco === 'destination-out') px[o] *= (1 - a);
+          else px[o] = Math.max(px[o], a);
+        }
       }
     },
     beginPath() { this._c = null; },
@@ -72,9 +105,15 @@ function makeCtx(canvas) {
       const hard = g && g._grad ? 0.5 : 0.99;
       stamp(this._c.x, this._c.y, this._c.r, hard);
     },
-    createRadialGradient(x, y, r0, r1) {
-      // r1 是外径，锚点是 (x, y)
-      return { _grad: true, _anchor: { x, y }, _r1: r1, addColorStop() {} };
+    createRadialGradient(x, y, r0, x1, y1, r1) {
+      // 原生签名有 6 个参数：锚点是 (x, y)，(x1, y1, r1) 是外圈
+      // _grad/_anchor/_r1 给 fill() 的锚点判定用（羽化笔刷那条路径）；
+      // _radial 给 fillRect 的逐像素渐变用（径向蒙版那条路径）
+      return { _grad: true, _anchor: { x, y }, _r1: r1,
+               _radial: true, cx: x, cy: y, r0, r1, addColorStop() {} };
+    },
+    createLinearGradient(x1, y1, x2, y2) {
+      return { _linear: true, x1, y1, x2, y2, addColorStop() {} };
     },
     getImageData(x, y, w, h) {
       const d = new Uint8ClampedArray(w * h * 4);
@@ -373,6 +412,110 @@ t('笔刷大小影响覆盖面积', () => {
   big.radius = 0.10; big.begin(0.5, 0.5); big.end();
   assert.ok(big.coverage() > small.coverage() * 3,
     `大笔刷应该覆盖明显更多: ${small.coverage().toFixed(4)} vs ${big.coverage().toFixed(4)}`);
+});
+
+/* ================================================================
+   渐变 / 径向蒙版
+   ----------------------------------------------------------------
+   桩件已经补了 createLinearGradient / translate / scale，
+   所以这里能验**几何**：渐变沿轴衰减、径向沿椭圆半径衰减。
+   ================================================================ */
+
+/** 取归一化坐标处的 R 通道（0~255）。
+ *  归一化 → 设备的映射跟 mask.js 一致：x = nx*W，y = (1-ny)*H（Y 翻转） */
+function at(m, nx, ny) {
+  const W = m.canvas.width, H = m.canvas.height;
+  const x = Math.min(W - 1, Math.max(0, Math.round(nx * W)));
+  const y = Math.min(H - 1, Math.max(0, Math.round((1 - ny) * H)));
+  return m.toTextureData().data[(y * W + x) * 4];
+}
+
+t('渐变：起点侧实、终点侧空', () => {
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.2, 0.5, 'gradient');
+  m.extend(0.8, 0.5);
+  m.end();
+  assert.ok(at(m, 0.1, 0.5) > 200, `起点那一侧应该被选中，实际 ${at(m, 0.1, 0.5)}`);
+  assert.ok(at(m, 0.9, 0.5) < 40, `终点那一侧应该是空的，实际 ${at(m, 0.9, 0.5)}`);
+});
+
+t('渐变：轴中点在半透明', () => {
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.2, 0.5, 'gradient');
+  m.extend(0.8, 0.5);
+  m.end();
+  const mid = at(m, 0.5, 0.5);
+  assert.ok(mid > 80 && mid < 180, `轴中点应该在半透明，实际 ${mid}`);
+});
+
+t('渐变：extend 替换终点而不是追加', () => {
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.2, 0.5, 'gradient');
+  m.extend(0.4, 0.5);
+  m.extend(0.6, 0.5);
+  m.extend(0.8, 0.5);
+  assert.equal(m._cur.points.length, 2);
+  assert.deepEqual(m._cur.points[1], [0.8, 0.5]);
+  m.end();
+  assert.equal(m.strokes.length, 1);
+});
+
+t('径向：中心实、外半径之外空', () => {
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.5, 0.5, 'radial');
+  m.extend(0.7, 0.5);          // 半径 = 0.2（归一化）
+  m.end();
+  assert.ok(at(m, 0.5, 0.5) > 200, `中心应该被选中，实际 ${at(m, 0.5, 0.5)}`);
+  assert.ok(at(m, 0.75, 0.5) < 40, `外半径之外应该是空的，实际 ${at(m, 0.75, 0.5)}`);
+});
+
+t('径向：纯横向拖动也能画出可见椭圆（回归：塌成一条线）', () => {
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.5, 0.5, 'radial');
+  m.extend(0.8, 0.5);          // 纵向分量恰好是 0
+  m.end();
+  assert.ok(m.strokes[0].points[1][1] >= 0.03,
+    `纵向半径应该有一个最小值，实际 ${m.strokes[0].points[1][1]}`);
+  // 中心列、离中心 6 像素的地方还得看得见
+  assert.ok(at(m, 0.5, 0.5 + 6 / 400) > 100, '纵向不该塌成一条线');
+});
+
+t('渐变/径向只点不拖：不产生空笔画', () => {
+  for (const kind of ['gradient', 'radial']) {
+    const m = new Mask();
+    m.resize(400, 400);
+    m.begin(0.5, 0.5, kind);
+    assert.equal(m.end(), false, `${kind} 没拖动就不该算一笔`);
+    assert.equal(m.strokes.length, 0, `${kind} 空笔画不该进历史`);
+    assert.equal(m.isEmpty, true, `${kind} 空笔画不该算有内容`);
+  }
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.5, 0.5);           // 画笔：点按仍然是一笔
+  assert.equal(m.end(), true, '画笔点按应该仍然是一笔');
+  assert.equal(m.strokes.length, 1);
+});
+
+t('径向可以擦除（destination-out 路径）', () => {
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.5, 0.5, 'radial');
+  m.extend(0.75, 0.5);
+  m.end();
+  const before = m.coverage();
+  assert.ok(before > 0.01, `前置：先画出一个选区，实际 ${before}`);
+  m.mode = 'erase';
+  m.begin(0.5, 0.5, 'radial');
+  m.extend(0.75, 0.5);
+  m.end();
+  const after = m.coverage();
+  assert.ok(after < before * 0.85,
+    `同位置径向擦除应该消掉大半: ${before.toFixed(3)} → ${after.toFixed(3)}`);
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);
