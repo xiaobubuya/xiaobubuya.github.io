@@ -71,17 +71,26 @@ function makeCtx(canvas) {
     set fillStyle(v) { st.fill = v; },
     get fillStyle() { return st.fill; },
     clearRect() { px.fill(0); },
-    // 矩形在**填充坐标**里，落到画布上要正向变换一次；
-    // 颜色按 fillStyle 逐像素算，纯色时 fillAlpha 恒为 1
+    // 矩形在**填充坐标**里：先正向变换四个角取设备包围盒，
+    // 再逐**设备**像素反变换采样。
+    // ⚠️ 必须逐设备像素采样：scale 之后相邻两个用户整数行可能落在
+    //    同一个设备行上，逐用户行采样会被 lighter 叠加 N 次，
+    //    径向蒙版整块饱和 —— 和真实 canvas 的抗锯齿积分完全不是回事
     fillRect(x, y, w, h) {
-      for (let j = y; j < y + h; j++) {
-        for (let i = x; i < x + w; i++) {
-          const dx = i * st.sx + st.tx, dy = j * st.sy + st.ty;
-          if (!inBounds(Math.floor(dx), Math.floor(dy))) continue;
-          const a = st.alpha * fillAlpha(st.fill, dx + 0.5, dy + 0.5);
-          const o = Math.floor(dy) * canvas.width + Math.floor(dx);
+      const a0 = Math.min(x * st.sx + st.tx, (x + w) * st.sx + st.tx);
+      const a1 = Math.max(x * st.sx + st.tx, (x + w) * st.sx + st.tx);
+      const b0 = Math.min(y * st.sy + st.ty, (y + h) * st.sy + st.ty);
+      const b1 = Math.max(y * st.sy + st.ty, (y + h) * st.sy + st.ty);
+      const x0 = Math.max(0, Math.floor(a0)), x1 = Math.min(canvas.width, Math.ceil(a1));
+      const y0 = Math.max(0, Math.floor(b0)), y1 = Math.min(canvas.height, Math.ceil(b1));
+      for (let py = y0; py < y1; py++) {
+        for (let pxi = x0; pxi < x1; pxi++) {
+          const a = st.alpha * fillAlpha(st.fill, pxi + 0.5, py + 0.5);
+          const o = py * canvas.width + pxi;
           if (st.gco === 'destination-out') px[o] *= (1 - a);
-          else px[o] = Math.max(px[o], a);
+          // ⚠️ lighter 是**加法**（min(1, dst+src)），不是 max ——
+          // 写成 max 会让重复填充变成幂等，正好掩盖渐变累加的 bug
+          else px[o] = Math.min(1, px[o] + a);
         }
       }
     },
@@ -507,15 +516,42 @@ t('径向可以擦除（destination-out 路径）', () => {
   m.begin(0.5, 0.5, 'radial');
   m.extend(0.75, 0.5);
   m.end();
-  const before = m.coverage();
-  assert.ok(before > 0.01, `前置：先画出一个选区，实际 ${before}`);
+  const before = at(m, 0.5, 0.5);
+  assert.ok(before > 200, `前置：先画出一个选区，实际 ${before}`);
   m.mode = 'erase';
   m.begin(0.5, 0.5, 'radial');
   m.extend(0.75, 0.5);
   m.end();
-  const after = m.coverage();
-  assert.ok(after < before * 0.85,
-    `同位置径向擦除应该消掉大半: ${before.toFixed(3)} → ${after.toFixed(3)}`);
+  const after = at(m, 0.5, 0.5);
+  assert.ok(after < before * 0.2,
+    `同位置径向擦除应该把中心消掉: ${before} → ${after}`);
+});
+
+t('拖拽中多次 extend 不累加（回归：lighter 叠加把平滑过渡刷成硬边）', () => {
+  // 上一笔已经渲染过一次（dirty=false）——这正是会让脏画布留下来的状态
+  const m = new Mask();
+  m.resize(400, 400);
+  m.begin(0.2, 0.5, 'radial');
+  m.extend(0.3, 0.5);
+  m.end();
+  m.coverage();
+
+  m.begin(0.6, 0.5, 'radial');
+  m.extend(0.66, 0.5);
+  m.extend(0.7, 0.5);   // 同一笔内再拖一次
+  m.end();
+
+  // 参照：同样两笔，但按正确方式只渲染一次
+  const ref = new Mask();
+  ref.resize(400, 400);
+  ref.begin(0.2, 0.5, 'radial'); ref.extend(0.3, 0.5); ref.end();
+  ref.begin(0.6, 0.5, 'radial'); ref.extend(0.7, 0.5); ref.end();
+  ref.render();
+
+  const got = at(m, 0.65, 0.5);
+  const want = at(ref, 0.65, 0.5);
+  assert.ok(Math.abs(got - want) <= 4,
+    `拖两下后中点应该是 ${want}，实际 ${got}`);
 });
 
 console.log(`\n通过 ${pass} 项，失败 ${fail} 项\n`);

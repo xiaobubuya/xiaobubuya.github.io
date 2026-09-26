@@ -13,9 +13,10 @@
 //
 // ⚠️ 这条规则很容易漏：裁剪/旋转那两轮改了 studio.js/css/html
 // 但**忘了升这里**（4335d06、82f2597），线上会一直在跑旧外壳。
-// 所以「改了 studio.* 就得升」应当当成提交前的固定检查项 ——
+// 所以「改了 ASSETS 里任何一个文件就得升」应当当成提交前的固定检查项
+// （studio.* 和 mask.js 都算）
 // 现在 test/sw-version.test.mjs 会守住它。
-const SHELL = 'shell-v23';
+const SHELL = 'shell-v24';
 const ASSETS = [
   '/',
   '/index.html',

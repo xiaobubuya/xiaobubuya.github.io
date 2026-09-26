@@ -121,7 +121,14 @@
         }
         s.points.length = 2;
         s.points[1] = [x, y];
-        this._paint(s);
+        // ⚠️ 不能像画笔那样增量画。渐变/径向是一次**整画布**填充，
+        //    而且用 lighter（加法）：每拖一步再叠一遍，中间那段的白
+        //    就越来越饱和（拖两下中点从 128 变 255，平滑过渡变成硬边）。
+        //    更麻烦的是 end() 不设 dirty，toTextureData() 一看「干净」
+        //    就跳过重绘 —— 脏画布一直留着，上传的纹理也永远是错的。
+        // 所以这里只更新点并标脏，全量重绘交给随后的 draw() 那一次
+        // render()（render 会清空后按 strokes 重放，天然不累加）。
+        this.dirty = true;
         this.version++;
         this._onChange();
         return true;
