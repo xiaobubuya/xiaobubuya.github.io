@@ -2404,6 +2404,7 @@
     for (const a of ADJUSTMENTS) values[a.key] = a.def;
     refreshSliders();
     if (redraw) draw();
+    onManualAdjust();  // 重置后预设高亮应该清除
   }
 
   function isChanged() {
