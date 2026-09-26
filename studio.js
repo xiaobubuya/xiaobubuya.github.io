@@ -596,11 +596,6 @@
          （红罩在暗部不动），掺点亮色，暗部亮部都能看出选区在哪。 */
       {
         float m = texture2D(uMask, vUv).r;
-        // DEBUG: output mask value as grayscale
-        if (uUseMask > 0.5) {
-          gl_FragColor = vec4(m, m, m, 1.0);
-          return;
-        }
         // 品红：和暖调照片（日落 / 皮肤 / 室内暖光）对比鲜明。
         // ⚠️ 原来用暖橙红，暖叠暖在日落照片上和原图暖光融为一体 ——
         //    用户看到「涂了一小下、半张图都红了」，其实是分不清叠加色
@@ -898,6 +893,14 @@
   function refreshCurve() {
     if (!curveTex) return;
     const lut = buildCurveLut(values);
+    // ⚠️ 必须先把 active unit 切到 2 再 bind —— texImage2D 走的是「当前
+    // 活跃单元」，不是 texture 对象本身。上一版忘了这一行：draw() 里
+    // refreshCurve() 被调时 active 还是 1（uploadMask 已经把 mask 绑到 1
+    // 之后没切走），于是 curveTex 被 bind 到单元 1，把 maskTex 静默覆盖掉。
+    // shader 采 uMask(=1) 采到的其实是 curveTex(256×1 LUT)，采样点 x=vUv.x
+    // 在 LUT 上返回 ≈ vUv.x —— 表现就是选区整张横向渐变，覆盖率数字又是
+    // 对的（走的是 CPU 端 mask.coverage()），极难排查。
+    gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, curveTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, CURVE_N, 1, 0,
       gl.LUMINANCE, gl.UNSIGNED_BYTE, lut);
@@ -922,17 +925,11 @@
     if (!data) return;
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, maskTex);
-    // ⚠️ 必须用 9 参数形式传 data.data（TypedArray），不能用 6 参数传 ImageData。
-    // 6 参数形式依赖浏览器自动重载识别，但在某些 SwiftShader/Chrome 组合下
-    // 会被误判为 9 参数形式：width=gl.RGBA(36293)、height=gl.UNSIGNED_BYTE(5121)，
-    // 上传静默失败，纹理保持未初始化状态——shader 采样返回 1.0，整张图品红。
-    // 表现是「覆盖率 10.8% 但视觉上 100% 品红」，极难排查。
-    // ⚠️ 用 6 参数形式传 ImageData（浏览器自动识别 width/height/data）。
-    // 9 参数传 TypedArray 在 Chrome/SwiftShader 上实测会**静默上传失败**：
-    // shader 采样读到的是"未初始化纹理"（默认返回值不是 0 也不是 1，
-    // 而是一个奇怪的中间灰度），最终表现为选区整张图都染成一片色，
-    // 而不是只在画笔圈住的区域。
-    // 之前误以为是浏览器重载识别问题而换成 9 参数——方向错了。
+    // 用 6 参数形式传 ImageData 本体（浏览器自动识别 width/height/data）。
+    // 之前一度以为是 6 参数形式和 SwiftShader 的交互有坑、换成了 9 参数
+    // 传 TypedArray —— 但实测两种形式都能正常上传，选区整张染色是另一个
+    // 原因（见 refreshCurve 里的注释：texImage2D 走「当前活跃单元」，
+    // 曲线 LUT 上传时忘了切 active 就把 maskTex 静默覆盖了）。
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
     mask._uploadedVersion = mask.version;
     gl.activeTexture(gl.TEXTURE0);
