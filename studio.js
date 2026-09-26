@@ -1325,6 +1325,194 @@
   }
 
   /* ================================================================
+     自动水平校正（纯本地，不联网）
+     ================================================================
+     用户要的："把稍微歪的图片自动修正"。
+
+     ⚠️ 为什么先做纯本地而不是调 AI：
+       · 这是**几何**问题，不是语义问题 —— 找地平线/垂直边不需要
+         理解画面内容，本地算得又快又准，还不消耗额度、不联网
+       · AI 那侧（百度人脸角度）能做的是"把脸摆正"，那是下一步；
+         而且人脸角度受转头/侧脸影响，对"照片歪了"反而更不稳
+       · 本地找不到明显直线时可以**不动作、只提示**，
+         比"调一次 AI 花了额度还给了个错角度"体验好
+
+     算法（Hough 式的一维扫描 —— 不做真正的 Hough 累加器）：
+       1. 先把图缩到长边 ~720：原图几千万像素没必要全扫，
+          而且缩略图上噪声被平均掉，反而更稳
+       2. 取边缘：Sobel 幅值大的像素
+       3. 对候选角 θ ∈ [-10°, 10°]（步长 0.1°）：
+          把边缘点投到 θ 坐标系的一根轴上 → 做直方图。
+          一条真实的直线在**正确角度**上会让投影能量集中成尖峰。
+       4. y' 轴找水平线（地平线），x' 轴找垂直线（门框/墙角），
+          取两者里更尖的那个
+       5. 尖峰够不够尖决定"有没有把握"：不够就返回 null，不动作
+
+     ⚠️ 扫描范围 ±14° **不是**"最大能修 14°"。上面说过：扫描是在
+     **归一化空间**里做的，而归一化空间的角度会被长宽比放大
+     （3:2 的图放大 1.5 倍）。所以 ±14° 的归一化范围对应真实照片上
+     大约 ±10° 的倾斜 —— 这正是"稍微歪"的量级。更歪的该用 ±45 滑杆手动转。
+     范围再放大会让错误匹配（人像的斜肩、裙摆）盖过真实地平线。
+     ⚠️ 符号：返回的是**要给 geom.rot 加多少度**（正值 = 逆时针，
+     和滑杆同约定）。检测到的线倾斜了 φ，要转正就得加 -φ。
+     ================================================================ */
+  const STRAIGHTEN_MAX_DEG = 14;
+  const STRAIGHTEN_STEP_DEG = 0.1;
+
+  /**
+   * 从 ImageData 里估"照片歪了多少度"。
+   * @returns {{ deg:number, score:number } | null} deg = 要加给 rot 的度数
+   *
+   * ⚠️ 抽成纯函数（输入 ImageData、输出数字）是为了**能测**：
+   * 造一张已知倾斜的图就能验它准不准，不需要真 API、不需要 UI。
+   */
+  function detectStraightenAngle(data, w, h) {
+    if (!data || w < 16 || h < 16) return null;
+
+    /* ---- 1. 灰度 + Sobel 边缘 ---- */
+    const lum = new Float32Array(w * h);
+    for (let i = 0, p = 0; i < lum.length; i++, p += 4) {
+      // 0.2126/0.7152/0.0722 —— 和 shader 里的 luma 同一套系数
+      lum[i] = 0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2];
+    }
+    let sum = 0;
+    for (let i = 0; i < lum.length; i++) sum += lum[i];
+    const mean = sum / lum.length;
+
+    const pts = [];
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const gx = (lum[i - w + 1] + 2 * lum[i + 1] + lum[i + w + 1])
+                 - (lum[i - w - 1] + 2 * lum[i - 1] + lum[i + w - 1]);
+        const gy = (lum[i + w - 1] + 2 * lum[i + w] + lum[i + w + 1])
+                 - (lum[i - w - 1] + 2 * lum[i - w] + lum[i - w + 1]);
+        const mag = Math.sqrt(gx * gx + gy * gy);
+        /* 阈值 = 全局均值 ×2 + 8：纯色/糊图会被自然滤掉
+           （点太少 → 后面返回 null），不用单独判"这张图有没有边缘" */
+        if (mag > mean * 2 + 8) pts.push(x / w, y / h, mag);
+      }
+    }
+    if (pts.length / 3 < 40) return null;
+
+    /* ---- 2. 扫描：哪个角度的投影最"尖" ---- */
+    const BINS = 64;
+    const tmp = new Float64Array(BINS);
+    const tmpX = new Float64Array(BINS);
+
+    /** 投影能量：直方图归一化后的平方和（越尖 → 越大） */
+    const energy = (deg) => {
+      tmp.fill(0); tmpX.fill(0);
+      const th = deg * Math.PI / 180;
+      const c = Math.cos(th), s = Math.sin(th);
+      for (let k = 0; k < pts.length; k += 3) {
+        const dx = pts[k] - 0.5, dy = pts[k + 1] - 0.5;
+        const wgt = pts[k + 2];
+        // y' = -s·dx + c·dy  → 找水平线（地平线）
+        let b = Math.floor((-s * dx + c * dy + 0.5) * BINS);
+        if (b < 0) b = 0; else if (b >= BINS) b = BINS - 1;
+        tmp[b] += wgt;
+        // x' = c·dx + s·dy  → 找垂直线（门框/墙角）
+        let bx = Math.floor((c * dx + s * dy + 0.5) * BINS);
+        if (bx < 0) bx = 0; else if (bx >= BINS) bx = BINS - 1;
+        tmpX[bx] += wgt;
+      }
+      let e = 0, ex = 0, t = 0, tx = 0;
+      for (let i = 0; i < BINS; i++) {
+        e += tmp[i] * tmp[i]; t += tmp[i];
+        ex += tmpX[i] * tmpX[i]; tx += tmpX[i];
+      }
+      // 除以总量的平方 → 不随边缘点数量变化（否则"边缘多的角度"永远赢）
+      return [e / (t * t || 1), ex / (tx * tx || 1)];
+    };
+
+    let bestY = { deg: 0, score: -1 };
+    let bestX = { deg: 0, score: -1 };
+    for (let deg = -STRAIGHTEN_MAX_DEG;
+         deg <= STRAIGHTEN_MAX_DEG + 1e-9; deg += STRAIGHTEN_STEP_DEG) {
+      const [e, ex] = energy(deg);
+      if (e > bestY.score) bestY = { deg, score: e };
+      if (ex > bestX.score) bestX = { deg, score: ex };
+    }
+
+    /* ---- 3. 有没有把握？ ----
+       判据：尖峰能量要明显高于"整条扫描曲线的中位数"。
+       ⚠️ 用中位数而不是均值：峰值自己会把均值拉高，阈值就失效了。 */
+    const sample = [];
+    for (let deg = -STRAIGHTEN_MAX_DEG;
+         deg <= STRAIGHTEN_MAX_DEG + 1e-9; deg += STRAIGHTEN_STEP_DEG * 4) {
+      const [e, ex] = energy(deg);
+      sample.push(Math.max(e, ex));
+    }
+    sample.sort((a, b) => a - b);
+    const median = sample[Math.floor(sample.length / 2)] || 0;
+
+    const best = bestY.score >= bestX.score ? bestY : bestX;
+    if (!(median > 0) || best.score < median * 1.8) return null;
+
+    /* ---- 4. 符号 + **长宽比修正** ----
+       ⚠️⚠️ 这里曾经漏掉长宽比，是真 bug：
+       上面把 x、y 各自归一化到 [0,1]，于是"归一化空间里的斜率"
+       和"真实图像空间里的斜率"差了 W/H 倍。
+
+       具体算一遍就清楚：真实空间里斜率 tan(φ) 的直线，归一化之后
+       斜率变成 tan(φ)·(W/H)。所以检测器在归一化空间量到的角 θ
+       对应真实角 φ = atan( (H/W)·tan(θ) )。
+       **只有正方形（W=H）时才 θ == φ** —— 所以这个错在方图上完全
+       看不出来，一到 3:2 的照片上就偏（实测 900×600 时，
+       真实 1.5° 被报成 2.2°，真实 6° 被报成 9°：偏差随角度放大）。
+
+       best.deg 是"边在归一化空间里斜了多少"，先换成真实角，
+       再取相反数（rot 正值 = 逆时针，见上面的符号约定）。 */
+    const theta = best.deg * Math.PI / 180;
+    const trueDeg = Math.atan((h / w) * Math.tan(theta)) * 180 / Math.PI;
+    const deg = -trueDeg;
+    if (Math.abs(deg) < 0.15) return { deg: 0, score: best.score };
+    return { deg, score: best.score };
+  }
+
+  /** 把当前图缩到长边 ~720 后取 ImageData（给上面的检测器吃） */
+  function sampleImageData(maxSide) {
+    if (!img) return null;
+    const W0 = img.width, H0 = img.height;
+    const k = Math.min(1, (maxSide || 720) / Math.max(W0, H0));
+    const w = Math.max(16, Math.round(W0 * k));
+    const h = Math.max(16, Math.round(H0 * k));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0, w, h);
+    try {
+      return { data: g.getImageData(0, 0, w, h).data, w, h };
+    } catch {
+      return null;                     // 防御：理论上同源不会抛
+    }
+  }
+
+  /**
+   * 自动水平校正：检测 → 累加到旋转角上。
+   * ⚠️ **累加**而不是覆盖：用户可能已经手调过一点，
+   * 自动校正该是"再帮我转正一点"，不是"抹掉我的手调"。
+   */
+  function autoStraighten() {
+    if (!img) return false;
+    ensureGeom();
+    const s = sampleImageData();
+    if (!s) { toast('读不到图片内容，没法自动校正'); return false; }
+    const r = detectStraightenAngle(s.data, s.w, s.h);
+    if (!r) {
+      toast('找不到明显的地平线/垂直边，请手动拖旋转滑杆', 3200);
+      return false;
+    }
+    if (r.deg === 0) {
+      toast('看起来已经是正的', 2400);
+      return true;
+    }
+    setDisplay({ rotate: geom.rot + r.deg });
+    toast('已自动校正 ' + (r.deg > 0 ? '+' : '') + r.deg.toFixed(1) + '°', 3200);
+    return true;
+  }
+  /* ================================================================
      由当前状态算出「输出尺寸 + 显示变换参数」
      ================================================================
      ⚠️⚠️ 唯一的硬约束：**显示变换必须是相似变换**
@@ -1759,6 +1947,10 @@
     const fh = $('stFlipH'), fv = $('stFlipV');
     if (fh) fh.addEventListener('click', () => setDisplay({ flipX: !geom.flipX }));
     if (fv) fv.addEventListener('click', () => setDisplay({ flipY: !geom.flipY }));
+
+    // 自动水平校正：纯本地找地平线/垂直边（见 autoStraighten 的说明）
+    const st = $('stStraighten');
+    if (st) st.addEventListener('click', () => autoStraighten());
 
     const zs = $('stZoom');
     if (zs) zs.addEventListener('input', e => {
@@ -3596,6 +3788,11 @@
     rotateQuarter,
     fitZoomToWindow,
     autoZoomFor,
+    /* 自动水平校正。暴露出来是为了能在浏览器里造一张**已知倾斜**的图
+       验它准不准 —— 这个函数的正确性完全是数值问题，静态测不了。 */
+    autoStraighten,
+    detectStraightenAngle,
+    sampleImageData,
     cropRenderPlan,
     bakeRenderPlan,
     clampCropRect,
