@@ -2813,6 +2813,13 @@
       const s = Math.min(1, 2048 / long);
       const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
 
+      // ⚠️ 每次美颜都从**原图**开始，不基于上一次的结果。
+      // 连着点两个模板，第二个应该基于原图，不是基于第一个的结果。
+      // 和像素蛋糕行为一致：每个模板独立，互不叠加。
+      if (beautyBackup) {
+        await swapImage(beautyBackup);
+      }
+
       const off = document.createElement('canvas');
       off.width = cw; off.height = ch;
       off.getContext('2d').drawImage(img, 0, 0, cw, ch);
@@ -3443,6 +3450,13 @@
       const long = Math.max(img.width, img.height);
       const s = Math.min(1, MAX_EDGE / long);
       const cw = Math.round(img.width * s), ch = Math.round(img.height * s);
+
+      // ⚠️ 每次美颜都从**原图**开始，不基于上一次的结果。
+      // 连着点两个模板，第二个应该基于原图，不是基于第一个的结果。
+      // 和像素蛋糕行为一致：每个模板独立，互不叠加。
+      if (beautyBackup) {
+        await swapImage(beautyBackup);
+      }
 
       const off = document.createElement('canvas');
       off.width = cw; off.height = ch;
