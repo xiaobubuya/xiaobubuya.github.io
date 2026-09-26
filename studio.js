@@ -596,6 +596,11 @@
          （红罩在暗部不动），掺点亮色，暗部亮部都能看出选区在哪。 */
       {
         float m = texture2D(uMask, vUv).r;
+        // DEBUG: output mask value as grayscale
+        if (uUseMask > 0.5) {
+          gl_FragColor = vec4(m, m, m, 1.0);
+          return;
+        }
         // 品红：和暖调照片（日落 / 皮肤 / 室内暖光）对比鲜明。
         // ⚠️ 原来用暖橙红，暖叠暖在日落照片上和原图暖光融为一体 ——
         //    用户看到「涂了一小下、半张图都红了」，其实是分不清叠加色
@@ -922,9 +927,13 @@
     // 会被误判为 9 参数形式：width=gl.RGBA(36293)、height=gl.UNSIGNED_BYTE(5121)，
     // 上传静默失败，纹理保持未初始化状态——shader 采样返回 1.0，整张图品红。
     // 表现是「覆盖率 10.8% 但视觉上 100% 品红」，极难排查。
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA,
-      data.width, data.height, 0,
-      gl.RGBA, gl.UNSIGNED_BYTE, data.data);
+    // ⚠️ 用 6 参数形式传 ImageData（浏览器自动识别 width/height/data）。
+    // 9 参数传 TypedArray 在 Chrome/SwiftShader 上实测会**静默上传失败**：
+    // shader 采样读到的是"未初始化纹理"（默认返回值不是 0 也不是 1，
+    // 而是一个奇怪的中间灰度），最终表现为选区整张图都染成一片色，
+    // 而不是只在画笔圈住的区域。
+    // 之前误以为是浏览器重载识别问题而换成 9 参数——方向错了。
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
     mask._uploadedVersion = mask.version;
     gl.activeTexture(gl.TEXTURE0);
   }
@@ -3080,7 +3089,8 @@
      ================================================================ */
   async function swapImage(source) {
     const bmp = await createImageBitmap(source);
-    if (img && img.close) img.close();
+    // ⚠️ 不要 close beautyBackup —— 那是撤销用的原图，留着下次还能用
+    if (img && img.close && img !== beautyBackup) img.close();
     img = bmp;
     gl.bindTexture(gl.TEXTURE_2D, imageTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
