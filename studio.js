@@ -3384,6 +3384,11 @@
       const card = document.createElement('button');
       card.className = 'st-tpl-card';
       card.dataset.tpl = t.id;
+      // 说明挂在**卡片**上而不是名字那个 span 上。
+      // 卡片是「缩略图 + 名字」一整块，鼠标悬在缩略图上时也该看到说明；
+      // 挂在 span 上就只有悬在文字上才出提示（缩略图占了大半面积，
+      // 结果就是「悬上去没反应」）。
+      card.title = t.desc || t.name;
 
       // 缩略图：用模板名生成渐变色块（后续替换为真实预览图）
       const thumb = document.createElement('div');
@@ -3395,7 +3400,6 @@
       const name = document.createElement('span');
       name.className = 'st-tpl-name';
       name.textContent = t.name;
-      name.title = t.desc || t.name;
 
       card.append(thumb, name);
       card.addEventListener('click', () => applyTemplate(i));
