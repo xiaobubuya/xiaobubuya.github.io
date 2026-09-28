@@ -249,34 +249,30 @@ try {
          出现在画面 R(θ)P_img 上。
        ================================================================ */
     out.marker = [];
-    const P = { u: 0.25, v: 0.25 };            // 标记在图片上的位置（左上偏内）
+    const P = { u: 0.25, v: 0.25 };            // 标记在图片上的位置（左上偏内，v 向下）
     for (const deg of [0, 20, -20, 35]) {
       await load(makeMarker(W, H));
       S.enterRotate();
-      /* 用"适合窗口"的缩放到"整张图都看得见"，这样
-          ① 标记一定在画面里（zoom 很小时视口只剩中心一小块）
-          ② 期望位置可以直接用恒等式算：图片铺满视口 = 0.5 对齐 0.5
-         ⚠️ 不能用写死的 zoom=1：视口只有 1/zoom 那么大，zoom 小时
-         标记会跑到画面外，测试就变成"找不到标记"的假红。 */
-      const z = S.autoZoomFor(deg);
+      const z = S.autoZoomFor(deg);            // 新模型下恒为 1（1:1，画布=外接框）
       S.setDisplay({ rotate: deg, zoom: z });
       await new Promise(r => setTimeout(r, 60));
       const m = markerAt(2);
       const th = deg * Math.PI / 180;
-      /* 标记在图片上是 (0.25, 0.25)（图片坐标 y 向下），换算成**画面**坐标
-         （v 向上，和 GL readPixels 的 y 同向）就是 (0.25, 0.75)。
-         然后按"图片铺满视口 → 半宽半高 = 0.5·z"再逆时针转 θ：
-              dx = P.u - 0.5,  dy = P.v - 0.5
-              u' = 0.5 + z·( cosθ·dx - sinθ·dy)
-              v' = 0.5 + z·( sinθ·dx + cosθ·dy)
-         ⚠️ 这里我写错过一次：直接拿图片的 (0.25, 0.25) 当画面坐标，
-         于是 0° 时期望出 (0.25, 0.25) 而实测是 (0.25, 0.75) ——
-         四个角度全"偏"了，而且正好是镜像关系，看着像 bug 其实是测试错了。 */
-      const Pn = { u: P.u, v: 1 - P.v };
-      const dx = Pn.u - 0.5, dy = Pn.v - 0.5;
-      const eu = 0.5 + z * (Math.cos(th) * dx - Math.sin(th) * dy);
-      const ev = 0.5 + z * (Math.sin(th) * dx + Math.cos(th) * dy);
-      out.marker.push({ deg, z, m, P: Pn, expect: { u: eu, v: ev } });
+      const ca = Math.cos(th), sa = Math.sin(th);
+      // 画布 = 图片旋转后的**外接框**（bufW×bufH），图片以 1:1 填满。
+      // 标记位置 = R(-θ)·((P-0.5)·(W0,H0)) 放进外接框（v 向上）：
+      //     u' = bx/bufW + 0.5,  v' = 0.5 - by/bufH
+      // R(-θ) = [[cosθ, sinθ], [-sinθ, cosθ]]（带符号）
+      // ⚠️ 外接框尺寸要用**绝对值**（和 cropRenderPlan 里的 Math.abs 一致）——
+      //    负角度时 cos/sin 可能为负，不取绝对值会算出负的画布尺寸。
+      const bufW = W * Math.abs(ca) + H * Math.abs(sa);
+      const bufH = W * Math.abs(sa) + H * Math.abs(ca);
+      const dx = (P.u - 0.5) * W, dy = (P.v - 0.5) * H;
+      const bx = ca * dx + sa * dy;            // R(-θ)
+      const by = -sa * dx + ca * dy;
+      const eu = bx / bufW + 0.5;
+      const ev = 0.5 - by / bufH;              // v 向上
+      out.marker.push({ deg, z, m, P, expect: { u: eu, v: ev } });
     }
 
     /* ================================================================
@@ -306,16 +302,27 @@ try {
      *    做法：把图片坐标 (u, v) 按 R(45°) 转到画面坐标再采样。 */
     S.fitZoomToWindow();
     const fitZoom = S.geom.zoom;
+    /* 新映射：画布 = 图片旋转后的外接框，图片以 1:1 填满。
+       图片点 (u, vDown) → 外接框画布坐标（v 向上）：
+         buffer_px = R(-θ)·((u-0.5)·W0, (vDown-0.5)·H0)
+         u' = buffer_px.x / bufW + 0.5,  v' = 0.5 - buffer_px.y / bufH
+       ⚠️ 旧版直接对归一化坐标转 —— 非方形画布下等价于拉伸，随这轮修掉。 */
     const th45 = 45 * Math.PI / 180;
-    const rot2scr = (u, vUp) => {
-      const dx = u - 0.5, dy = vUp - 0.5;
-      return [0.5 + Math.cos(th45) * dx - Math.sin(th45) * dy,
-              0.5 + Math.sin(th45) * dx + Math.cos(th45) * dy];
+    const ca45 = Math.cos(th45), sa45 = Math.sin(th45);
+    // 外接框尺寸用绝对值（和 cropRenderPlan 一致）
+    const bufW = W * Math.abs(ca45) + H * Math.abs(sa45);
+    const bufH = W * Math.abs(sa45) + H * Math.abs(ca45);
+    const rot2scr = (u, vDown) => {
+      const dx = (u - 0.5) * W, dy = (vDown - 0.5) * H;
+      const bx = ca45 * dx + sa45 * dy;       // R(-θ)
+      const by = -sa45 * dx + ca45 * dy;
+      return [bx / bufW + 0.5, 0.5 - by / bufH];
     };
     const INSET = 0.05;
+    // 参数是图片坐标（v 向下）：上边 = 0.05，下边 = 0.95
     const edgeMids = [
-      rot2scr(0.5, 1 - INSET),        // 图片上边中点
-      rot2scr(0.5, INSET),            // 图片下边中点
+      rot2scr(0.5, INSET),            // 图片上边中点
+      rot2scr(0.5, 1 - INSET),        // 图片下边中点
       rot2scr(INSET, 0.5),            // 图片左边中点
       rot2scr(1 - INSET, 0.5)         // 图片右边中点
     ];

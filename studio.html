@@ -139,26 +139,23 @@
           </div>
         </section>
 
-        <!-- ===================== 影调 =====================
-             曝光/对比/高光/阴影 + 曲线 + 质感（锐化/暗角/颗粒）
-             都属于「明暗和质感」，放一页。 -->
-        <section class="st-page" data-page="tone">
+        <!-- ===================== 调整 =====================
+             影调 + 颜色 + 局部（选区）合并成一页。
+             为什么合：真实修图流程是「涂选区 → 调影调 → 调颜色 →
+             修选区」**交替配合**着用的（曝光、饱和度、蒙版本来就是
+             同一个循环），拆成三页每次都要点竖栏切换，流程被打断。
+             「局部调整开关」在分页外面常驻（见下），任何调色都配合它用。
+             页面长一点没关系 —— 它自己滚动，开关固定在底部始终可见。 -->
+        <section class="st-page" data-page="adjust">
+          <!-- 影调：曝光/对比/高光/阴影 + 曲线 + 质感（锐化/暗角/颗粒） -->
           <div class="st-sliders" id="stSliders"></div>
-        </section>
 
-        <!-- ===================== 颜色 =====================
-             色温/饱和度 + HSL（色相/自然饱和度/明度） -->
-        <section class="st-page" data-page="color">
+          <!-- 颜色：色温/饱和度 + HSL（色相/自然饱和度/明度） -->
           <div class="st-sliders" id="stSlidersColor"></div>
-        </section>
 
-        <!-- ===================== 局部（选区）=====================
-             选区是**共用**的，所以单独一页：
-               · 常规调整时，它的含义是「调整只作用在涂过的区域」
-               · 抹除时，它的含义是「要抹掉什么」
-             「抹掉选区」也留在这页 —— 它就是对着选区做的操作，
-             挪到「工具」页会多一次来回切换。 -->
-        <section class="st-page" data-page="local">
+          <!-- 选区 / 蒙版：共用工具。常规调整时 = 「调整只作用在
+               涂过的区域」；抹除时 = 「要抹掉什么」。
+               「抹掉选区」也留在这 —— 它就是对着选区做的操作。 -->
           <div class="st-mask" id="stMaskBlock">
             <div class="st-mask-head">
               <span>选区</span>
@@ -285,7 +282,7 @@
 
       <!-- 局部调整模式。只在**有选区**时出现：
            没有选区时它没有意义，常驻反而让人以为"调整坏了"。
-           有选区时它必须随时可见 —— 否则用户切到影调拖滑杆，
+           有选区时它必须随时可见 —— 否则用户在「调整」页拖滑杆，
            会不明白为什么只有一块区域在变。 -->
       <div class="st-scope" id="stScope" hidden>
         <label class="st-switch" title="打开后，调整只作用于涂过的区域">
@@ -301,9 +298,7 @@
     <nav class="st-rail" id="stRail">
       <button class="st-rail-btn on" data-page="preset"   title="预设"><i>🎛</i><span>预设</span></button>
       <button class="st-rail-btn"    data-page="portrait" title="人像"><i>👤</i><span>人像</span></button>
-      <button class="st-rail-btn"    data-page="tone"     title="影调"><i>☀</i><span>影调</span></button>
-      <button class="st-rail-btn"    data-page="color"    title="颜色"><i>🎨</i><span>颜色</span></button>
-      <button class="st-rail-btn"    data-page="local"    title="局部"><i>✨</i><span>局部</span></button>
+      <button class="st-rail-btn"    data-page="adjust"   title="调整"><i>☀</i><span>调整</span></button>
       <button class="st-rail-btn"    data-page="tool"     title="工具"><i>✂</i><span>工具</span></button>
     </nav>
   </aside>

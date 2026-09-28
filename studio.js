@@ -203,8 +203,10 @@
        ================================================================ */
     uniform float uRot;          // 旋转角（弧度）
     uniform vec2 uFlip;          // (1,-1) = 只翻水平；( -1,1) = 只翻垂直
-    uniform float uDisplayScale; // 显示缩放（标量！）
-    uniform vec2 uImgOffset;     // 视口原点在图片归一化坐标里的位置
+    uniform float uDisplayScale; // 内容缩放（标量！）
+    uniform vec2 uImgOffset;     // 取景框中心 - 0.5（图片 UV 单位）
+    uniform vec2 uBufSize;       // 画布（缓冲）像素尺寸
+    uniform vec2 uImgSize;       // 图片像素尺寸
     uniform vec3 uBg;            // 视口露到图片外的填色（深色底）
 
     // sRGB <-> 线性。这两个函数是「正确调色」的地基：
@@ -496,10 +498,14 @@
       bool identity = (uRot == 0.0 && uDisplayScale == 1.0
                        && uFlip == vec2(1.0) && uImgOffset == vec2(0.0));
       if (!identity) {
-        vec2 p = (vUv - 0.5) * uFlip;
+        // ⚠️ 在**画布像素空间**做旋转/翻转/缩放：vUv 是归一化方坐标，
+        // 画布非方时直接转就是各向异性（圆变椭圆）。还原成像素 →
+        // 旋转 → 缩放 → 再归一化回图片 UV。
+        vec2 p = (vUv - 0.5) * uBufSize;
+        p = p * uFlip;
         float ca = cos(uRot), sa = sin(uRot);
         p = mat2(ca, sa, -sa, ca) * (p / uDisplayScale);
-        u = p + 0.5 + uImgOffset;
+        u = p / uImgSize + 0.5 + uImgOffset;
       }
 
       /* 视口露到原图外面的部分 → 深色底。
@@ -836,6 +842,8 @@
     uniforms.uImgOffset = gl.getUniformLocation(program, 'uImgOffset');
     uniforms.uBg = gl.getUniformLocation(program, 'uBg');
     uniforms.uCurve = gl.getUniformLocation(program, 'uCurve');
+    uniforms.uBufSize = gl.getUniformLocation(program, 'uBufSize');
+    uniforms.uImgSize = gl.getUniformLocation(program, 'uImgSize');
 
     // 纹理：非 2 的幂也要能重复/夹取
     imageTex = gl.createTexture();
@@ -1639,59 +1647,38 @@
       ? override.rotDeg : geom.rot;
     if (!(r.w > 0) || !(r.h > 0)) return null;
 
-    const { vw, vh } = viewportDims(rotDeg, zoom);
+    /* ================================================================
+       新模型：画布 = 图片旋转后的**外接框**，输出 = 取景框旋转后的外接框
+       ----------------------------------------------------------------
+       旧模型用 rotatePad 把视口撑大 p 倍再装，结果：
+         · 画布非方形 + shader 在 vUv 空间做刚体旋转 → 各向异性拉伸
+         · 输出 = r.w·p·W0 → 应用后照片凭空变大、还烘进深色底
+       新模型：
+         · 画布 = 整张图旋转后的外接框（AABB），图片以 1:1 填满 ——
+           角度只改变画布形状，不改变图片大小
+         · 输出 = 取景框那块区域旋转后的外接框，1:1 —— 旋转不放大照片
+         · offset = 取景框中心 - 0.5：显示整图时 = 0（画布中心 = 图片中心）；
+           烘焙时由 bakeRenderPlan 用取景框中心算
+       ================================================================ */
+    const phi = Math.abs(Number(rotDeg) || 0) * Math.PI / 180;
+    const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
 
-    /* ⚠️⚠️ offset 恒为 0 —— 这一处错了**两轮**，说清楚：
-     *
-     * 画布上显示的是**整个视口**（zoom=1 时就是整张图），取景框只是
-     * 画在上面的一个框。所以"画布归一化坐标 → 图片归一化坐标"除了
-     * 缩放之外**没有任何平移**：画布中心就是图片中心。
-     *
-     * 我先后写成过：
-     *   【一】(r.x + r.w/2 − 0.5)·… —— 取景框中心相对图片中心的偏移。
-     *        满幅取景框时中心就是 0.5，偏出来正好 0，**看着是对的**；
-     *        收小到 0.5×0.5 居中时就多移了 0.25，画面整体偏。
-     *   【二】(r.x, 1−r.y−r.h) —— "视口原点放在取景框左下角"。
-     *        那个前提本身不成立：视口是整张图的显示区域，不会因为
-     *        取景框挪动而挪动（否则拖框时照片会跟着滑走，很怪）。
-     *
-     * 判据（test/rotate-invariant.test.mjs）：取景框 0.5×0.5 居中时，
-     * 画面中心必须读到**原图中心** —— 这就是"画布中心 = 图片中心"
-     * 这条不变量，和取景框在哪无关。 */
+    // 画布 = 整图外接框（显示用；0° 时自动退化为图片本身）
+    const bufW = Math.max(1, Math.round(W0 * c + H0 * s));
+    const bufH = Math.max(1, Math.round(W0 * s + H0 * c));
+
+    // 输出 = 取景框区域旋转后的外接框（1:1，和烘焙一致）
+    const outW = Math.max(1, Math.round(r.w * W0 * c + r.h * H0 * s));
+    const outH = Math.max(1, Math.round(r.w * W0 * s + r.h * H0 * c));
+
+    // 显示整图 → 画布中心 = 图片中心 → 偏移恒 0
     const offX = 0;
     const offY = 0;
 
-    /* ================================================================
-       输出尺寸 = **取景框那块区域**（源图像素）
-       ----------------------------------------------------------------
-       视口覆盖 vw × vh 源图像素，取景框占视口的 r.w × r.h，
-       所以输出 = r.w·vw × r.h·vh。
-       校验：两个轴都是同一个 1/zoom 的相似变换，输出比例
-            = (r.w·W0)/(r.h·H0) = 取景框的像素比例 ✓ 不扭曲。
-
-       zoom 的含义（**越小 = 拉远 = 视野越宽 = 输出越大**）：
-         · zoom = 1：输出就是取景框那块的原分辨率（1:1，不糊）
-         · zoom < 1：拉远看全图，输出相应变大（屏幕上看到什么就导出什么）
-       ================================================================ */
-    const outW = Math.max(1, Math.round(r.w * vw));
-    const outH = Math.max(1, Math.round(r.h * vh));
-
-    /* ⚠️⚠️ uDisplayScale 必须**等于**用户设的 zoom，不能"为了填满屏幕"
-     * 把它抬高。第一版写的是 max(needZoom, zoom)（needZoom = 让画布铺满
-     * 可用空间），那是个**真 bug**：画布放着大不大是 CSS 的事（见下面
-     * 的 dispW/dispH），而 uDisplayScale 决定的是**视口覆盖多大范围**。
-     * 抬高它 = 视野被压缩 = 用户拉远也看不到整张图。
-     * 实测症状：400×300 的图 zoom=0.7 时被抬到 2.08，画面只剩中心
-     * 48%，四角永远看不到深色底。 */
+    /* ⚠️⚠️ uDisplayScale = zoom（内容缩放）：zoom=1 = 1:1，<1 拉远、
+       >1 拉近。不要"为了填满屏幕"抬高它 —— 画布尺寸是上面的 bufW/bufH，
+       屏幕放不放得下是下面 dispK 的事。 */
     const screenZoom = zoom;
-
-    /* 画布要显示的是「视口旋转之后的外接框」，所以缓冲尺寸用 viewportBox
-       —— 否则转 45°/90° 时画面会被裁掉两头。
-       （offset 不受影响：它只由 rect 和 zoom 决定。）
-       0° 时外接框就是视口本身（cos=1, sin=0），自动退化。 */
-    const buf = viewportBox(vw, vh, rotDeg);
-    const bufW = Math.max(1, Math.round(buf.W));
-    const bufH = Math.max(1, Math.round(buf.H));
 
     const stage = $('stStage');
     const pad = 24;
@@ -1710,7 +1697,7 @@
       rect: { ...r },
       outW, outH,
       bufW, bufH,
-      vw, vh,
+      vw: W0, vh: H0,
       dispW: Math.max(1, bufW * dispK),
       dispH: Math.max(1, bufH * dispK)
     };
@@ -1799,31 +1786,36 @@
   /**
    * 烘焙用的计划：取景框那块区域，按**源图 1:1** 输出。
    *
-   * ⚠️ 和 cropRenderPlan 的区别只有"视野"：
-   *   cropRenderPlan 跟着 zoom（用户看多大就输出多大），
-   *   bakeRenderPlan 固定 zoom = 1（取景框占视口多大就输出多少源图像素）。
-   * 两个都是相似变换 —— 这里两个轴共用 1/1，显然成立。
+   * ⚠️ 新模型下和 cropRenderPlan 的差别在 offset 和 buf：
+   *   · cropRenderPlan（预览）：画布 = 整图外接框、offset = 0（显示整张图）
+   *   · bakeRenderPlan（应用）：画布 = 取景框区域旋转后的外接框、
+   *     offset = 取景框中心 - 0.5（画布中心对准取景框中心）
+   * 两者都是相似变换 —— 这里两个轴共用 1/1，显然成立。
    */
   function bakeRenderPlan() {
     if (!geom || !img) return null;
     const W0 = img.width, H0 = img.height;
     const r = geom.rect;
-    const { vw, vh } = viewportDims(geom.rot, 1);
-    const cw = r.w * vw, ch = r.h * vh;
-    if (!(cw >= 2) || !(ch >= 2)) return null;
+    if (!(r.w > 0) || !(r.h > 0)) return null;
+    const phi = Math.abs(geom.rot) * Math.PI / 180;
+    const c = Math.abs(Math.cos(phi)), s = Math.abs(Math.sin(phi));
+    // 输出 = 取景框区域旋转后的外接框（1:1，旋转不放大照片、不烘深色底）
+    const outW = Math.max(1, Math.round(r.w * W0 * c + r.h * H0 * s));
+    const outH = Math.max(1, Math.round(r.w * W0 * s + r.h * H0 * c));
+    if (!(outW >= 2) || !(outH >= 2)) return null;
     return {
       W0, H0, zoom: 1,
       screenZoom: 1,
       rot: geom.rot * Math.PI / 180,
       flipX: geom.flipX ? -1 : 1,
       flipY: geom.flipY ? -1 : 1,
-      // ⚠️ 和 cropRenderPlan 同理：视口→图片没有平移，off 恒为 0。
-      // 输出尺寸由 r.w·vw / r.h·vh 决定（见上面 outW/outH）。
-      offX: 0, offY: 0,
+      // 画布中心对应取景框中心 → 偏移 = 框中心 - 0.5（满幅框 = 0）
+      offX: (r.x + r.w / 2) - 0.5,
+      offY: (r.y + r.h / 2) - 0.5,
       s: 1,
-      vw, vh,
-      outW: Math.max(1, Math.round(cw)),
-      outH: Math.max(1, Math.round(ch))
+      vw: W0, vh: H0,
+      bufW: outW, bufH: outH,
+      outW, outH
     };
   }
 
@@ -1836,6 +1828,10 @@
     gl.uniform1f(uniforms.uDisplayScale,
       plan.screenZoom !== undefined ? plan.screenZoom : plan.zoom);
     gl.uniform2f(uniforms.uImgOffset, plan.offX, plan.offY);
+    // ⚠️ 像素空间旋转必须知道画布/图片的实际尺寸（uBufSize / uImgSize），
+    // 否则非方形画布上会各向异性拉伸
+    gl.uniform2f(uniforms.uBufSize, plan.bufW, plan.bufH);
+    gl.uniform2f(uniforms.uImgSize, plan.W0, plan.H0);
     gl.uniform3f(uniforms.uBg, 0.086, 0.082, 0.078);   // 深色底
     // 诊断用：记下最后一次真正喂进 shader 的计划（测试读它排查几何问题）
     _lastPlan = 'uniform rot=' + plan.rot.toFixed(4)
@@ -1852,6 +1848,10 @@
     gl.uniform2f(uniforms.uFlip, 1, 1);
     gl.uniform1f(uniforms.uDisplayScale, 1);
     gl.uniform2f(uniforms.uImgOffset, 0, 0);
+    // 无几何时画布 = 图片（layoutCanvas 不放大），两个尺寸相同 → 恒等
+    const iw = img ? img.width : 0, ih = img ? img.height : 0;
+    gl.uniform2f(uniforms.uBufSize, iw, ih);
+    gl.uniform2f(uniforms.uImgSize, iw, ih);
     gl.uniform3f(uniforms.uBg, 0.086, 0.082, 0.078);
   }
 
@@ -1888,6 +1888,55 @@
     return { ...geom.rect };
   }
 
+  /* ================================================================
+     取景框 ↔ overlay 画布的坐标互转
+     ----------------------------------------------------------------
+     overlay 是盖在 WebGL 画布上的 2D canvas，尺寸和缓冲一致。
+     图片 UV（V 向下，和纹理一致）→ overlay 像素的映射**必须和 shader
+     的显示映射一致**，否则旋转/缩放时取景框会脱离画面。
+
+     shader：u_img = R(+rot)·(vUv-0.5)·bufSize·flip / zoom / imgSize + 0.5
+     → buffer_px = R(-rot)·(u_img-0.5)·zoom·imgSize·flip
+     → overlay(2D, y 向下) = buffer_px + (bufW/2, bufH/2)
+     ================================================================ */
+  function uvToOverlay(U, V) {
+    const phi = (geom.rot || 0) * Math.PI / 180;
+    const ca = Math.cos(phi), sa = Math.sin(phi);
+    const fx = geom.flipX ? -1 : 1, fy = geom.flipY ? -1 : 1;
+    const dx = (U - 0.5) * img.width * (geom.zoom || 1) * fx;
+    const dy = (V - 0.5) * img.height * (geom.zoom || 1) * fy;
+    // R(-θ) = [[ca, sa], [-sa, ca]]
+    const bx = ca * dx + sa * dy;
+    const by = -sa * dx + ca * dy;
+    const cv2 = ensureCropCanvas();
+    return [bx + cv2.width / 2, by + cv2.height / 2];
+  }
+
+  /** overlay 像素（y 向下）→ 图片 UV（V 向下）。uvToOverlay 的逆 */
+  function overlayToUV(x, y) {
+    const phi = (geom.rot || 0) * Math.PI / 180;
+    const ca = Math.cos(phi), sa = Math.sin(phi);
+    const cv2 = ensureCropCanvas();
+    const bx = x - cv2.width / 2, by = y - cv2.height / 2;
+    // R(+θ) = [[ca, -sa], [sa, ca]]
+    const dx = ca * bx - sa * by;
+    const dy = sa * bx + ca * by;
+    const fx = geom.flipX ? -1 : 1, fy = geom.flipY ? -1 : 1;
+    return [dx / (img.width * (geom.zoom || 1) * fx) + 0.5,
+            dy / (img.height * (geom.zoom || 1) * fy) + 0.5];
+  }
+
+  /** 取景框四角（y-up 坐标系：nw/ne/sw/se）在 overlay 像素里的位置 */
+  function frameCornersPx() {
+    const r = geom.rect;
+    // y-up → 图片 UV（V 向下）：V = 1 - y_up
+    const nw = uvToOverlay(r.x, 1 - (r.y + r.h));   // 左上
+    const ne = uvToOverlay(r.x + r.w, 1 - (r.y + r.h));
+    const sw = uvToOverlay(r.x, 1 - r.y);           // 左下
+    const se = uvToOverlay(r.x + r.w, 1 - r.y);
+    return { nw, ne, sw, se };
+  }
+
   function drawCropOverlay() {
     const cv = ensureCropCanvas();
     if (!geom || !img) { cv.hidden = true; return; }
@@ -1902,44 +1951,64 @@
     const g = cv.getContext('2d');
     g.clearRect(0, 0, W, H);
 
-    const br = cropRectOnCanvas();
-    const bx = br.x * W, bw = br.w * W;
-    /* ⚠️ y 方向要翻：geom.rect 的 y = 0 在下边（WebGL/屏幕约定），
-       而 2D canvas 的 y = 0 在上边。不翻框会上下颠倒。 */
-    const by = (1 - br.y - br.h) * H, bh = br.h * H;
+    // 取景框四角（旋转后的位置）
+    const c = frameCornersPx();
+    const poly = [c.nw, c.ne, c.se, c.sw];
 
-    // 框外压暗
+    // 框外压暗：整画布挖掉旋转后的取景框（evenodd）
+    g.beginPath();
+    g.rect(0, 0, W, H);
+    g.moveTo(poly[0][0], poly[0][1]);
+    for (let i = 1; i < 4; i++) g.lineTo(poly[i][0], poly[i][1]);
+    g.closePath();
     g.fillStyle = 'rgba(0,0,0,.55)';
-    g.fillRect(0, 0, W, by);                          // 上
-    g.fillRect(0, by + bh, W, H - by - bh);           // 下
-    g.fillRect(0, by, bx, bh);                        // 左
-    g.fillRect(bx + bw, by, W - bx - bw, bh);         // 右
+    g.fill('evenodd');
 
-    // 三分线
+    // 三分线：对边 1/3、2/3 连线
     g.strokeStyle = 'rgba(255,255,255,.45)';
     g.lineWidth = Math.max(1, dpr);
     for (let i = 1; i <= 2; i++) {
       g.beginPath();
-      g.moveTo(bx + bw * i / 3, by); g.lineTo(bx + bw * i / 3, by + bh);
-      g.moveTo(bx, by + bh * i / 3); g.lineTo(bx + bw, by + bh * i / 3);
+      const lerp = (a, b) => [a[0] + (b[0] - a[0]) * i / 3, a[1] + (b[1] - a[1]) * i / 3];
+      const t1 = lerp(c.nw, c.ne), t2 = lerp(c.sw, c.se);
+      g.moveTo(t1[0], t1[1]); g.lineTo(t2[0], t2[1]);
+      const l1 = lerp(c.nw, c.sw), l2 = lerp(c.ne, c.se);
+      g.moveTo(l1[0], l1[1]); g.lineTo(l2[0], l2[1]);
       g.stroke();
     }
 
-    // 边框 + 四角
+    // 边框
     g.strokeStyle = 'rgba(255,255,255,.9)';
     g.lineWidth = Math.max(1, dpr);
-    g.strokeRect(bx, by, bw, bh);
+    g.beginPath();
+    g.moveTo(poly[0][0], poly[0][1]);
+    for (let i = 1; i < 4; i++) g.lineTo(poly[i][0], poly[i][1]);
+    g.closePath();
+    g.stroke();
 
-    const L = Math.min(bw, bh) * 0.12;
+    // 四角手柄：沿相邻两边各画一段短手柄
+    const L = Math.max(8, Math.min(W, H) * 0.05);
+    const corners2 = [
+      { p: c.nw, to: c.ne, dn: c.sw },
+      { p: c.ne, to: c.nw, dn: c.se },
+      { p: c.se, to: c.sw, dn: c.ne },
+      { p: c.sw, to: c.se, dn: c.nw }
+    ];
     g.lineWidth = Math.max(3, dpr * 3);
     g.beginPath();
-    for (const [cx2, cy2, dx, dy] of [
-      [bx, by, 1, 1], [bx + bw, by, -1, 1],
-      [bx, by + bh, 1, -1], [bx + bw, by + bh, -1, -1]
-    ]) {
-      g.moveTo(cx2 + dx * L, cy2); g.lineTo(cx2, cy2); g.lineTo(cx2, cy2 + dy * L);
+    for (const { p, to, dn } of corners2) {
+      const u1 = norm(to[0] - p[0], to[1] - p[1]);
+      const u2 = norm(dn[0] - p[0], dn[1] - p[1]);
+      g.moveTo(p[0] + u1[0] * L, p[1] + u1[1] * L);
+      g.lineTo(p[0], p[1]);
+      g.lineTo(p[0] + u2[0] * L, p[1] + u2[1] * L);
     }
     g.stroke();
+  }
+
+  function norm(x, y) {
+    const l = Math.hypot(x, y) || 1;
+    return [x / l, y / l];
   }
 
   /**
@@ -2095,11 +2164,16 @@
       ensureGeom();
       const totalDeg = geom.rot - dir * 90;
       /* ⚠️ 烘焙时临时把取景框当成整个视口：转 90° 的语义是"整张图转
-         过去"，用户之前拖小的取景框不该把旋转结果再裁掉一块。 */
+         过去"，用户之前拖小的取景框不该把旋转结果再裁掉一块。
+         ⚠️ zoom 也临时归 1：旋转是 1:1 的几何操作，不该受"正在放大
+         看细节"影响（不然转完照片跟着缩水/放大）。 */
       const keepRect = { ...geom.rect };
+      const keepZoom = geom.zoom;
       geom.rect = { x: 0, y: 0, w: 1, h: 1 };
+      geom.zoom = 1;
       const plan = cropRenderPlan(true, { rotDeg: totalDeg });
       geom.rect = keepRect;
+      geom.zoom = keepZoom;
       if (!plan) throw new Error('拿不到旋转计划');
 
       const prevW = canvas.width, prevH = canvas.height;
@@ -2155,9 +2229,13 @@
 
     let drag = null;
 
+    /** 指针 → overlay 像素坐标（y 向下） */
     const pos = e => {
       const r = cv.getBoundingClientRect();
-      return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+      return {
+        x: (e.clientX - r.left) / r.width * cv.width,
+        y: (e.clientY - r.top) / r.height * cv.height
+      };
     };
 
     cv.addEventListener('pointerdown', e => {
@@ -2165,18 +2243,16 @@
       e.preventDefault();
       cv.setPointerCapture(e.pointerId);
       const p = pos(e);
-      const br = cropRectOnCanvas();
-      /* ⚠️ 手柄位置要转成 **y 向上** 的坐标再比 —— 指针事件是屏幕
-         约定（y 向下），而 geom.rect 是画布约定（y 向上）。 */
-      const upY = 1 - br.y - br.h;
-      // 判断抓到的是哪个手柄（离角点近就缩放，否则整体移动）
-      const th = 0.06;
-      const near = (ax, ay) => Math.abs(p.x - ax) < th && Math.abs(p.y - ay) < th;
+      /* 手柄判定用**旋转后**的角点像素位置（frameCornersPx）——
+         旋转时取景框跟着转，按原始矩形算会抓到错误的手柄。 */
+      const c = frameCornersPx();
+      const th = Math.max(cv.width, cv.height) * 0.06;
+      const near = (pt) => Math.abs(p.x - pt[0]) < th && Math.abs(p.y - pt[1]) < th;
       let mode = 'move';
-      if (near(br.x, upY)) mode = 'nw';
-      else if (near(br.x + br.w, upY)) mode = 'ne';
-      else if (near(br.x, upY + br.h)) mode = 'sw';
-      else if (near(br.x + br.w, upY + br.h)) mode = 'se';
+      if (near(c.nw)) mode = 'nw';
+      else if (near(c.ne)) mode = 'ne';
+      else if (near(c.sw)) mode = 'sw';
+      else if (near(c.se)) mode = 'se';
       drag = { mode, start: p, rect0: { ...geom.rect } };
     });
 
@@ -2184,32 +2260,38 @@
       if (!drag || !geom) return;
       e.preventDefault();
       const p = pos(e);
-      const br = cropRectOnCanvas();
-      // 画布归一化位移 → 取景框归一化位移。
-      // ⚠️ y 取负：屏幕 y 向下、取景框 y 向上。
-      const dx = (p.x - drag.start.x) / br.w;
-      const dy = -(p.y - drag.start.y) / br.h;
       const r0 = drag.rect0;
 
       if (drag.mode === 'move') {
+        // 指针位移 → 图片 UV 位移（overlayToUV 处理了旋转/缩放/翻转）
+        const s = overlayToUV(drag.start.x, drag.start.y);
+        const c = overlayToUV(p.x, p.y);
+        const dU = c[0] - s[0];
+        const dV = c[1] - s[1];   // V 向下 → 取景框 y（向上）反向
         geom.rect = clampCropRect(
-          { x: r0.x + dx * r0.w, y: r0.y + dy * r0.h, w: r0.w, h: r0.h });
+          { x: r0.x + dU, y: r0.y - dV, w: r0.w, h: r0.h });
       } else {
-        // 角点缩放：改的是宽高，对角的那个角保持不动
-        let w = r0.w + (drag.mode.includes('e') ? dx * r0.w : -dx * r0.w);
-        let h = r0.h + (drag.mode.includes('s') ? dy * r0.h : -dy * r0.h);
+        // 角点缩放：拖动的角跟指针走，对角的角保持不动
+        const cu = overlayToUV(p.x, p.y);
+        const curU = cu[0];
+        const curY = 1 - cu[1];   // y-up
+
+        const x = drag.mode.includes('e') ? r0.x : curU;
+        const y = drag.mode.includes('s') ? r0.y : curY;
+        let w = drag.mode.includes('e') ? (curU - r0.x) : (r0.x + r0.w - curU);
+        let h = drag.mode.includes('s') ? (curY - r0.y) : (r0.y + r0.h - curY);
         w = Math.max(MIN_RECT, w); h = Math.max(MIN_RECT, h);
 
         /* 按比例约束：像素比例 aspect = (w·W0)/(h·H0) →
            w/h = aspect·H0/W0。⚠️ 归一化坐标下**不是** w/h = aspect，
-           中间要乘 H0/W0（旧版这里直接把"旋转框像素"当图片像素，
-           只有 0° 才对）。 */
+           中间要乘 H0/W0。 */
         if (geom.aspect > 0) {
           const k = geom.aspect * img.height / img.width;
           h = w / k;
           if (h > 1) { h = 1; w = h * k; }
         }
 
+        // 重新摆位：锚点角固定（拖动的边保持在 curU/curY 一侧）
         const ax = drag.mode.includes('e') ? r0.x : r0.x + r0.w - w;
         const ay = drag.mode.includes('s') ? r0.y : r0.y + r0.h - h;
         geom.rect = clampCropRect({ x: ax, y: ay, w, h });
@@ -2330,9 +2412,11 @@
   /* ================================================================
      滑块
      ----------------------------------------------------------------
-     16 个滑杆原来平铺在一列里，要滚很远才到底。现在按大类拆到两页：
-       · 影调页 = 基础 + 曲线 + 质感（明暗和质感）
-       · 颜色页 = 色彩 + HSL（色相和饱和）
+     16 个滑杆按大类拆成**两个容器**，都在「调整」页里：
+       · stSliders（影调）= 基础 + 曲线 + 质感（明暗和质感）
+       · stSlidersColor（颜色）= 色彩 + HSL（色相和饱和）
+     拆成两个容器而不是一个：分组标题（基础/曲线/…）只在容器内部
+     连续出现，拆开能避免「曝光、饱和度、色温」混排时分组语义模糊。
      拆的是**容器**，不是数据 —— ADJUSTMENTS 和 values 仍然是各一份，
      所以预设、重置、导出、undo 全部不用跟着改。
      ================================================================ */
@@ -2351,7 +2435,7 @@
     for (const a of ADJUSTMENTS) {
       if (!groups.includes(a.group)) continue;
 
-      // 分组标题。影调页有 3 组、颜色页有 2 组，标题才有意义；
+      // 分组标题。影调容器 3 组、颜色容器 2 组，标题才有意义；
       // 原来 16 个平铺太长，而且「曝光」和「颗粒」放一起
       // 会让人以为它们是同一类东西
       if (a.group && a.group !== lastGroup) {
@@ -2599,9 +2683,7 @@
   const PANEL_PAGES = [
     { id: 'preset',   name: '预设' },
     { id: 'portrait', name: '人像' },
-    { id: 'tone',     name: '影调' },
-    { id: 'color',    name: '颜色' },
-    { id: 'local',    name: '局部' },
+    { id: 'adjust',   name: '调整' },
     { id: 'tool',     name: '工具' },
   ];
   let panelPage = 'preset';
@@ -2851,9 +2933,9 @@
       if (el) el.classList.toggle('on', (id === 'stBrushAdd') === (mask.mode === 'add'));
     });
 
-    /* 「只作用于涂过的区域」这个开关现在挂在分页**外面**，所有调色页共用。
+    /* 「只作用于涂过的区域」这个开关挂在分页**外面**常驻，所有调色滑杆共用。
        没有选区时它整条隐藏 —— 那时勾了也没用，反而让人以为「调整坏了」。
-       有了选区它必须随时可见：否则用户切到影调页拖滑杆，
+       有了选区它必须随时可见：否则用户在「调整」页拖滑杆，
        会不明白为什么只有一块区域在变。 */
     const sc = $('stScope');
     if (sc) sc.hidden = mask.isEmpty;
@@ -4138,7 +4220,7 @@
       // 漏掉一处就会出现「按钮灰着但明明能撤销」这种别扭状态。
       mask.onchange = () => { syncMaskUI(); };
       initGL();
-      // 16 个滑杆拆到「影调」「颜色」两页（分组见 SLIDER_GROUPS）
+      // 16 个滑杆拆到「影调」「颜色」两个容器（都在「调整」页，见 SLIDER_GROUPS）
       for (const [boxId, groups] of Object.entries(SLIDER_GROUPS)) {
         buildSliders(boxId, groups);
       }

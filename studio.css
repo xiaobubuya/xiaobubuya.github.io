@@ -149,15 +149,17 @@
 }
 
 /* ---------------- 分页 ----------------
-   每个大类一页，各自独立滚动。
-   ⚠️ 只有当前页 display:flex，其余 display:none ——
-      这样各页的滚动位置互不干扰，切回来还在原处。 */
-.st-pages{flex:1;min-height:0;display:flex;flex-direction:column}
+   每个大类一页。整个分页区**一条滚动条**（用户要求：不要内部滚动条）。
+   只有当前页 display:flex，其余 display:none —— 一次只滚一页，
+   切换大类时滚动位置是共享的（同一根滚动轴，符合直觉）。 */
+.st-pages{
+  flex:1;min-height:0;display:flex;flex-direction:column;
+  overflow-y:auto;overscroll-behavior:contain;
+}
 .st-page{
-  display:none;flex:1;min-height:0;
+  display:none;flex:none;
   flex-direction:column;gap:10px;
   padding:12px 14px 16px;
-  overflow-y:auto;overscroll-behavior:contain;
 }
 .st-page.on{display:flex}
 
@@ -179,8 +181,10 @@
 }
 .st-tool-block:last-child{border-bottom:0;padding-bottom:0}
 
-/* 滑杆容器：页面自己滚，这里不再单独限高 */
+/* 滑杆容器：滚动由分页区统一管，这里不限高 */
 .st-sliders{display:flex;flex-direction:column}
+/* 「调整」页里影调 / 颜色两个容器之间分个隔（都在同一页，不隔开像连体） */
+.st-sliders + .st-sliders{border-top:1px solid var(--sline);padding-top:8px}
 .st-panel-foot{
   flex:none;padding:10px 14px calc(env(safe-area-inset-bottom) + 12px);
   font-size:11.5px;color:var(--sink2);
