@@ -3034,8 +3034,8 @@
   /* ================================================================
      AI 抠人像（百度人体分析）
      ----------------------------------------------------------------
-     只在桌面版里可用：浏览器直接调百度会被 CORS 挡住（实测三家都挡），
-     所以走 Electron 主进程转发。网页版就把按钮禁掉并说明原因。
+     浏览器版走后端代理（/api/baidu/body-seg），桌面版走 Electron 主进程。
+     后端代理解决了百度 API 的 CORS 问题（实测百度 aip 域名不给 CORS 头）。
      ================================================================ */
   function hasDesktop() {
     return !!(window.AlbumStudio && window.AlbumStudio.baiduBodySeg);
@@ -3043,14 +3043,10 @@
 
   async function segmentPerson() {
     if (!img) return;
-    if (!hasDesktop()) {
-      toast('AI 抠人需要桌面版的「修图 App」\n浏览器里调不通（跨域限制）', 3600);
-      return;
-    }
 
     busy(true, '正在识别…');
     try {
-      // 先把百度密钥取好交给主进程（有 10 分钟缓存，通常不打请求）
+      // 先把百度密钥取好（后端代理需要，桌面版也需要）
       await getKeys('baidu').catch(() => {});
       /* 缩到长边 2048 再传。
          ⚠️ 原来写的是 1024 —— 太小了：蒙版是按这个尺寸出的，
@@ -3076,8 +3072,26 @@
       // （相册里的 preview 就是 WebP 存成 .jpg 的，踩过这个坑）
       const b64 = off.toDataURL('image/jpeg', 0.9).split(',')[1];
 
-      const res = await window.AlbumStudio.baiduBodySeg(b64);
-      if (!res || !res.ok) throw new Error((res && res.error) || '识别失败');
+      // 优先走后端代理（解决 CORS），失败再走桌面版
+      let res;
+      if (!hasDesktop()) {
+        // 浏览器版：走后端代理
+        const r = await fetch(`${API_BASE}/api/baidu/body-seg`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ image: b64 })
+        });
+        res = await r.json();
+        if (!res.ok && res.error === 'not_configured') {
+          throw new Error('百度密钥未配置，请联系管理员');
+        }
+      } else {
+        // 桌面版：走 Electron 主进程
+        res = await window.AlbumStudio.baiduBodySeg(b64);
+      }
+
+      if (!res || !res.ok) throw new Error((res && res.message) || '识别失败');
 
       if (!res.persons) {
         toast(res.message || '没有检测到人像');
