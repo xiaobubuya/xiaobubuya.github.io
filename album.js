@@ -1161,112 +1161,117 @@
   });
 
   /* ================================================================
-     AI 模板页
+     AI 相册风格
      ----------------------------------------------------------------
-     模板驱动：每个模板定义了 prompt（AI 画什么）和 layout（页面结构）。
-     AI 只负责生成装饰背景，排版结构由模板固定。
+     一个风格 = 一套装饰：封皮 + 2 张主体页装饰，一次出齐。
+     生成后应用到整本：封皮→第 1 页，主体→第 2-3 页。
 
      流程：
-       选模板 → 调后端 /api/agnes/generate → 拿到 b64
-       → 前端 createImageBitmap + derive → PUT R2 + POST 登记
-       → 加入当前页（z-index 0，垫底）
+       选风格 → 生成 3 张（封皮 + 2 主体）→ 上传 → 应用到所有页
 
      ================================================================ */
-  const AI_TEMPLATES = [
+  const AI_STYLES = [
     {
-      id: 'cover',
-      name: '封面页',
+      id: 'romantic',
+      name: '浪漫花艺',
       emoji: '💕',
-      desc: '花艺柔光，适合第一页',
-      prompt: 'Elegant wedding cover page background, soft pink and white roses with gold accents, romantic bokeh light, warm golden hour glow, clean center space for text, dreamy and luxurious',
-      ratio: '3:2',
+      desc: '柔光花艺，金色暖调',
+      coverPrompt: '优雅的婚礼相册封皮，柔和的粉白玫瑰花搭配金色点缀，浪漫的光斑效果，温暖的金色时光氛围，中心区域干净留白，梦幻奢华，竖版构图',
+      bodyPrompts: [
+        '优雅的婚礼相框装饰，精致的花朵和藤蔓围绕边框，白色金色玫瑰，柔和光斑背景，中心区域完全空白干净，通透感',
+        '浪漫的婚礼页面装饰，两侧柔和花艺边框，金色和粉色色调，优雅简约，中心区域宽敞留白适合放照片'
+      ],
       bg: '#fdf6f0'
     },
     {
-      id: 'frame',
-      name: '相框页',
-      emoji: '🖼',
-      desc: '花艺边框，中间留白',
-      prompt: 'Elegant wedding photo frame, delicate flowers and vines around the border, white and gold roses, soft bokeh background, center area completely empty and clean, transparent feel',
-      ratio: '3:2',
-      bg: '#fff'
-    },
-    {
-      id: 'double',
-      name: '双人页',
-      emoji: '👫',
-      desc: '优雅边框，适合2张照片',
-      prompt: 'Romantic wedding page decoration, soft floral border on the sides, gold and blush pink tones, elegant and minimal, plenty of space in the center for photos',
-      ratio: '3:2',
-      bg: '#fef9f5'
-    },
-    {
-      id: 'quad',
-      name: '四格页',
-      emoji: '📸',
-      desc: '简洁分割线，适合4张照片',
-      prompt: 'Minimalist wedding page design, thin elegant gold dividing lines in a 2x2 grid, subtle floral corner accents, clean white space, sophisticated and modern',
-      ratio: '3:2',
+      id: 'minimal',
+      name: '极简金线',
+      emoji: '✨',
+      desc: '金线分割，简洁现代',
+      coverPrompt: '极简婚礼相册封皮，纤细优雅的金色线条装饰，大量留白，中心区域干净，精致现代，竖版构图',
+      bodyPrompts: [
+        '极简婚礼页面设计，2x2网格布局，纤细优雅的金色分割线，角落点缀小花，大量干净留白，精致现代',
+        '极简婚礼页面装饰，上下金色线条分割，大量留白，中心区域干净，现代简约风格'
+      ],
       bg: '#fafafa'
     },
     {
-      id: 'detail',
-      name: '细节页',
-      emoji: '💎',
-      desc: '水彩花角，适合特写照片',
-      prompt: 'Delicate watercolor wedding page, soft pink and blue watercolor washes in the corners, gentle floral elements, artistic and dreamy, center space clean for close-up photos',
-      ratio: '3:2',
+      id: 'watercolor',
+      name: '水彩花语',
+      emoji: '🎨',
+      desc: '水彩晕染，艺术梦幻',
+      coverPrompt: '精致的水彩婚礼封皮，柔和的粉蓝水彩晕染，轻柔的花卉元素，艺术梦幻风格，中心区域干净留白，竖版构图',
+      bodyPrompts: [
+        '精致的水彩婚礼页面，角落有柔和的粉蓝水彩晕染，轻柔的花卉元素，艺术梦幻风格，中心区域干净留白适合放特写照片',
+        '水彩婚礼页面装饰，上下水彩晕染，柔和的粉蓝色调，中心区域干净留白，艺术风格'
+      ],
       bg: '#fff'
     },
     {
-      id: 'ending',
-      name: '结尾页',
-      emoji: '💌',
-      desc: '感谢寄语，温柔收尾',
-      prompt: 'Elegant thank you card background, soft floral corner decorations in blush pink and gold, warm grateful atmosphere, center space for a message, romantic and gentle',
-      ratio: '3:2',
+      id: 'classic',
+      name: '经典优雅',
+      emoji: '🕊',
+      desc: '白色金色，永恒经典',
+      coverPrompt: '经典的婚礼相册封皮，白色和金色为主色调，优雅的花卉装饰，永恒经典风格，中心区域干净留白，竖版构图',
+      bodyPrompts: [
+        '经典婚礼页面装饰，白色和金色花卉边框，优雅简约，中心区域留白适合放照片，永恒经典风格',
+        '经典婚礼页面设计，上下金色线条和白色花卉装饰，中心区域留白，优雅永恒风格'
+      ],
       bg: '#fef9f5'
     }
   ];
 
-  const aiState = { template: null, b64: null, generating: false };
+  const aiState = { style: null, results: [], generating: false };
 
-  function renderAiTemplates() {
+  function renderAiStyles() {
     const box = el('aiTemplates');
     box.innerHTML = '';
-    for (const t of AI_TEMPLATES) {
+    for (const s of AI_STYLES) {
       const card = document.createElement('button');
       card.type = 'button';
-      card.className = 'ai-tpl' + (aiState.template?.id === t.id ? ' on' : '');
+      card.className = 'ai-tpl' + (aiState.style?.id === s.id ? ' on' : '');
       card.innerHTML =
-        `<div class="ai-tpl-emoji">${t.emoji}</div>` +
-        `<div class="ai-tpl-name">${A.esc(t.name)}</div>` +
-        `<div class="ai-tpl-desc">${A.esc(t.desc)}</div>`;
-      card.addEventListener('click', () => selectAiTemplate(t));
+        `<div class="ai-tpl-emoji">${s.emoji}</div>` +
+        `<div class="ai-tpl-name">${A.esc(s.name)}</div>` +
+        `<div class="ai-tpl-desc">${A.esc(s.desc)}</div>`;
+      card.addEventListener('click', () => selectAiStyle(s));
       box.appendChild(card);
     }
   }
 
-  function selectAiTemplate(t) {
-    aiState.template = t;
-    aiState.b64 = null;
-    el('aiPrompt').value = t.prompt;
+  function selectAiStyle(s) {
+    aiState.style = s;
+    aiState.results = [];
+    // 渲染 3 个 prompt 输入框
+    const box = el('aiPrompts');
+    box.innerHTML = '';
+    const prompts = [
+      { label: '封皮', prompt: s.coverPrompt, cls: 'cover' },
+      { label: '主体 1', prompt: s.bodyPrompts[0], cls: '' },
+      { label: '主体 2', prompt: s.bodyPrompts[1], cls: '' }
+    ];
+    for (const p of prompts) {
+      const row = document.createElement('div');
+      row.className = 'ai-prompt-row';
+      row.innerHTML =
+        `<span class="ai-prompt-tag ${p.cls}">${p.label}</span>` +
+        `<textarea maxlength="2000" rows="2">${A.esc(p.prompt)}</textarea>`;
+      box.appendChild(row);
+    }
     el('aiConfig').hidden = false;
-    el('aiResult').hidden = true;
+    el('aiResults').innerHTML = '';
+    el('aiProgress').hidden = true;
     el('btnAiRun').hidden = false;
+    el('btnAiRun').disabled = false;
     el('btnAiAdd').hidden = true;
-    renderAiTemplates();
+    renderAiStyles();
   }
 
   /* 后端代理：前端 → /api/agnes/generate → Agnes API → 返回 b64 */
   async function generateAiImage(prompt) {
     const res = await A.api('/api/agnes/generate', {
       method: 'POST',
-      body: JSON.stringify({
-        prompt,
-        size: '1K',
-        ratio: aiState.template.ratio
-      })
+      body: JSON.stringify({ prompt, size: '1K', ratio: '3:2' })
     });
     const d = await res.json();
     if (!res.ok || !d.ok) {
@@ -1278,22 +1283,18 @@
 
   /* b64 → 图片处理 → 上传 R2 → 登记 → 返回 photo 数据 */
   async function uploadAiImage(b64) {
-    // b64 → Uint8Array
     const bin = atob(b64);
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
 
-    // 内容寻址 key
     const hash = await crypto.subtle.digest('SHA-256', buf);
     const key = [...new Uint8Array(hash)]
       .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 
-    // 解码
     const bitmap = await createImageBitmap(new Blob([buf], { type: 'image/png' }),
       { imageOrientation: 'from-image' });
     const w = bitmap.width, h = bitmap.height;
 
-    // 派生 thumb / preview
     const THUMB_EDGE = 400, PREVIEW_EDGE = 1600;
     const THUMB_Q = 0.75, PREVIEW_Q = 0.80;
 
@@ -1320,7 +1321,6 @@
     const thumb = await derive(THUMB_EDGE, THUMB_Q);
     const preview = await derive(PREVIEW_EDGE, PREVIEW_Q);
 
-    // 上传
     for (const [size, blob] of [['thumb', thumb], ['preview', preview]]) {
       const r = await A.api(`/api/blob/${size}/${key}`, {
         method: 'PUT',
@@ -1330,7 +1330,6 @@
       if (!r.ok) throw new Error(`上传 ${size} 失败`);
     }
 
-    // 登记
     const now = new Date().toISOString();
     const r2 = await A.api('/api/photos', {
       method: 'POST',
@@ -1342,62 +1341,91 @@
   }
 
   async function runAiGenerate() {
-    if (aiState.generating) return;
-    const prompt = el('aiPrompt').value.trim();
-    if (!prompt || !aiState.template) return;
-
+    if (aiState.generating || !aiState.style) return;
     aiState.generating = true;
-    el('btnAiRun').disabled = true;
-    el('aiLoading').hidden = false;
-    el('aiResult').hidden = true;
+    aiState.results = [];
 
-    try {
-      aiState.b64 = await generateAiImage(prompt);
-      el('aiLoading').hidden = true;
-      el('aiResultImg').src = 'data:image/png;base64,' + aiState.b64;
-      el('aiResult').hidden = false;
-      el('btnAiRun').hidden = true;
-      el('btnAiAdd').hidden = false;
-      A.toast('生成完成，点「加入当前页」');
-    } catch (e) {
-      el('aiLoading').hidden = true;
-      A.toast('生成失败：' + e.message, 4000);
-    } finally {
-      aiState.generating = false;
-      el('btnAiRun').disabled = false;
+    const box = el('aiPrompts');
+    const prompts = [...box.querySelectorAll('textarea')].map(t => t.value.trim());
+    const labels = ['封皮', '主体 1', '主体 2'];
+
+    el('btnAiRun').disabled = true;
+    el('aiProgress').hidden = false;
+    el('aiResults').innerHTML = '';
+
+    for (let i = 0; i < prompts.length; i++) {
+      if (!prompts[i]) continue;
+      el('aiProgress').innerHTML =
+        `<div class="spinner"></div><span>${labels[i]}生成中 (${i + 1}/${prompts.length})…</span>`;
+
+      try {
+        const b64 = await generateAiImage(prompts[i]);
+        aiState.results.push({ label: labels[i], b64, prompt: prompts[i] });
+        // 即时展示缩略图
+        const card = document.createElement('div');
+        card.className = 'ai-result-card';
+        card.innerHTML =
+          `<span class="tag ${i === 0 ? 'cover' : ''}">${labels[i]}</span>` +
+          `<img src="data:image/png;base64,${b64}" alt="">`;
+        el('aiResults').appendChild(card);
+      } catch (e) {
+        A.toast(`${labels[i]}生成失败：${e.message}`, 4000);
+      }
     }
+
+    el('aiProgress').hidden = true;
+    el('btnAiRun').disabled = false;
+    if (aiState.results.length > 0) {
+      el('btnAiAdd').hidden = false;
+      A.toast(`生成完成 (${aiState.results.length} 张)，点「应用到整本相册」`);
+    }
+    aiState.generating = false;
   }
 
-  async function addAiToPage() {
-    if (!aiState.b64 || !aiState.template) return;
-
+  async function addAiToAlbum() {
+    if (!aiState.results.length || !aiState.style) return;
     try {
-      A.toast('上传中…');
-      const photo = await uploadAiImage(aiState.b64);
+      A.toast('上传装饰图中…');
+      const photos = [];
+      for (const r of aiState.results) {
+        photos.push(await uploadAiImage(r.b64));
+      }
 
-      const layout = curLayout();
-      const t = aiState.template;
+      // 确保至少有 3 页
+      while (S.pages.length < 3) {
+        const res = await A.api(`/api/albums/${S.album.id}/pages`, { method: 'POST' });
+        if (!res.ok) break;
+        const fresh = await (await A.api(`/api/albums/${S.album.id}/pages`)).json();
+        S.pages = fresh.pages;
+        S.album = fresh.album;
+      }
 
-      // 设置画布背景色
-      layout.canvas.bg = t.bg;
-
-      // 装饰图作为整页背景 item，垫底（z-index 0）
-      const item = {
-        id: newId(),
-        photo: photo.k,
-        x: 0, y: 0, w: 1, h: 1,
-        rot: 0, z: 0,
+      const bg = aiState.style.bg;
+      const item = (photo) => ({
+        id: newId(), photo: photo.k,
+        x: 0, y: 0, w: 1, h: 1, rot: 0, z: 0,
         fit: 'cover', radius: 0, caption: ''
-      };
+      });
 
-      // 插到数组最前面，让 z-index 最低
-      layout.items.unshift(item);
+      // 封皮→第 1 页，主体→第 2-3 页
+      const assignments = [
+        { pageIdx: 0, photo: photos[0] },
+        { pageIdx: 1, photo: photos[1] },
+        { pageIdx: 2, photo: photos[2] }
+      ];
+
+      for (const a of assignments) {
+        if (!a.photo || !S.pages[a.pageIdx]) continue;
+        const layout = S.pages[a.pageIdx].layout;
+        layout.canvas.bg = bg;
+        layout.items.unshift(item(a.photo));
+      }
 
       S.sel = null;
       renderEditor();
       scheduleSave();
       el('aiSheet').hidden = true;
-      A.toast('已加入页面，去选照片填进去吧');
+      A.toast('已应用到整本相册，去选照片填进去吧');
     } catch (e) {
       A.toast('上传失败：' + e.message, 4000);
     }
@@ -1406,18 +1434,19 @@
   el('btnAiGen').addEventListener('click', () => {
     if (!S.album) return;
     el('aiSheet').hidden = false;
-    aiState.template = null;
-    aiState.b64 = null;
+    aiState.style = null;
+    aiState.results = [];
     el('aiConfig').hidden = true;
-    el('aiResult').hidden = true;
+    el('aiResults').innerHTML = '';
+    el('aiProgress').hidden = true;
     el('btnAiRun').hidden = false;
+    el('btnAiRun').disabled = false;
     el('btnAiAdd').hidden = true;
-    el('aiPrompt').value = '';
-    renderAiTemplates();
+    renderAiStyles();
   });
 
   el('btnAiRun').addEventListener('click', runAiGenerate);
-  el('btnAiAdd').addEventListener('click', addAiToPage);
+  el('btnAiAdd').addEventListener('click', addAiToAlbum);
 
   document.addEventListener('click', e => {
     if (e.target.closest('#aiSheet [data-close]')) el('aiSheet').hidden = true;
