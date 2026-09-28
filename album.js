@@ -1160,6 +1160,269 @@
   });
 
   /* ================================================================
+     AI 模板页
+     ----------------------------------------------------------------
+     模板驱动：每个模板定义了 prompt（AI 画什么）和 layout（页面结构）。
+     AI 只负责生成装饰背景，排版结构由模板固定。
+
+     流程：
+       选模板 → 调后端 /api/agnes/generate → 拿到 b64
+       → 前端 createImageBitmap + derive → PUT R2 + POST 登记
+       → 加入当前页（z-index 0，垫底）
+
+     ================================================================ */
+  const AI_TEMPLATES = [
+    {
+      id: 'cover',
+      name: '封面页',
+      emoji: '💕',
+      desc: '花艺柔光，适合第一页',
+      prompt: 'Elegant wedding cover page background, soft pink and white roses with gold accents, romantic bokeh light, warm golden hour glow, clean center space for text, dreamy and luxurious',
+      ratio: '3:2',
+      bg: '#fdf6f0'
+    },
+    {
+      id: 'frame',
+      name: '相框页',
+      emoji: '🖼',
+      desc: '花艺边框，中间留白',
+      prompt: 'Elegant wedding photo frame, delicate flowers and vines around the border, white and gold roses, soft bokeh background, center area completely empty and clean, transparent feel',
+      ratio: '3:2',
+      bg: '#fff'
+    },
+    {
+      id: 'double',
+      name: '双人页',
+      emoji: '👫',
+      desc: '优雅边框，适合2张照片',
+      prompt: 'Romantic wedding page decoration, soft floral border on the sides, gold and blush pink tones, elegant and minimal, plenty of space in the center for photos',
+      ratio: '3:2',
+      bg: '#fef9f5'
+    },
+    {
+      id: 'quad',
+      name: '四格页',
+      emoji: '📸',
+      desc: '简洁分割线，适合4张照片',
+      prompt: 'Minimalist wedding page design, thin elegant gold dividing lines in a 2x2 grid, subtle floral corner accents, clean white space, sophisticated and modern',
+      ratio: '3:2',
+      bg: '#fafafa'
+    },
+    {
+      id: 'detail',
+      name: '细节页',
+      emoji: '💎',
+      desc: '水彩花角，适合特写照片',
+      prompt: 'Delicate watercolor wedding page, soft pink and blue watercolor washes in the corners, gentle floral elements, artistic and dreamy, center space clean for close-up photos',
+      ratio: '3:2',
+      bg: '#fff'
+    },
+    {
+      id: 'ending',
+      name: '结尾页',
+      emoji: '💌',
+      desc: '感谢寄语，温柔收尾',
+      prompt: 'Elegant thank you card background, soft floral corner decorations in blush pink and gold, warm grateful atmosphere, center space for a message, romantic and gentle',
+      ratio: '3:2',
+      bg: '#fef9f5'
+    }
+  ];
+
+  const aiState = { template: null, b64: null, generating: false };
+
+  function renderAiTemplates() {
+    const box = el('aiTemplates');
+    box.innerHTML = '';
+    for (const t of AI_TEMPLATES) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'ai-tpl' + (aiState.template?.id === t.id ? ' on' : '');
+      card.innerHTML =
+        `<div class="ai-tpl-emoji">${t.emoji}</div>` +
+        `<div class="ai-tpl-name">${A.esc(t.name)}</div>` +
+        `<div class="ai-tpl-desc">${A.esc(t.desc)}</div>`;
+      card.addEventListener('click', () => selectAiTemplate(t));
+      box.appendChild(card);
+    }
+  }
+
+  function selectAiTemplate(t) {
+    aiState.template = t;
+    aiState.b64 = null;
+    el('aiPrompt').value = t.prompt;
+    el('aiConfig').hidden = false;
+    el('aiResult').hidden = true;
+    el('btnAiRun').hidden = false;
+    el('btnAiAdd').hidden = true;
+    renderAiTemplates();
+  }
+
+  /* 后端代理：前端 → /api/agnes/generate → Agnes API → 返回 b64 */
+  async function generateAiImage(prompt) {
+    const res = await A.api('/api/agnes/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        prompt,
+        size: '1K',
+        ratio: aiState.template.ratio
+      })
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) {
+      const msg = d.message || d.detail || '生成失败';
+      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+    return d.b64_json;
+  }
+
+  /* b64 → 图片处理 → 上传 R2 → 登记 → 返回 photo 数据 */
+  async function uploadAiImage(b64) {
+    // b64 → Uint8Array
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+
+    // 内容寻址 key
+    const hash = await crypto.subtle.digest('SHA-256', buf);
+    const key = [...new Uint8Array(hash)]
+      .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+
+    // 解码
+    const bitmap = await createImageBitmap(new Blob([buf], { type: 'image/png' }),
+      { imageOrientation: 'from-image' });
+    const w = bitmap.width, h = bitmap.height;
+
+    // 派生 thumb / preview
+    const THUMB_EDGE = 400, PREVIEW_EDGE = 1600;
+    const THUMB_Q = 0.75, PREVIEW_Q = 0.80;
+
+    async function derive(maxEdge, q) {
+      const scale = Math.min(1, maxEdge / Math.max(w, h));
+      const dw = Math.max(1, Math.round(w * scale));
+      const dh = Math.max(1, Math.round(h * scale));
+      if (typeof OffscreenCanvas !== 'undefined') {
+        const c = new OffscreenCanvas(dw, dh);
+        const g = c.getContext('2d');
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(bitmap, 0, 0, dw, dh);
+        const blob = await c.convertToBlob({ type: 'image/webp', quality: q });
+        if (blob && blob.size) return blob;
+      }
+      const c = document.createElement('canvas');
+      c.width = dw; c.height = dh;
+      const g = c.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(bitmap, 0, 0, dw, dh);
+      return await new Promise(res => c.toBlob(res, 'image/webp', q));
+    }
+
+    const thumb = await derive(THUMB_EDGE, THUMB_Q);
+    const preview = await derive(PREVIEW_EDGE, PREVIEW_Q);
+
+    // 上传
+    for (const [size, blob] of [['thumb', thumb], ['preview', preview]]) {
+      const r = await A.api(`/api/blob/${size}/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/webp' },
+        body: blob
+      });
+      if (!r.ok) throw new Error(`上传 ${size} 失败`);
+    }
+
+    // 登记
+    const now = new Date().toISOString();
+    const r2 = await A.api('/api/photos', {
+      method: 'POST',
+      body: JSON.stringify({ k: key, w, h, takenAt: now, bytes: buf.length })
+    });
+    if (!r2.ok) throw new Error('登记失败');
+
+    return { k: key, w, h };
+  }
+
+  async function runAiGenerate() {
+    if (aiState.generating) return;
+    const prompt = el('aiPrompt').value.trim();
+    if (!prompt || !aiState.template) return;
+
+    aiState.generating = true;
+    el('btnAiRun').disabled = true;
+    el('aiLoading').hidden = false;
+    el('aiResult').hidden = true;
+
+    try {
+      aiState.b64 = await generateAiImage(prompt);
+      el('aiLoading').hidden = true;
+      el('aiResultImg').src = 'data:image/png;base64,' + aiState.b64;
+      el('aiResult').hidden = false;
+      el('btnAiRun').hidden = true;
+      el('btnAiAdd').hidden = false;
+      A.toast('生成完成，点「加入当前页」');
+    } catch (e) {
+      el('aiLoading').hidden = true;
+      A.toast('生成失败：' + e.message, 4000);
+    } finally {
+      aiState.generating = false;
+      el('btnAiRun').disabled = false;
+    }
+  }
+
+  async function addAiToPage() {
+    if (!aiState.b64 || !aiState.template) return;
+
+    try {
+      A.toast('上传中…');
+      const photo = await uploadAiImage(aiState.b64);
+
+      const layout = curLayout();
+      const t = aiState.template;
+
+      // 设置画布背景色
+      layout.canvas.bg = t.bg;
+
+      // 装饰图作为整页背景 item，垫底（z-index 0）
+      const item = {
+        id: newId(),
+        photo: photo.k,
+        x: 0, y: 0, w: 1, h: 1,
+        rot: 0, z: 0,
+        fit: 'cover', radius: 0, caption: ''
+      };
+
+      // 插到数组最前面，让 z-index 最低
+      layout.items.unshift(item);
+
+      S.sel = null;
+      renderEditor();
+      scheduleSave();
+      el('aiSheet').hidden = true;
+      A.toast('已加入页面，去选照片填进去吧');
+    } catch (e) {
+      A.toast('上传失败：' + e.message, 4000);
+    }
+  }
+
+  el('btnAiGen').addEventListener('click', () => {
+    if (!S.album) return;
+    el('aiSheet').hidden = false;
+    aiState.template = null;
+    aiState.b64 = null;
+    el('aiConfig').hidden = true;
+    el('aiResult').hidden = true;
+    el('btnAiRun').hidden = false;
+    el('btnAiAdd').hidden = true;
+    el('aiPrompt').value = '';
+    renderAiTemplates();
+  });
+
+  el('btnAiRun').addEventListener('click', runAiGenerate);
+  el('btnAiAdd').addEventListener('click', addAiToPage);
+
+  document.addEventListener('click', e => {
+    if (e.target.closest('#aiSheet [data-close]')) el('aiSheet').hidden = true;
+  });
+
+  /* ================================================================
      横竖屏提示
      ================================================================ */
   function checkOrientation() {

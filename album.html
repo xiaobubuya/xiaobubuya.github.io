@@ -85,6 +85,11 @@
     </div>
 
     <div class="tool-group">
+      <span class="tool-label">AI</span>
+      <button id="btnAiGen" class="icon-btn wide" title="AI 生成装饰图">🎨 AI 生成</button>
+    </div>
+
+    <div class="tool-group">
       <span class="tool-label">图层</span>
       <button id="btnFront" class="icon-btn" title="置顶">⤒</button>
       <button id="btnUp" class="icon-btn" title="上移">↑</button>
@@ -199,6 +204,44 @@
         链接不过期，但内容不是冻结的快照。
       </p>
       <button id="btnRevokeShare" class="sheet-item danger">撤销分享（链接立即失效）</button>
+    </div>
+
+    <button class="sheet-item" data-close>关闭</button>
+  </div>
+</div>
+
+<!-- ============================ AI 生成 ============================ -->
+<div id="aiSheet" class="sheet" hidden>
+  <div class="sheet-mask" data-close></div>
+  <div class="sheet-body">
+    <div class="sheet-head">
+      <span>🎨 AI 模板页</span>
+      <button class="mini-btn" data-close>关闭</button>
+    </div>
+    <p class="sheet-note dim">
+      选一个模板，AI 自动生成匹配的装饰背景。页面结构和照片位置已固定，
+      生成后直接加入当前页，再选照片填进去就行。
+    </p>
+
+    <!-- 模板列表 -->
+    <div id="aiTemplates" class="ai-templates"></div>
+
+    <!-- 配置区（选了模板后展开） -->
+    <div id="aiConfig" hidden>
+      <label class="field">
+        <span>描述（可微调）</span>
+        <textarea id="aiPrompt" maxlength="2000" rows="2"></textarea>
+      </label>
+      <div id="aiLoading" class="ai-loading" hidden>
+        <div class="spinner"></div>
+        <span>AI 正在创作…</span>
+      </div>
+      <div id="aiResult" hidden>
+        <p class="sheet-note">✅ 生成完成</p>
+        <img id="aiResultImg" class="ai-result-img" alt="AI 生成结果">
+      </div>
+      <button id="btnAiRun" class="primary">生成装饰图</button>
+      <button id="btnAiAdd" class="primary" hidden>加入当前页</button>
     </div>
 
     <button class="sheet-item" data-close>关闭</button>
