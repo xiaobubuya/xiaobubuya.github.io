@@ -3266,10 +3266,6 @@
 
   async function removeObject() {
     if (!img) return;
-    if (!hasInpaint()) {
-      toast('去物需要桌面版的「修图 App」\n浏览器里调不通（跨域限制）', 3600);
-      return;
-    }
     if (mask.isEmpty) {
       toast('先用画笔涂出要抹掉的东西', 3000);
       setBrushMode(true);
@@ -3288,22 +3284,9 @@
 
     busy(true, '正在准备…');
     let up = null;
-    const offProgress = hasInpaint()
-      ? window.AlbumStudio.onInpaintProgress(p => {
-          if (p.stage === 'submit') { busy(true, '正在提交…'); progressStage('submit'); }
-          else if (p.stage === 'poll') {
-            // 生成中：时长不可预测。只显示"已等待多久"，不编百分比
-            busy(true, 'AI 正在重绘…');
-            progressStage('poll', p.elapsed);
-          } else if (p.stage === 'download') {
-            busy(true, '正在取回结果…');
-            progressStage('download');
-          }
-        })
-      : null;
 
     try {
-      // 取火山密钥交给主进程（有缓存，通常不打请求）
+      // 取火山密钥（后端代理需要，桌面版也需要）
       await getKeys('volcengine');
       progressStage('submit');
 
@@ -3311,24 +3294,50 @@
       up = await uploadForAI(blob);
 
       busy(true, '正在提交…');
-      const r = await window.AlbumStudio.volcInpaint({
-        imageUrl: up.url,
-        bbox: stats.bbox,
-        coverage: stats.coverage,
-        intent,
-        timeoutMs: 150000
-      });
+      // 优先走后端代理（解决 CORS），失败再走桌面版
+      let r;
+      if (!hasInpaint()) {
+        // 浏览器版：走后端代理
+        const resp = await fetch(`${API_BASE}/api/volcengine/inpaint`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            imageUrls: [up.url],
+            prompt: intent
+          })
+        });
+        r = await resp.json();
+        if (!r.ok && r.error === 'not_configured') {
+          throw new Error('火山密钥未配置，请联系管理员');
+        }
+        if (!r.ok) throw new Error(r.message || '生成失败');
+        if (r.imageUrl) {
+          progressStage('done');
+          const resultBlob = await (await fetch(r.imageUrl)).blob();
+          applyInpaintResult(resultBlob, blob, stats);
+          toast(`已抹掉（${(r.ms / 1000).toFixed(1)}s）`, 3200);
+        }
+      } else {
+        // 桌面版：走 Electron 主进程
+        r = await window.AlbumStudio.volcInpaint({
+          imageUrl: up.url,
+          bbox: stats.bbox,
+          coverage: stats.coverage,
+          intent,
+          timeoutMs: 150000
+        });
 
-      if (!r.ok) throw new Error(r.error || '生成失败');
-      if (r.image) {
-        progressStage('done');
-        applyInpaintResult(r.image, blob, stats);
-        toast(`已抹掉（${(r.totalMs / 1000).toFixed(1)}s）`, 3200);
+        if (!r.ok) throw new Error(r.error || '生成失败');
+        if (r.image) {
+          progressStage('done');
+          applyInpaintResult(r.image, blob, stats);
+          toast(`已抹掉（${(r.totalMs / 1000).toFixed(1)}s）`, 3200);
+        }
       }
     } catch (e) {
       toast('去物失败：' + (e && e.message ? e.message : e), 4800);
     } finally {
-      if (offProgress) offProgress();
       if (up) up.cleanup();
       busy(false);
     }
@@ -3732,8 +3741,25 @@
       // 统一 JPEG：相册里的 preview 是 WebP 存成 .jpg 的（踩过这个坑）
       const b64 = off.toDataURL('image/jpeg', 0.95).split(',')[1];
 
-      const r = await window.AlbumStudio.megviiBeautify(b64, params);
-      if (!r || !r.ok) throw new Error((r && r.error) || '美颜失败');
+      // 优先走后端代理（解决 CORS），失败再走桌面版
+      let r;
+      if (!hasBeauty()) {
+        // 浏览器版：走后端代理
+        const resp = await fetch(`${API_BASE}/api/megvii/beautify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ image: b64, params })
+        });
+        r = await resp.json();
+        if (!r.ok && r.error === 'not_configured') {
+          throw new Error('旷视密钥未配置，请联系管理员');
+        }
+      } else {
+        // 桌面版：走 Electron 主进程
+        r = await window.AlbumStudio.megviiBeautify(b64, params);
+      }
+      if (!r || !r.ok) throw new Error((r && r.message) || '美颜失败');
 
       /* 结果回写。
          ⚠️ 现在送出去的就是原图尺寸（除了 >4096 会先缩），所以
