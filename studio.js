@@ -2923,15 +2923,11 @@
     if (inv) inv.disabled = mask.isEmpty;
     const seg = $('stSeg');
     if (seg) seg.disabled = !img;
-    // 抹掉选区：没有选区时不能点（不然不知道抹哪儿）。
-    // 桌面版才真的能跑，网页版点下去会给提示说明原因。
+    // 抹掉选区：没有选区时不能点（不然不知道抹哪儿）
     const inp = $('stInpaint');
     if (inp) {
       inp.disabled = !img || mask.isEmpty;
-      inp.classList.toggle('dim', !hasInpaint());
-      inp.title = hasInpaint()
-        ? '抹掉选区里的东西（火山即梦）'
-        : '需要在桌面版「修图 App」里使用（浏览器有跨域限制）';
+      inp.title = '抹掉选区里的东西（火山即梦）';
     }
     ['stBrushAdd', 'stBrushErase'].forEach(id => {
       const el = $(id);
@@ -3476,15 +3472,28 @@
     const body = $('stBeautyBody');
     if (!body) return;
 
-    if (!hasBeauty()) {
-      body.innerHTML = '<div class="st-beauty-empty">'
-        + '美颜需要桌面版的「修图 App」<br>（浏览器里调不通，跨域限制）</div>';
-      return;
-    }
-
     try {
-      const s = await window.AlbumStudio.megviiSchema();
-      if (!s || !s.ok) throw new Error((s && s.error) || '读不到参数表');
+      // 参数 schema：桌面版从主进程取，浏览器版用内置
+      let s;
+      if (hasBeauty()) {
+        const r = await window.AlbumStudio.megviiSchema();
+        if (!r || !r.ok) throw new Error((r && r.error) || '读不到参数表');
+        s = r;
+      } else {
+        s = { ok: true, params: [
+          { key: 'smoothing',     name: '磨皮',   group: 'skin', def: 0 },
+          { key: 'whitening',     name: '美白',   group: 'skin', def: 0 },
+          { key: 'remove_acne',   name: '祛痘',   group: 'skin', def: 0 },
+          { key: 'remove_eyebag', name: '去眼袋', group: 'skin', def: 0 },
+          { key: 'remove_wrinkle',name: '去皱',   group: 'skin', def: 0 },
+          { key: 'thinface',      name: '瘦脸',   group: 'face', def: 0 },
+          { key: 'shrink_face',   name: '小脸',   group: 'face', def: 0 },
+          { key: 'enlarge_eye',   name: '大眼',   group: 'face', def: 0 },
+          { key: 'eye_zoom',      name: '眼部放大', group: 'face', def: 0 },
+          { key: 'remove_eyebrow',name: '去眉毛', group: 'face', def: 0 }
+        ], filters: [] };
+      }
+
       beautySchema = s;
 
       for (const p of s.params) beautyValues[p.key] = 0;
@@ -3682,10 +3691,6 @@
 
   async function runBeauty() {
     if (!img) return;
-    if (!hasBeauty()) {
-      toast('美颜需要桌面版的「修图 App」\n浏览器里调不通（跨域限制）', 3600);
-      return;
-    }
 
     const params = beautyParams();
     if (!Object.keys(params).length) {
@@ -4139,7 +4144,7 @@
     // 网页版禁用 AI 抠人并说明原因，而不是让用户点了没反应
     if (!hasDesktop()) {
       const seg = $('stSeg');
-      if (seg) seg.title = '需要在桌面版「修图 App」里使用（浏览器有跨域限制）';
+      if (seg) seg.title = 'AI 抠人（百度人体分析）';
     }
 
     let rt = null;
