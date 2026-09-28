@@ -519,6 +519,15 @@
 }
 .ai-prompt-row textarea:focus{outline:none;border-color:var(--accent)}
 
+.ai-mode-row{
+  display:flex;align-items:center;gap:10px;
+  margin:8px 0 4px;
+}
+.ai-mode-label{
+  font-size:12px;color:var(--ink);opacity:.7;flex-shrink:0;
+}
+.ai-mode-row .seg{flex:1}
+
 .ai-progress{
   display:flex;align-items:center;gap:10px;
   padding:12px 0;font-size:13px;color:var(--ink);

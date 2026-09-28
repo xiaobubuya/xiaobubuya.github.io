@@ -223,11 +223,18 @@
 
     <!-- 配置区（选了风格后展开） -->
     <div id="aiConfig" hidden>
+      <div class="ai-mode-row">
+        <span class="ai-mode-label">生成范围</span>
+        <div id="aiMode" class="seg">
+          <button type="button" data-mode="all" class="on">全部（封皮+2主体）</button>
+          <button type="button" data-mode="cover">只重制封皮</button>
+        </div>
+      </div>
       <div id="aiPrompts"></div>
       <div id="aiProgress" class="ai-progress" hidden></div>
       <div id="aiResults"></div>
-      <button id="btnAiRun" class="primary">生成全部装饰</button>
-      <button id="btnAiAdd" class="primary" hidden>应用到整本相册</button>
+      <button id="btnAiRun" class="primary">生成装饰</button>
+      <button id="btnAiAdd" class="primary" hidden>应用</button>
     </div>
 
     <button class="sheet-item" data-close>关闭</button>

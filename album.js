@@ -1221,7 +1221,7 @@
     }
   ];
 
-  const aiState = { style: null, results: [], generating: false };
+  const aiState = { style: null, results: [], generating: false, mode: 'all' };
 
   function renderAiStyles() {
     const box = el('aiTemplates');
@@ -1239,17 +1239,18 @@
     }
   }
 
-  function selectAiStyle(s) {
-    aiState.style = s;
-    aiState.results = [];
-    // 渲染 3 个 prompt 输入框
+  function renderAiPrompts() {
+    if (!aiState.style) return;
+    const s = aiState.style;
     const box = el('aiPrompts');
     box.innerHTML = '';
-    const prompts = [
-      { label: '封皮', prompt: s.coverPrompt, cls: 'cover' },
-      { label: '主体 1', prompt: s.bodyPrompts[0], cls: '' },
-      { label: '主体 2', prompt: s.bodyPrompts[1], cls: '' }
-    ];
+    const prompts = aiState.mode === 'cover'
+      ? [{ label: '封皮', prompt: s.coverPrompt, cls: 'cover' }]
+      : [
+          { label: '封皮', prompt: s.coverPrompt, cls: 'cover' },
+          { label: '主体 1', prompt: s.bodyPrompts[0], cls: '' },
+          { label: '主体 2', prompt: s.bodyPrompts[1], cls: '' }
+        ];
     for (const p of prompts) {
       const row = document.createElement('div');
       row.className = 'ai-prompt-row';
@@ -1258,6 +1259,12 @@
         `<textarea maxlength="2000" rows="2">${A.esc(p.prompt)}</textarea>`;
       box.appendChild(row);
     }
+  }
+
+  function selectAiStyle(s) {
+    aiState.style = s;
+    aiState.results = [];
+    renderAiPrompts();
     el('aiConfig').hidden = false;
     el('aiResults').innerHTML = '';
     el('aiProgress').hidden = true;
@@ -1266,6 +1273,21 @@
     el('btnAiAdd').hidden = true;
     renderAiStyles();
   }
+
+  // 模式切换
+  el('aiMode').addEventListener('click', e => {
+    const btn = e.target.closest('[data-mode]');
+    if (!btn) return;
+    aiState.mode = btn.dataset.mode;
+    [...el('aiMode').children].forEach(b => b.classList.toggle('on', b === btn));
+    renderAiPrompts();
+    aiState.results = [];
+    el('aiResults').innerHTML = '';
+    el('aiProgress').hidden = true;
+    el('btnAiRun').disabled = false;
+    el('btnAiAdd').hidden = true;
+    el('btnAiRun').textContent = aiState.mode === 'cover' ? '生成封皮装饰' : '生成全部装饰';
+  });
 
   /* 后端代理：前端 → /api/agnes/generate → Agnes API → 返回 b64 */
   async function generateAiImage(prompt) {
@@ -1347,7 +1369,7 @@
 
     const box = el('aiPrompts');
     const prompts = [...box.querySelectorAll('textarea')].map(t => t.value.trim());
-    const labels = ['封皮', '主体 1', '主体 2'];
+    const labels = aiState.mode === 'cover' ? ['封皮'] : ['封皮', '主体 1', '主体 2'];
 
     el('btnAiRun').disabled = true;
     el('aiProgress').hidden = false;
@@ -1361,7 +1383,6 @@
       try {
         const b64 = await generateAiImage(prompts[i]);
         aiState.results.push({ label: labels[i], b64, prompt: prompts[i] });
-        // 即时展示缩略图
         const card = document.createElement('div');
         card.className = 'ai-result-card';
         card.innerHTML =
@@ -1377,7 +1398,8 @@
     el('btnAiRun').disabled = false;
     if (aiState.results.length > 0) {
       el('btnAiAdd').hidden = false;
-      A.toast(`生成完成 (${aiState.results.length} 张)，点「应用到整本相册」`);
+      el('btnAiAdd').textContent = aiState.mode === 'cover' ? '应用封皮' : '应用到整本相册';
+      A.toast(`生成完成 (${aiState.results.length} 张)，点「${el('btnAiAdd').textContent}」`);
     }
     aiState.generating = false;
   }
@@ -1391,15 +1413,6 @@
         photos.push(await uploadAiImage(r.b64));
       }
 
-      // 确保至少有 3 页
-      while (S.pages.length < 3) {
-        const res = await A.api(`/api/albums/${S.album.id}/pages`, { method: 'POST' });
-        if (!res.ok) break;
-        const fresh = await (await A.api(`/api/albums/${S.album.id}/pages`)).json();
-        S.pages = fresh.pages;
-        S.album = fresh.album;
-      }
-
       const bg = aiState.style.bg;
       const item = (photo) => ({
         id: newId(), photo: photo.k,
@@ -1407,25 +1420,54 @@
         fit: 'cover', radius: 0, caption: ''
       });
 
-      // 封皮→第 1 页，主体→第 2-3 页
-      const assignments = [
-        { pageIdx: 0, photo: photos[0] },
-        { pageIdx: 1, photo: photos[1] },
-        { pageIdx: 2, photo: photos[2] }
-      ];
-
-      for (const a of assignments) {
-        if (!a.photo || !S.pages[a.pageIdx]) continue;
-        const layout = S.pages[a.pageIdx].layout;
+      if (aiState.mode === 'cover') {
+        // 只重制封皮：替换第 1 页的背景装饰
+        if (!S.pages[0]) { A.toast('没有第 1 页'); return; }
+        const layout = S.pages[0].layout;
         layout.canvas.bg = bg;
-        layout.items.unshift(item(a.photo));
-      }
+        // 删除旧的背景 item（第一个 item，z=0）
+        if (layout.items[0] && layout.items[0].z === 0) {
+          layout.items.shift();
+        }
+        layout.items.unshift(item(photos[0]));
+        S.sel = null;
+        renderEditor();
+        scheduleSave();
+        el('aiSheet').hidden = true;
+        A.toast('封皮已更新');
+      } else {
+        // 全部：确保至少有 3 页
+        while (S.pages.length < 3) {
+          const res = await A.api(`/api/albums/${S.album.id}/pages`, { method: 'POST' });
+          if (!res.ok) break;
+          const fresh = await (await A.api(`/api/albums/${S.album.id}/pages`)).json();
+          S.pages = fresh.pages;
+          S.album = fresh.album;
+        }
 
-      S.sel = null;
-      renderEditor();
-      scheduleSave();
-      el('aiSheet').hidden = true;
-      A.toast('已应用到整本相册，去选照片填进去吧');
+        const assignments = [
+          { pageIdx: 0, photo: photos[0] },
+          { pageIdx: 1, photo: photos[1] },
+          { pageIdx: 2, photo: photos[2] }
+        ];
+
+        for (const a of assignments) {
+          if (!a.photo || !S.pages[a.pageIdx]) continue;
+          const layout = S.pages[a.pageIdx].layout;
+          layout.canvas.bg = bg;
+          // 替换旧背景
+          if (layout.items[0] && layout.items[0].z === 0) {
+            layout.items.shift();
+          }
+          layout.items.unshift(item(a.photo));
+        }
+
+        S.sel = null;
+        renderEditor();
+        scheduleSave();
+        el('aiSheet').hidden = true;
+        A.toast('已应用到整本相册，去选照片填进去吧');
+      }
     } catch (e) {
       A.toast('上传失败：' + e.message, 4000);
     }
@@ -1436,6 +1478,9 @@
     el('aiSheet').hidden = false;
     aiState.style = null;
     aiState.results = [];
+    aiState.mode = 'all';
+    [...el('aiMode').children].forEach(b => b.classList.toggle('on', b.dataset.mode === 'all'));
+    el('btnAiRun').textContent = '生成全部装饰';
     el('aiConfig').hidden = true;
     el('aiResults').innerHTML = '';
     el('aiProgress').hidden = true;
