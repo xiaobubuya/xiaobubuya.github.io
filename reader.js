@@ -37,16 +37,20 @@
     }, o || {});
 
     /* ---------------- 状态 ---------------- */
-    const R = { spread: 0, single: false, flipping: false };
+    const R = { spread: 0, single: false, flipping: false, coverOpen: false };
     // 用户手动切过单页/跨页就不再自动跟随屏幕比例
     let manualMode = false;
+    // 封面是否有特殊标记（page 0 的 canvas.cover === true）
+    const hasCover = () => pages().length > 0 && pages()[0].layout.canvas.cover === true;
 
     const pages = () => opts.pages;
-    const totalSpreads = () => Math.max(1, Math.ceil(pages().length / 2));
+    // 有封皮时，内容页从 index 1 开始
+    const contentPages = () => hasCover() ? pages().slice(1) : pages();
+    const totalSpreads = () => Math.max(1, Math.ceil(contentPages().length / 2));
     const bookRatio = () => (pages()[0] && pages()[0].layout.canvas.ratio) || 1.5;
-    const slideCount = () => (R.single ? pages().length : totalSpreads());
-    const canPrev = () => R.spread > 0;
-    const canNext = () => R.spread < slideCount() - 1;
+    const slideCount = () => (R.single ? contentPages().length : totalSpreads());
+    const canPrev = () => R.coverOpen && R.spread > 0;
+    const canNext = () => R.coverOpen && R.spread < slideCount() - 1;
 
     /* ---------------- DOM ---------------- */
     container.innerHTML = `
@@ -106,7 +110,9 @@
     /* ---------------- 渲染单页 ---------------- */
     function renderSide(box, idx, align) {
       box.innerHTML = '';
-      const p = pages()[idx];
+      // idx 是相对于 pages() 的索引，需要转换为 contentPages() 的索引
+      const offset = hasCover() ? 1 : 0;
+      const p = pages()[idx + offset];
 
       if (!p) {
         box.style.background = '#fdfcfa';
@@ -142,37 +148,113 @@
         box.appendChild(d);
       });
 
-      // 封皮：第一页渲染为相册封面
-      if (idx === 0 && opts.cover) {
-        const cover = document.createElement('div');
-        cover.className = 'cover-design';
-        cover.innerHTML = '';
-        const t = document.createElement('div');
-        t.className = 'cover-title';
-        t.textContent = opts.cover.title || opts.title || '我们的相册';
-        cover.appendChild(t);
-        if (opts.cover.subtitle) {
-          const s = document.createElement('div');
-          s.className = 'cover-subtitle';
-          s.textContent = opts.cover.subtitle;
-          cover.appendChild(s);
-        }
-        const hint = document.createElement('div');
-        hint.className = 'cover-hint';
-        hint.textContent = '← 翻页';
-        cover.appendChild(hint);
-        box.appendChild(cover);
-      }
-
       if (align) {
         const n = document.createElement('div');
         n.className = 'pgno ' + align;
-        n.textContent = String(idx + 1);
+        n.textContent = String(idx + 1 + offset);
         box.appendChild(n);
       }
     }
 
+    /* ---------------- 渲染封皮 ---------------- */
+    function renderCover(box) {
+      if (!hasCover()) return;
+      const p = pages()[0];
+      box.style.background = (p.layout.canvas && p.layout.canvas.bg) || '#fdf6f0';
+      box.innerHTML = '';
+
+      // 渲染封皮上的装饰元素
+      p.layout.items.forEach((it, i) => {
+        const d = document.createElement('div');
+        d.className = 'item';
+        d.style.cssText =
+          `left:${it.x * 100}%;top:${it.y * 100}%;` +
+          `width:${it.w * 100}%;height:${it.h * 100}%;` +
+          `transform:rotate(${it.rot}deg);z-index:${i + 1};cursor:pointer`;
+        const wrap = document.createElement('div');
+        wrap.className = 'img';
+        const img = document.createElement('img');
+        img.src = opts.imageUrl(it.photo);
+        img.alt = '';
+        img.draggable = false;
+        if (it.fit === 'contain') img.style.objectFit = 'contain';
+        wrap.appendChild(img);
+        d.appendChild(wrap);
+        box.appendChild(d);
+      });
+
+      // 封皮标题层
+      const cover = document.createElement('div');
+      cover.className = 'cover-design';
+      const t = document.createElement('div');
+      t.className = 'cover-title';
+      t.textContent = opts.title || '我们的相册';
+      cover.appendChild(t);
+      if (opts.subtitle) {
+        const s = document.createElement('div');
+        s.className = 'cover-subtitle';
+        s.textContent = opts.subtitle;
+        cover.appendChild(s);
+      }
+      const hint = document.createElement('div');
+      hint.className = 'cover-hint';
+      hint.textContent = '点击翻开';
+      cover.appendChild(hint);
+      box.appendChild(cover);
+    }
+
     /* ---------------- 渲染当前跨页 ---------------- */
+    /* ---------------- 翻开封面 ---------------- */
+    async function openCover() {
+      if (R.coverOpen || !hasCover() || R.flipping) return;
+      R.flipping = true;
+
+      // 封皮在右边，翻开后翻到左边
+      // 先渲染翻起层：正面=封皮，背面=第一内容页
+      renderCover(flipFront);
+      const firstContentIdx = hasCover() ? 1 : 0;
+      renderSide(flipBack, Math.floor(firstContentIdx / 2), 'left');
+
+      // 底层：左边空，右边显示第二内容页
+      sideL.style.background = '#fdfcfa';
+      if (!R.single && contentPages().length > 1) {
+        renderSide(sideR, 1, 'right');
+      } else {
+        sideR.style.background = '#fdfcfa';
+      }
+
+      flip.hidden = false;
+      flip.style.transition = 'none';
+      flip.style.transform = 'rotateY(0deg)';
+      flip.className = 'book-flip fwd';
+      await twoFrames();
+
+      // 动画翻开
+      flip.style.transition = '';
+      void flip.offsetWidth;
+      flip.style.transform = 'rotateY(-180deg)';
+      await wait(620);
+
+      // 完成
+      flip.hidden = true;
+      flip.style.transition = 'none';
+      flip.style.transform = '';
+      R.coverOpen = true;
+      R.spread = 0;
+      render();
+      R.flipping = false;
+    }
+
+    /* 封皮点击翻开 */
+    stage.addEventListener('click', e => {
+      if (!R.coverOpen && hasCover() && !R.flipping) {
+        // 点击封皮区域翻开
+        if (e.target.closest('.book-side.right') || e.target.closest('.book-flip')) {
+          openCover();
+        }
+      }
+    });
+
     function updateBar() {
       const n = pages().length;
       $('.read-pos').textContent = R.single
@@ -188,12 +270,13 @@
     }
 
     function preloadAround() {
+      const offset = hasCover() ? 1 : 0;
       const from = R.single ? R.spread : R.spread * 2;
       const idxs = R.single
         ? [R.spread - 1, R.spread + 1]
         : [from - 2, from - 1, from + 2, from + 3];
       for (const i of idxs) {
-        const p = pages()[i];
+        const p = pages()[i + offset];
         if (p) for (const it of p.layout.items) new Image().src = opts.imageUrl(it.photo);
       }
     }
@@ -202,6 +285,15 @@
       book.classList.toggle('single', R.single);
       layoutBook();
 
+      // 封皮未翻开时，显示封皮
+      if (!R.coverOpen && hasCover()) {
+        sideL.style.background = '#fdfcfa';
+        renderCover(sideR);
+        $('.read-pos').textContent = '封面';
+        return;
+      }
+
+      // 已翻开，正常渲染跨页
       if (R.single) {
         renderSide(sideR, R.spread, 'right');
       } else {
@@ -216,24 +308,26 @@
 
     /* ---------------- 翻页 ---------------- */
     function beginFlip(dir) {
+      if (!R.coverOpen) return false;
       if (dir === 1 && !canNext()) return false;
       if (dir === -1 && !canPrev()) return false;
       if (R.single) return true;
 
       const cur = R.spread;
+      const offset = hasCover() ? 1 : 0;
       if (dir === 1) {
         const nxt = cur + 1;
-        renderSide(sideL, cur * 2, 'left');
-        renderSide(sideR, nxt * 2 + 1, 'right');
-        renderSide(flipFront, cur * 2 + 1, 'right');
-        renderSide(flipBack, nxt * 2, 'left');
+        renderSide(sideL, cur * 2 + offset, 'left');
+        renderSide(sideR, nxt * 2 + 1 + offset, 'right');
+        renderSide(flipFront, cur * 2 + 1 + offset, 'right');
+        renderSide(flipBack, nxt * 2 + offset, 'left');
         flip.className = 'book-flip fwd';
       } else {
         const prv = cur - 1;
-        renderSide(sideL, prv * 2, 'left');
-        renderSide(sideR, cur * 2 + 1, 'right');
-        renderSide(flipFront, cur * 2, 'left');
-        renderSide(flipBack, prv * 2 + 1, 'right');
+        renderSide(sideL, prv * 2 + offset, 'left');
+        renderSide(sideR, cur * 2 + 1 + offset, 'right');
+        renderSide(flipFront, cur * 2 + offset, 'left');
+        renderSide(flipBack, prv * 2 + 1 + offset, 'right');
         flip.className = 'book-flip bwd';
       }
       flip.hidden = false;
@@ -266,7 +360,7 @@
     }
 
     async function turnPage(dir) {
-      if (R.flipping) return;
+      if (R.flipping || !R.coverOpen) return;
       if (dir === 1 && !canNext()) return;
       if (dir === -1 && !canPrev()) return;
       R.flipping = true;
@@ -442,11 +536,9 @@
 
     /* ---- 与调用方的接口 ---- */
     function open(startPage) {
-      const start = Math.max(0, startPage || 0);
       applyAutoMode();
-      R.spread = R.single
-        ? Math.min(start, Math.max(0, pages().length - 1))
-        : Math.floor(start / 2);
+      R.coverOpen = false;  // 从封皮开始
+      R.spread = 0;
       render();
       return R.single;
     }

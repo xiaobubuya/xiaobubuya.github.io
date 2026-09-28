@@ -170,7 +170,18 @@
       if (!S.pages.length) {
         S.pages = [{ index: 0, version: 1, layout: { canvas: { ratio: 1.5, bg: '#fff' }, items: [] } }];
       }
-      S.cur = 0;
+      // 确保第一页是封皮
+      if (!S.pages[0].layout.canvas.cover) {
+        S.pages[0].layout.canvas.cover = true;
+        S.pages[0].layout.canvas.bg = S.pages[0].layout.canvas.bg || '#fdf6f0';
+        scheduleSave();
+      }
+      // 确保至少有 2 页（封皮 + 内容页）
+      if (S.pages.length < 2) {
+        S.pages.push({ index: S.pages.length, version: 1, layout: { canvas: { ratio: S.pages[0].layout.canvas.ratio, bg: '#ffffff' }, items: [] } });
+        scheduleSave();
+      }
+      S.cur = 1;  // 从内容页开始编辑
       S.sel = null;
       S.undo = []; S.redo = [];
 
@@ -1030,7 +1041,6 @@
     reader = window.BookReader.create(el('readView'), {
       pages: S.pages,
       title: S.album.title,
-      cover: { title: S.album.title },
       imageUrl: key => A.previewUrl(key),
       startPage: S.cur,
       toast: A.toast,

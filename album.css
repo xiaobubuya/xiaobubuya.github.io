@@ -563,6 +563,7 @@
   justify-content:center;align-items:center;
   z-index:100;pointer-events:none;
   padding:20px;text-align:center;
+  background:linear-gradient(135deg,rgba(255,255,255,.3) 0%,transparent 50%,rgba(0,0,0,.05) 100%);
 }
 .cover-title{
   font-size:clamp(20px,5vw,40px);font-weight:700;
@@ -581,4 +582,60 @@
 @keyframes cover-pulse{
   0%,100%{opacity:.4}
   50%{opacity:1}
+}
+
+/* 书脊阴影 - 给书脊加立体感 */
+.book{
+  box-shadow:
+    0 4px 20px rgba(0,0,0,.15),
+    inset 1px 0 2px rgba(255,255,255,.5);
+}
+.book-spine{
+  background:linear-gradient(90deg,
+    rgba(0,0,0,.12) 0%,
+    rgba(0,0,0,.25) 40%,
+    rgba(0,0,0,.25) 60%,
+    rgba(0,0,0,.12) 100%);
+  box-shadow:
+    -1px 0 3px rgba(0,0,0,.1),
+    1px 0 3px rgba(0,0,0,.1);
+}
+
+/* 页边厚度 - 用伪元素模拟纸页厚度 */
+.book-side::after{
+  content:'';
+  position:absolute;
+  top:0;bottom:0;
+  width:6px;
+  background:repeating-linear-gradient(
+    0deg,
+    #f5f3f0 0px,
+    #f5f3f0 2px,
+    #e8e5e1 2px,
+    #e8e5e1 3px
+  );
+  border-radius:0 2px 2px 0;
+  box-shadow:1px 0 2px rgba(0,0,0,.08);
+}
+.book-side.right::after{
+  right:0;left:auto;
+  border-radius:2px 0 0 2px;
+  box-shadow:-1px 0 2px rgba(0,0,0,.08);
+}
+
+/* 封皮未翻开时，左边显示书脊 */
+.book:not(.single) .book-side.left{
+  background:linear-gradient(90deg,#f0ede8 0%,#faf8f5 100%);
+}
+
+/* 翻页动画时的阴影 */
+.book-flip{
+  box-shadow:0 0 0 rgba(0,0,0,0);
+  transition:box-shadow .3s;
+}
+.book-flip.fwd{
+  box-shadow:-4px 0 12px rgba(0,0,0,.1);
+}
+.book-flip.bwd{
+  box-shadow:4px 0 12px rgba(0,0,0,.1);
 }
