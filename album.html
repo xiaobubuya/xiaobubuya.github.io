@@ -50,6 +50,7 @@
     <span id="saveState" class="save-state"></span>
     <button id="btnToggleTools" class="icon-btn tools-toggle"
             aria-label="工具面板" aria-expanded="false">▾</button>
+    <button id="btnAiGen" class="icon-btn" title="AI 相册风格">🎨</button>
   </div>
 
   <!-- 可下拉的工具面板：分组换行排列，不做横向滚动 -->
@@ -82,11 +83,6 @@
       <span class="tool-label">排版</span>
       <button id="btnAutoLayout" class="icon-btn wide"
               title="自动排版（连点可换下一个版式）">▤ 自动排版</button>
-    </div>
-
-    <div class="tool-group">
-      <span class="tool-label">AI</span>
-      <button id="btnAiGen" class="icon-btn wide" title="AI 生成装饰图">🎨 AI 生成</button>
     </div>
 
     <div class="tool-group">
@@ -219,29 +215,19 @@
       <button class="mini-btn" data-close>关闭</button>
     </div>
     <p class="sheet-note dim">
-      选一个模板，AI 自动生成匹配的装饰背景。页面结构和照片位置已固定，
-      生成后直接加入当前页，再选照片填进去就行。
+      选一个风格，AI 生成装饰背景，应用到整本相册的每一页。
     </p>
 
     <!-- 模板列表 -->
     <div id="aiTemplates" class="ai-templates"></div>
 
-    <!-- 配置区（选了模板后展开） -->
+    <!-- 配置区（选了风格后展开） -->
     <div id="aiConfig" hidden>
-      <label class="field">
-        <span>描述（可微调）</span>
-        <textarea id="aiPrompt" maxlength="2000" rows="2"></textarea>
-      </label>
-      <div id="aiLoading" class="ai-loading" hidden>
-        <div class="spinner"></div>
-        <span>AI 正在创作…</span>
-      </div>
-      <div id="aiResult" hidden>
-        <p class="sheet-note">✅ 生成完成</p>
-        <img id="aiResultImg" class="ai-result-img" alt="AI 生成结果">
-      </div>
-      <button id="btnAiRun" class="primary">生成装饰图</button>
-      <button id="btnAiAdd" class="primary" hidden>加入当前页</button>
+      <div id="aiPrompts"></div>
+      <div id="aiProgress" class="ai-progress" hidden></div>
+      <div id="aiResults"></div>
+      <button id="btnAiRun" class="primary">生成全部装饰</button>
+      <button id="btnAiAdd" class="primary" hidden>应用到整本相册</button>
     </div>
 
     <button class="sheet-item" data-close>关闭</button>

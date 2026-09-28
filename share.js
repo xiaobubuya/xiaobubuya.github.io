@@ -53,6 +53,7 @@
     window.BookReader.create(view, {
       pages,
       title: data.album.title,
+      cover: { title: data.album.title },
       imageUrl: imgUrl,
       // 分享页没有「退出到编辑器」这回事，不传 onExit 即不显示退出按钮
       toast: () => {}

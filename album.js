@@ -1030,6 +1030,7 @@
     reader = window.BookReader.create(el('readView'), {
       pages: S.pages,
       title: S.album.title,
+      cover: { title: S.album.title },
       imageUrl: key => A.previewUrl(key),
       startPage: S.cur,
       toast: A.toast,

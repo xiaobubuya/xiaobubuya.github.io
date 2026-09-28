@@ -27,6 +27,7 @@
     const opts = Object.assign({
       pages: [],
       title: '',
+      cover: null,
       imageUrl: () => '',
       startPage: 0,
       onExit: null,
@@ -108,7 +109,6 @@
       const p = pages()[idx];
 
       if (!p) {
-        // 跨页的另一半没有内容 —— 留一张空白纸，像书的最后一页
         box.style.background = '#fdfcfa';
         return;
       }
@@ -141,6 +141,28 @@
         }
         box.appendChild(d);
       });
+
+      // 封皮：第一页渲染为相册封面
+      if (idx === 0 && opts.cover) {
+        const cover = document.createElement('div');
+        cover.className = 'cover-design';
+        cover.innerHTML = '';
+        const t = document.createElement('div');
+        t.className = 'cover-title';
+        t.textContent = opts.cover.title || opts.title || '我们的相册';
+        cover.appendChild(t);
+        if (opts.cover.subtitle) {
+          const s = document.createElement('div');
+          s.className = 'cover-subtitle';
+          s.textContent = opts.cover.subtitle;
+          cover.appendChild(s);
+        }
+        const hint = document.createElement('div');
+        hint.className = 'cover-hint';
+        hint.textContent = '← 翻页';
+        cover.appendChild(hint);
+        box.appendChild(cover);
+      }
 
       if (align) {
         const n = document.createElement('div');
