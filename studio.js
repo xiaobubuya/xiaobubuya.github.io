@@ -2278,6 +2278,9 @@
       resetAll(false);
       syncMaskUI();
       render();
+      // 预设卡片重建：有照片了，缩略图从渐变色块换成真实预览
+      // （capturePresetThumb 在 buildPresetUI 里同步渲染，见该函数注释）
+      buildPresetUI();
     } catch (e) {
       toast('打不开这个文件：' + (e && e.message ? e.message : e));
     } finally {
@@ -2326,15 +2329,30 @@
 
   /* ================================================================
      滑块
+     ----------------------------------------------------------------
+     16 个滑杆原来平铺在一列里，要滚很远才到底。现在按大类拆到两页：
+       · 影调页 = 基础 + 曲线 + 质感（明暗和质感）
+       · 颜色页 = 色彩 + HSL（色相和饱和）
+     拆的是**容器**，不是数据 —— ADJUSTMENTS 和 values 仍然是各一份，
+     所以预设、重置、导出、undo 全部不用跟着改。
      ================================================================ */
-  function buildSliders() {
-    const box = $('stSliders');
+  const SLIDER_GROUPS = {
+    stSliders:      ['基础', '曲线', '质感'],
+    stSlidersColor: ['色彩', 'HSL'],
+  };
+
+  function buildSliders(boxId, groups) {
+    const box = $(boxId);
+    if (!box) return;
     box.innerHTML = '';
 
     let lastGroup = null;
 
     for (const a of ADJUSTMENTS) {
-      // 分组标题。15 个滑杆平铺太长，而且「曝光」和「颗粒」放一起
+      if (!groups.includes(a.group)) continue;
+
+      // 分组标题。影调页有 3 组、颜色页有 2 组，标题才有意义；
+      // 原来 16 个平铺太长，而且「曝光」和「颗粒」放一起
       // 会让人以为它们是同一类东西
       if (a.group && a.group !== lastGroup) {
         const h = document.createElement('div');
@@ -2480,10 +2498,15 @@
       card.dataset.id = p.id;
       card.disabled = !img;
 
-      // 色块预览
+      // 预览：有照片时用真实渲染（capturePresetThumb），
+      // 没照片时退回渐变色块 —— 至少还能看出冷暖倾向
       const swatch = document.createElement('div');
       swatch.className = 'st-preset-swatch';
       swatch.style.background = `linear-gradient(135deg, ${p.hue}, ${shadeColor(p.hue, -30)})`;
+      const thumb = capturePresetThumb(p);
+      if (thumb) {
+        swatch.style.background = `url(${thumb}) center/cover no-repeat`;
+      }
 
       // 名称
       const name = document.createElement('span');
@@ -2507,6 +2530,131 @@
     const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amt));
     const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
     return '#' + (0x1000000 + (R << 16) + (G << 8) + B).toString(16).slice(1);
+  }
+
+  /* ================================================================
+     预设真实预览
+     ----------------------------------------------------------------
+     卡片缩略图 = 拿**当前这张照片** + 预设参数走一遍主渲染管线，
+     抓成一帧小图。纯色块只能表达冷暖倾向，而预设的观感主要来自
+     照片内容（肤色、明暗分布）—— 婚纱照的「柔光/金调」差在哪，
+     只有真实渲染出来才看得出来。
+
+     怎么抓：
+       · 先把 values 换成「默认值 + 预设值」—— 和 applyPreset 的
+         语义完全一致（它也是先 reset 再套预设），预览即所得
+       · draw() 一帧 → 缩到 ~200px 宽的小 canvas → toDataURL
+       · 立刻把 values 还原并重画
+
+     为什么不闪：画布开了 preserveDrawingBuffer，同一同步任务内
+     怎么读都安全；整段是同步执行，浏览器不会在中间提交帧，
+     用户看到的永远是还原后的画面。
+
+     失败就返回 null，卡片退回渐变色块 —— 预览是锦上添花，
+     不能因为抓图失败把整个预设区搞崩。
+     ================================================================ */
+  function capturePresetThumb(preset) {
+    if (!img) return null;
+    try {
+      const saved = {};
+      for (const a of ADJUSTMENTS) saved[a.key] = values[a.key];
+      for (const a of ADJUSTMENTS) values[a.key] = a.def;
+      for (const [k, v] of Object.entries(preset.v)) {
+        if (k in values) values[k] = v;
+      }
+      draw();
+
+      // 缩到小图再编码：全分辨率 dataURL 一张几十 KB，14 张挂 DOM 上不划算
+      const tw = 200;
+      const th = Math.max(1, Math.round(tw * img.height / img.width));
+      const off = document.createElement('canvas');
+      off.width = tw; off.height = th;
+      const g = off.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(canvas, 0, 0, tw, th);
+      const dataURL = off.toDataURL('image/jpeg', 0.72);
+
+      for (const a of ADJUSTMENTS) values[a.key] = saved[a.key];
+      draw();
+      return dataURL;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /* ================================================================
+     面板分页（图标竖栏 + 多页）
+     ----------------------------------------------------------------
+     面板从「5 个手风琴叠成一列」改成「竖栏 + 6 页」，每页各自滚动。
+     这一节只负责**页面显示和标题**，页内的功能仍由原来的函数管。
+
+     ⚠️ HTML 里控件的 id 全部没动，所以只改容器结构不会牵动业务逻辑；
+        但这节**必须存在** —— 否则 6 个页面都在 DOM 里、只有第一个
+        显示，竖栏点了也没反应（和旧手风琴一样「看着能点、点了没用」）。
+
+     记忆当前页：旧手风琴的折叠状态本来就该记在 localStorage，
+     但从来没实现过。这里顺手把「上次停在第几页」记下来，
+     重开修图页不用每次都从「预设」开始找。
+     ================================================================ */
+  const PANEL_PAGES = [
+    { id: 'preset',   name: '预设' },
+    { id: 'portrait', name: '人像' },
+    { id: 'tone',     name: '影调' },
+    { id: 'color',    name: '颜色' },
+    { id: 'local',    name: '局部' },
+    { id: 'tool',     name: '工具' },
+  ];
+  let panelPage = 'preset';
+
+  /** 显示某一页，同步竖栏高亮和标题。save=false 用于启动时读回记忆。 */
+  function showPage(id, { save = true } = {}) {
+    const pid = PANEL_PAGES.some(p => p.id === id) ? id : 'preset';
+    panelPage = pid;
+
+    document.querySelectorAll('.st-page').forEach(el => {
+      el.classList.toggle('on', el.dataset.page === pid);
+    });
+    document.querySelectorAll('.st-rail-btn').forEach(b => {
+      const on = b.dataset.page === pid;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-current', on ? 'page' : 'false');
+    });
+    const title = $('stPageTitle');
+    if (title) {
+      title.textContent = (PANEL_PAGES.find(p => p.id === pid) || {}).name || '';
+    }
+    if (save) {
+      try { localStorage.setItem('stPanelPage', pid); } catch { /* 无痕模式会抛 */ }
+    }
+  }
+
+  function initRail() {
+    // 竖栏按钮：一键直达，不用再滚
+    document.querySelectorAll('.st-rail-btn').forEach(b => {
+      b.addEventListener('click', () => showPage(b.dataset.page));
+    });
+
+    // ← / → 切页。只在面板内部生效，而且**不吃**输入框的按键 ——
+    // 滑杆本来就靠左右方向键调值，抢过来就等于废了。
+    document.addEventListener('keydown', e => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const t = e.target;
+      if (!t || !t.closest || !t.closest('#stPanel')) return;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable) return;
+      const i = PANEL_PAGES.findIndex(p => p.id === panelPage);
+      if (i < 0) return;
+      e.preventDefault();
+      const step = e.key === 'ArrowRight' ? 1 : -1;
+      const next = PANEL_PAGES[(i + step + PANEL_PAGES.length) % PANEL_PAGES.length];
+      showPage(next.id);
+    });
+
+    // 启动时读回上次停在哪一页
+    let saved = null;
+    try { saved = localStorage.getItem('stPanelPage'); } catch { /* ignore */ }
+    showPage(saved && PANEL_PAGES.some(p => p.id === saved) ? saved : 'preset',
+             { save: false });
   }
 
   /* ================================================================
@@ -2702,6 +2850,13 @@
       const el = $(id);
       if (el) el.classList.toggle('on', (id === 'stBrushAdd') === (mask.mode === 'add'));
     });
+
+    /* 「只作用于涂过的区域」这个开关现在挂在分页**外面**，所有调色页共用。
+       没有选区时它整条隐藏 —— 那时勾了也没用，反而让人以为「调整坏了」。
+       有了选区它必须随时可见：否则用户切到影调页拖滑杆，
+       会不明白为什么只有一块区域在变。 */
+    const sc = $('stScope');
+    if (sc) sc.hidden = mask.isEmpty;
   }
 
   /* ================================================================
@@ -3983,8 +4138,19 @@
       // 漏掉一处就会出现「按钮灰着但明明能撤销」这种别扭状态。
       mask.onchange = () => { syncMaskUI(); };
       initGL();
-      buildSliders();
+      // 16 个滑杆拆到「影调」「颜色」两页（分组见 SLIDER_GROUPS）
+      for (const [boxId, groups] of Object.entries(SLIDER_GROUPS)) {
+        buildSliders(boxId, groups);
+      }
+      // 护栏：任何调整项都必须真的生成滑杆。
+      // 漏了一个的症状是「面板里没有这个滑杆」，但预设/导出照样跑，
+      // 静默且难发现 —— 在这里就炸出来。
+      for (const a of ADJUSTMENTS) {
+        if (!a._show) throw new Error(
+          '调整项「' + a.name + '」没生成滑杆（SLIDER_GROUPS 漏了分组「' + a.group + '」）');
+      }
       buildPresetUI();
+      initRail();
       initEvents();
       initCropUI();
       initRotateUI();
@@ -4050,6 +4216,8 @@
       enableUI();
       updateInfo();
       draw();
+      // 深链也带照片进来，预设卡片同样要换成真实预览
+      buildPresetUI();
 
       // 清掉 URL 参数（刷新不会重复加载，后退不会回到带参数的状态）
       history.replaceState(null, '', location.pathname);
@@ -4073,6 +4241,11 @@
     openFile,
     resetAll,
     setOriginal,
+    // —— 面板分页（竖栏 + 多页）——
+    // 暴露出来给测试驱动，和真实用户点竖栏走的是同一条路径
+    PANEL_PAGES,
+    get panelPage() { return panelPage; },
+    showPage,
     setValue(key, v) {
       values[key] = v;
       const a = ADJUSTMENTS.find(x => x.key === key);

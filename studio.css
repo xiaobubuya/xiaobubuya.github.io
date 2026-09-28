@@ -94,20 +94,53 @@
 
 /* ---------------- 调整面板 ---------------- */
 .st-panel{
-  flex:none;width:290px;
-  display:flex;flex-direction:column;
-  /* ⚠️ 面板现在是「几个可折叠区域 + 常驻选区块」，整体会超出视口高度，
-     所以由**面板自己**滚动。原来靠 .st-sliders 撑满来滚，
-     加了折叠区域之后那样会把"裁剪/旋转"挤到屏幕外面去。 */
-  overflow-y:auto;overscroll-behavior:contain;
+  flex:none;
+  display:flex;flex-direction:row;   /* 内容区 + 最右竖栏 */
   background:var(--spanel);border-left:1px solid var(--sline);
+  min-height:0;
+}
+/* 内容区。302px 是量出来的：3 列预设卡每张约 88px，
+   再窄名字就会被截断；再宽又没有更多信息可放。 */
+.st-panel-main{
+  flex:none;width:302px;min-width:0;
+  display:flex;flex-direction:column;min-height:0;
 }
 .st-panel-head{
-  flex:none;display:flex;align-items:center;
-  padding:12px 14px 8px;font-size:12px;
-  letter-spacing:.05em;color:var(--sink2);
+  flex:none;display:flex;align-items:center;gap:8px;
+  padding:11px 14px 10px;
+  font-size:12.5px;font-weight:600;letter-spacing:.03em;
+  color:var(--sink);border-bottom:1px solid var(--sline);
 }
 .st-panel-head span{flex:1}
+
+/* ---------------- 最右侧图标竖栏 ----------------
+   放在**最右**（不是紧贴画布）：
+     · 鼠标往屏幕边缘甩就能点到，不用瞄准
+     · 切换分页时按钮位置不动，肌肉记忆成立
+   图标 + 小字标签：纯图标好看但难认，纯文字占地方。 */
+.st-rail{
+  flex:none;width:54px;
+  display:flex;flex-direction:column;gap:2px;
+  padding:8px 5px;
+  border-left:1px solid var(--sline);
+  background:var(--sbg);
+  overflow-y:auto;overscroll-behavior:contain;
+  scrollbar-width:none;
+}
+.st-rail::-webkit-scrollbar{display:none}
+.st-rail-btn{
+  flex:none;width:100%;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:8px 2px;
+  font:inherit;font-size:9.5px;line-height:1;
+  color:var(--sink2);background:none;border:0;
+  border-radius:9px;cursor:pointer;
+  transition:background .12s,color .12s;
+}
+.st-rail-btn i{font-style:normal;font-size:17px;line-height:1}
+.st-rail-btn:hover{color:var(--sink);background:var(--spanel2)}
+.st-rail-btn.on{color:#fff;background:var(--saccent)}
+.st-rail-btn:focus-visible{outline:2px solid var(--saccent);outline-offset:1px}
 .st-mini{
   display:none;width:26px;height:26px;
   font:inherit;font-size:12px;line-height:1;
@@ -115,11 +148,39 @@
   border:1px solid var(--sline);border-radius:7px;cursor:pointer;
 }
 
-/* 16 个滑杆排下来很长，给它自己的滚动区 —— 否则「裁剪 / 旋转」
-   会被顶到面板最下面，用户得先滚过全部滑杆才能点到。
-   42vh 是量出来的折中：一屏能看见 5~6 个滑杆，同时下面
-   三个区域还能露出来。 */
-.st-sliders{flex:none;max-height:42vh;overflow-y:auto;padding:0 14px 14px}
+/* ---------------- 分页 ----------------
+   每个大类一页，各自独立滚动。
+   ⚠️ 只有当前页 display:flex，其余 display:none ——
+      这样各页的滚动位置互不干扰，切回来还在原处。 */
+.st-pages{flex:1;min-height:0;display:flex;flex-direction:column}
+.st-page{
+  display:none;flex:1;min-height:0;
+  flex-direction:column;gap:10px;
+  padding:12px 14px 16px;
+  overflow-y:auto;overscroll-behavior:contain;
+}
+.st-page.on{display:flex}
+
+/* 页内小节标题（人像 / 工具页用） */
+.st-page-head{
+  display:flex;align-items:baseline;gap:8px;
+  font-size:12.5px;font-weight:600;color:var(--sink);
+}
+.st-page-head span:first-child{flex:1}
+.st-page-note{
+  font-size:10.5px;font-weight:400;
+  color:var(--sink2);opacity:.8;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* 工具页里每组工具之间的分隔 */
+.st-tool-block{
+  display:flex;flex-direction:column;gap:9px;
+  padding-bottom:12px;border-bottom:1px solid var(--sline);
+}
+.st-tool-block:last-child{border-bottom:0;padding-bottom:0}
+
+/* 滑杆容器：页面自己滚，这里不再单独限高 */
+.st-sliders{display:flex;flex-direction:column}
 .st-panel-foot{
   flex:none;padding:10px 14px calc(env(safe-area-inset-bottom) + 12px);
   font-size:11.5px;color:var(--sink2);
@@ -184,10 +245,15 @@
 .st-sl-group:first-child{margin-top:2px;padding-top:0;border-top:0}
 
 /* ---------------- 蒙版工具区 ---------------- */
+/* 局部调整开关。放在分页**外面**常驻：
+   它影响所有调色滑杆，跟着分页滚走的话，用户在影调页
+   会不明白为什么只有一块区域在变。
+   没有选区时整条隐藏（见 [hidden]）—— 那时它没有意义。 */
 .st-scope{
-  flex:none;padding:0 14px 10px;
-  border-bottom:1px solid var(--sline);
+  flex:none;padding:9px 14px;
+  border-top:1px solid var(--sline);
 }
+.st-scope[hidden]{display:none}
 .st-switch{
   display:flex;align-items:center;gap:8px;
   font-size:12.5px;color:var(--sink);cursor:pointer;user-select:none;
@@ -274,42 +340,14 @@
    做成独立折叠而不是互斥切换：两块可以同时摊开对比，
    互斥切换会让"只想改一个滑杆"变成两次点击。
    ================================================ */
-.st-acc{
-  flex:none;display:flex;flex-direction:column;
-  border-top:1px solid var(--sline);
-}
-.st-acc-head{
-  display:flex;align-items:center;gap:8px;
-  width:100%;padding:11px 14px;
-  font:inherit;font-size:12.5px;font-weight:600;
-  color:var(--sink);background:none;border:0;cursor:pointer;
-  text-align:left;
-}
-.st-acc-head:hover{color:#fff}
-.st-acc-caret{
-  flex:none;width:11px;font-size:10px;color:var(--sink2);
-}
-.st-acc-name{flex:none}
-.st-acc-icon{
-  flex:none;font-size:13px;width:16px;text-align:center;
-  opacity:.85;
-}
-.st-acc-note{
-  flex:1;font-size:10.5px;font-weight:400;
-  color:var(--sink2);opacity:.75;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  text-align:right;
-}
-.st-acc-body{
-  display:flex;flex-direction:column;gap:9px;
-  padding:0 14px 12px;
-}
-.st-acc.collapsed .st-acc-body{display:none}
-/* 折叠后给一点"里面还有东西"的暗示 */
-.st-acc.collapsed .st-acc-head{padding-bottom:11px}
-
-/* 选区块在折叠区域里自己不带分隔线（区域已经有顶线了） */
-.st-acc .st-mask{border-top:0;padding-top:0}
+/* ---------------- 旧手风琴样式已删除 ----------------
+   `.st-acc` / `.st-acc-head` / `.st-acc-body` 这套不再有 DOM 对应：
+   它们被「图标竖栏 + 分页」取代了。
+   删掉是因为它们**从来就是死的** —— CSS 里写了
+   `.st-acc.collapsed .st-acc-body{display:none}`，
+   但全仓库没有任何 js 去加 `collapsed` 类，
+   所以 5 个标题看着能点、点了没反应。
+   （保留样式只会让后来的人以为这功能是好的。） */
 .st-mask-note{
   flex:1;font-size:10.5px;color:var(--sink2);opacity:.75;
   text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -336,9 +374,11 @@
   background:#33333a;color:#fff;border-color:transparent;
 }
 
-/* 预设卡片网格：2 列 */
+/* 预设卡片网格：3 列。
+   2 列时每张卡 130px 宽，缩略图 44px 高 —— 看不出效果差别。
+   3 列 + 3:2 缩略图，一眼能分辨冷暖/浓淡。 */
 .st-preset-grid{
-  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:7px;
 }
 .st-preset-card{
   display:flex;flex-direction:column;align-items:stretch;
@@ -354,10 +394,13 @@
 }
 .st-preset-card:disabled{opacity:.35;cursor:default}
 
-/* 色块预览 */
+/* 预设预览。
+   有照片时由 buildPresetUI 用同一个 WebGL 管线渲染真实缩略图
+   （background-image 设为 dataURL）；
+   没照片时退回色块渐变，至少还能看出冷暖倾向。 */
 .st-preset-swatch{
-  height:44px;width:100%;
-  flex:none;
+  width:100%;aspect-ratio:3/2;flex:none;
+  background-size:cover;background-position:center;
 }
 /* 预设名称 */
 .st-preset-name{
@@ -613,13 +656,22 @@
 /* ---------------- 窄屏：面板移到下方 ---------------- */
 @media (max-width:820px){
   .st-main{flex-direction:column}
+  /* 窄屏：面板移到下方，变成横向布局 ——
+     竖栏转到**左侧**（横过来之后"最右"没有意义了），
+     内容占满剩下的宽度。 */
   .st-panel{
-    width:auto;border-left:0;border-top:1px solid var(--sline);
+    border-left:0;border-top:1px solid var(--sline);
     max-height:46dvh;
   }
+  .st-panel-main{width:auto;flex:1;min-width:0}
+  .st-rail{
+    order:-1;                    /* 竖栏放到最左 */
+    flex-direction:column;width:52px;
+    border-left:0;border-right:1px solid var(--sline);
+  }
   .st-panel.collapsed{max-height:none}
-  .st-panel.collapsed .st-acc,
-  .st-panel.collapsed .st-mask,
+  .st-panel.collapsed .st-pages,
+  .st-panel.collapsed .st-scope,
   .st-panel.collapsed .st-panel-foot{display:none}
   .st-mini{display:block}
   .st-title{display:none}

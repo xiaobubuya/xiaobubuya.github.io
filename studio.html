@@ -86,230 +86,226 @@
     </div>
   </section>
 
-  <!-- 调整面板 -->
+  <!-- ================================================================
+       调整面板
+       ----------------------------------------------------------------
+       结构 = 内容页 + 最右侧图标竖栏（参考百度网盘 AI 修图）
+
+       为什么不是一列手风琴：
+         原来 5 个分区叠成一列，要滚 952px 才到底，找「AI 修图」得翻半天。
+         更要紧的是那 5 个手风琴标题**点了没反应** —— 全仓库没有任何 js
+         处理 .st-acc-head 的点击，CSS 却写了 `.st-acc.collapsed` 的样式，
+         是 5 个看起来能点、实际是死的按钮（实测点击前后高度/class 都不变）。
+
+         改成竖栏后每个大类一键直达，各页独立滚动，不用再翻。
+
+       ⚠️ 竖栏放在**最右侧**（不是紧贴画布）：鼠标往边缘甩就能点到，
+          而且切换分页时按钮位置不动，肌肉记忆成立。
+
+       ⚠️ 所有控件的 id 都保持不变 —— 这样 studio.js 的逻辑、
+          以及测试里的引用都不用跟着改。
+       ================================================================ -->
   <aside class="st-panel" id="stPanel">
-    <div class="st-panel-head">
-      <span>调整</span>
-      <button id="stPanelToggle" class="st-mini" title="收起/展开">▸</button>
-    </div>
-
-    <!-- ===================== 预设 =====================
-         参考像素蛋糕：分类 tab + 色块预览卡片 + 一键应用。
-         放在最顶部，因为预设是 80% 用户修图的入口。 -->
-    <section class="st-acc" id="stAccPreset">
-      <button class="st-acc-head" id="stAccPresetHead" aria-expanded="true">
-        <span class="st-acc-icon">🎨</span>
-        <span class="st-acc-name">预设</span>
-        <span class="st-acc-note">一键套风格</span>
-      </button>
-      <div class="st-acc-body" id="stAccPresetBody">
-        <div class="st-preset-cats" id="stPresetCats"></div>
-        <div class="st-preset-grid" id="stPresetGrid"></div>
+    <div class="st-panel-main">
+      <div class="st-panel-head">
+        <span id="stPageTitle">预设</span>
+        <button id="stPanelToggle" class="st-mini" title="收起/展开">▸</button>
       </div>
-    </section>
 
-    <!-- ================================================================
-         三个**可折叠**区域：常规修图 / AI 修图 / 裁剪旋转
-         ----------------------------------------------------------------
-         用户要的："AI 修图和常规修图分为两个区域，互不干扰，
-                   常规修图的时候只有常规修图的内容，
-                   AI 修图的时候只有 AI 的内容，只有蒙版这些是共用的"
-         所以：
-           · 「常规」= 范围开关 + 16 个调色滑杆（纯本地，0 延迟）
-           · 「AI」  = 一键模板 + 美颜（发网络请求，慢）
-           · 蒙版   = **共用**，所以单独一块，不塞进任何一边：
-                     - 常规修图时它的含义是"调整只作用在涂过的区域"
-                     - AI「抹掉选区」时它的含义是"要抹掉什么"
-           · 折叠状态记在 localStorage 里，下次打开保持
-         ================================================================ -->
+      <div class="st-pages" id="stPages">
 
-    <!-- ===================== 区域一：常规修图 ===================== -->
-    <section class="st-acc" id="stAccBasic">
-      <button class="st-acc-head" id="stAccBasicHead" aria-expanded="true">
-        <span class="st-acc-caret">▾</span>
-        <span class="st-acc-icon">⚙️</span>
-        <span class="st-acc-name">常规修图</span>
-        <span class="st-acc-note">本地实时</span>
-      </button>
-      <div class="st-acc-body" id="stAccBasicBody">
-        <!-- 范围：全局 / 局部（蒙版）。放在滑块上面，因为「这次调整作用于哪」
-             是比「调多少」更前置的决定 -->
-        <div class="st-scope" id="stScope">
-          <label class="st-switch" title="打开后，下面的调整只作用于涂过的区域">
-            <input type="checkbox" id="stUseMask" disabled>
-            <span>只作用于涂过的区域</span>
-          </label>
-        </div>
-        <div class="st-sliders" id="stSliders"></div>
-      </div>
-    </section>
+        <!-- ===================== 预设 =====================
+             两类「一键套风格」都放这里：
+               · 本地调色预设（16 个滑杆的组合，即时生效、不联网）
+               · AI 一键模板（旷视美颜参数，0.7 秒出图、要联网）
+             它们对用户是同一件事「点一下变好看」，所以不该分成两处。 -->
+        <section class="st-page on" data-page="preset">
+          <div class="st-preset-cats" id="stPresetCats"></div>
+          <div class="st-preset-grid" id="stPresetGrid"></div>
+          <div class="st-tpl" id="stTemplateRow" hidden></div>
+        </section>
 
-    <!-- ===================== 区域二：AI 修图 =====================
-         和常规修图刻意分开。原因：
-           · 慢（0.7 秒 ~ 22 秒）且要联网、要额度，误触代价高
-           · 免费额度并发只有 1，不能做成实时拖动
-           · 一键模板是"一组参数一次出图"，和"拖滑杆看变化"是两种操作 -->
-    <section class="st-acc" id="stAccAi">
-      <button class="st-acc-head" id="stAccAiHead" aria-expanded="true">
-        <span class="st-acc-caret">▾</span>
-        <span class="st-acc-icon">✨</span>
-        <span class="st-acc-name">AI 修图</span>
-        <span class="st-acc-note">需联网</span>
-      </button>
-      <div class="st-acc-body" id="stAccAiBody">
-        <!-- 一键模板：每个模板是一组调好的参数，点一下直接出图（~0.7s）。
-             模板只覆盖接口支持的范围（肤质/眼/脸型/滤镜）——
-             鼻子、脖子、头发、体型接口没有，那些要靠局部变形，
-             详见 ai-megvii.js 里 TEMPLATES 的说明。 -->
-        <div class="st-tpl" id="stTemplateRow" hidden></div>
-
-        <div class="st-beauty">
-          <div class="st-beauty-head">
+        <!-- ===================== 人像 =====================
+             美颜参数要联网、要额度，慢（~0.7s），所以单独一页，
+             不和「拖了立刻见」的调色滑杆混在一起。 -->
+        <section class="st-page" data-page="portrait">
+          <div class="st-page-head">
             <span>美颜</span>
-            <button id="stBeautyPreset" class="st-mini wide" title="填入一组保守的婚纱照参数">一键美颜</button>
+            <button id="stBeautyPreset" class="st-btn wide"
+                    title="填入一组保守的婚纱照参数">一键美颜</button>
           </div>
           <div class="st-beauty-body" id="stBeautyBody">
             <div class="st-beauty-empty">需要在桌面版「修图 App」里使用</div>
           </div>
-        </div>
-      </div>
-    </section>
+        </section>
 
-    <!-- ===================== 共用的选区 / 蒙版 ===================== -->
-    <div class="st-mask" id="stMaskBlock">
-      <div class="st-mask-head">
-        <span>选区</span>
-        <span class="st-mask-note" id="stMaskNote">常规修图时 = 局部调整范围；抹除时 = 要抹掉的东西</span>
+        <!-- ===================== 影调 =====================
+             曝光/对比/高光/阴影 + 曲线 + 质感（锐化/暗角/颗粒）
+             都属于「明暗和质感」，放一页。 -->
+        <section class="st-page" data-page="tone">
+          <div class="st-sliders" id="stSliders"></div>
+        </section>
+
+        <!-- ===================== 颜色 =====================
+             色温/饱和度 + HSL（色相/自然饱和度/明度） -->
+        <section class="st-page" data-page="color">
+          <div class="st-sliders" id="stSlidersColor"></div>
+        </section>
+
+        <!-- ===================== 局部（选区）=====================
+             选区是**共用**的，所以单独一页：
+               · 常规调整时，它的含义是「调整只作用在涂过的区域」
+               · 抹除时，它的含义是「要抹掉什么」
+             「抹掉选区」也留在这页 —— 它就是对着选区做的操作，
+             挪到「工具」页会多一次来回切换。 -->
+        <section class="st-page" data-page="local">
+          <div class="st-mask" id="stMaskBlock">
+            <div class="st-mask-head">
+              <span>选区</span>
+              <span class="st-mask-note" id="stMaskNote">常规调整时 = 局部范围；抹除时 = 要抹掉的东西</span>
+            </div>
+
+            <div class="st-mask-row">
+              <button id="stBrush" class="st-btn wide" title="画笔（B）" disabled>✎ 画笔</button>
+              <button id="stSeg" class="st-btn" title="AI 自动抠出人像（百度）" disabled>AI 抠人</button>
+            </div>
+
+            <div class="st-mask-row">
+              <button id="stGradient" class="st-btn wide" title="线性渐变蒙版（G）：拖动从选中到未选中" disabled>▰ 渐变</button>
+              <button id="stRadial" class="st-btn wide" title="径向蒙版（R）：拖动定义椭圆选区" disabled>◉ 径向</button>
+            </div>
+
+            <div class="st-mask-row">
+              <button id="stInpaint" class="st-btn wide ai" title="抹掉选区里的东西（火山即梦）" disabled>
+                ✨ 抹掉选区
+              </button>
+            </div>
+
+            <div class="st-mask-row" id="stBrushOpts" hidden>
+              <div class="st-seg" role="group">
+                <button id="stBrushAdd" class="on" title="涂上（加选区）">＋ 涂</button>
+                <button id="stBrushErase" title="擦掉">－ 擦</button>
+              </div>
+              <button id="stMaskInvert" class="st-mini wide" title="反选">反选</button>
+            </div>
+
+            <div class="st-mask-row" id="stBrushOpts2" hidden>
+              <label class="st-mini-sl">
+                <span>笔刷</span>
+                <input type="range" id="stRadius" min="0.01" max="0.25" step="0.005" value="0.04">
+              </label>
+              <label class="st-mini-sl">
+                <span>硬度</span>
+                <input type="range" id="stHardness" min="0" max="1" step="0.01" value="0.5">
+              </label>
+            </div>
+
+            <div class="st-mask-row">
+              <!-- ⚠️ 文案是"强调"不是"显示"：选区**始终**有一层淡提示
+                   （否则用户涂完看不见自己涂了哪，会以为画笔坏了 —— 实测过）。
+                   这个勾选是在"看得清选区"和"看清楚照片"之间做取舍。 -->
+              <label class="st-switch small" title="加重选区红罩并勾出边界（不勾也有一层淡提示）">
+                <input type="checkbox" id="stShowMask">
+                <span>强调选区</span>
+              </label>
+              <button id="stMaskUndo" class="st-mini" title="撤销上一笔（Cmd+Z）" disabled>↶</button>
+              <button id="stMaskClear" class="st-mini" title="清空选区" disabled>✕</button>
+            </div>
+
+            <div class="st-mask-info" id="stMaskInfo">没涂任何区域</div>
+          </div>
+        </section>
+
+        <!-- ===================== 工具（几何）=====================
+             裁剪和旋转**分开**两个入口，但共用同一份几何状态：
+               · 裁剪 = 决定保留哪一块
+               · 旋转 = 决定这块画面怎么摆
+             取景框随时看得见，两者互不改写对方的参数。 -->
+        <section class="st-page" data-page="tool">
+          <div class="st-tool-block">
+            <div class="st-page-head">
+              <span>✂️ 裁剪</span>
+              <span class="st-page-note">选保留哪一块</span>
+            </div>
+            <button id="stCrop" class="st-btn wide" disabled>裁剪</button>
+            <div class="st-crop-body" id="stCropOpts" hidden>
+              <div class="st-crop-seg" id="stCropAspect" role="group"></div>
+              <div class="st-beauty-empty">
+                拖动取景框移动，拖四角缩放。旋转后原图外面的角会露出深色底，
+                想避开就把取景框收进去一点。
+              </div>
+            </div>
+          </div>
+
+          <div class="st-tool-block">
+            <div class="st-page-head">
+              <span>↻ 旋转 / 翻转</span>
+              <span class="st-page-note">纯角度，不裁切</span>
+            </div>
+            <button id="stRotateBtn" class="st-btn wide" disabled>旋转 / 翻转</button>
+            <div class="st-crop-body" id="stRotateOpts" hidden>
+              <label class="st-mini-sl">
+                <span>旋转</span>
+                <input type="range" id="stCropRot" min="-45" max="45" step="1" value="0">
+              </label>
+              <div class="st-crop-row">
+                <span class="st-crop-val" id="stCropRotVal">0°</span>
+                <button id="stCropRotL" class="st-mini wide" title="逆时针 90°">⟲ 90°</button>
+                <button id="stCropRotR" class="st-mini wide" title="顺时针 90°">⟳ 90°</button>
+              </div>
+              <div class="st-crop-row">
+                <button id="stStraighten" class="st-btn wide"
+                        title="自动找地平线/垂直边，把歪的照片拉直（纯本地，不联网）">⚖ 自动水平校正</button>
+              </div>
+              <div class="st-crop-row">
+                <button id="stFlipH" class="st-btn wide" title="左右镜像">⇋ 水平翻转</button>
+                <button id="stFlipV" class="st-btn wide" title="上下镜像">⇅ 垂直翻转</button>
+              </div>
+              <label class="st-mini-sl">
+                <span>缩放</span>
+                <input type="range" id="stZoom" min="25" max="200" step="1" value="100">
+              </label>
+              <div class="st-crop-row">
+                <span class="st-crop-val" id="stZoomVal">100%</span>
+                <button id="stZoomFit" class="st-mini wide" title="缩到能看见整张旋转后的照片">适合窗口</button>
+              </div>
+              <div class="st-crop-row">
+                <button id="stCropCancel" class="st-btn wide">取消</button>
+                <button id="stCropApply" class="st-btn wide primary">应用</button>
+              </div>
+              <div class="st-beauty-empty">
+                旋转只是单纯转角度，取景框不会跟着变。转完露出的深色角会被保留，
+                想看清楚整张就点「适合窗口」。
+              </div>
+            </div>
+          </div>
+        </section>
+
       </div>
 
-      <div class="st-mask-row">
-        <button id="stBrush" class="st-btn wide" title="画笔（B）" disabled>✎ 画笔</button>
-        <button id="stSeg" class="st-btn" title="AI 自动抠出人像（百度）" disabled>AI 抠人</button>
-      </div>
-
-      <div class="st-mask-row">
-        <button id="stGradient" class="st-btn wide" title="线性渐变蒙版（G）：拖动从选中到未选中" disabled>▰ 渐变</button>
-        <button id="stRadial" class="st-btn wide" title="径向蒙版（R）：拖动定义椭圆选区" disabled>◉ 径向</button>
-      </div>
-
-      <div class="st-mask-row">
-        <button id="stInpaint" class="st-btn wide ai" title="抹掉选区里的东西（火山即梦）" disabled>
-          ✨ 抹掉选区
-        </button>
-      </div>
-
-      <div class="st-mask-row" id="stBrushOpts" hidden>
-        <div class="st-seg" role="group">
-          <button id="stBrushAdd" class="on" title="涂上（加选区）">＋ 涂</button>
-          <button id="stBrushErase" title="擦掉">－ 擦</button>
-        </div>
-        <button id="stMaskInvert" class="st-mini wide" title="反选">反选</button>
-      </div>
-
-      <div class="st-mask-row" id="stBrushOpts2" hidden>
-        <label class="st-mini-sl">
-          <span>笔刷</span>
-          <input type="range" id="stRadius" min="0.01" max="0.25" step="0.005" value="0.04">
+      <!-- 局部调整模式。只在**有选区**时出现：
+           没有选区时它没有意义，常驻反而让人以为"调整坏了"。
+           有选区时它必须随时可见 —— 否则用户切到影调拖滑杆，
+           会不明白为什么只有一块区域在变。 -->
+      <div class="st-scope" id="stScope" hidden>
+        <label class="st-switch" title="打开后，调整只作用于涂过的区域">
+          <input type="checkbox" id="stUseMask" disabled>
+          <span>只作用于涂过的区域</span>
         </label>
-        <label class="st-mini-sl">
-          <span>硬度</span>
-          <input type="range" id="stHardness" min="0" max="1" step="0.01" value="0.5">
-        </label>
       </div>
 
-      <div class="st-mask-row">
-        <!-- ⚠️ 文案是"强调"不是"显示"：选区**始终**有一层淡提示
-             （否则用户涂完看不见自己涂了哪，会以为画笔坏了 —— 实测过）。
-             这个勾选是在"看得清选区"和"看清楚照片"之间做取舍：
-             勾上 → 红罩加重 + 沿边界描亮边；不勾 → 只有淡提示。 -->
-        <label class="st-switch small" title="加重选区红罩并勾出边界（不勾也有一层淡提示）">
-          <input type="checkbox" id="stShowMask">
-          <span>强调选区</span>
-        </label>
-        <button id="stMaskUndo" class="st-mini" title="撤销上一笔（Cmd+Z）" disabled>↶</button>
-        <button id="stMaskClear" class="st-mini" title="清空选区" disabled>✕</button>
-      </div>
-
-      <div class="st-mask-info" id="stMaskInfo">没涂任何区域</div>
+      <div class="st-panel-foot" id="stInfo">—</div>
     </div>
 
-    <!-- ===================== 区域三：裁剪 =====================
-         裁剪和旋转**分开**两个入口（用户要求），但共用同一份几何状态：
-           · 裁剪 = 决定保留哪一块（画布归一化坐标，轴对齐）
-           · 旋转 = 决定这块画面怎么摆（角度/翻转/缩放）
-         取景框随时看得见，两者互不改写对方的参数。 -->
-    <section class="st-acc" id="stAccCrop">
-      <button class="st-acc-head" id="stAccCropHead" aria-expanded="true">
-        <span class="st-acc-caret">▾</span>
-        <span class="st-acc-icon">✂️</span>
-        <span class="st-acc-name">裁剪</span>
-        <span class="st-acc-note">选保留哪一块</span>
-      </button>
-      <div class="st-acc-body" id="stAccCropBody">
-        <div class="st-crop-head">
-          <button id="stCrop" class="st-btn wide" disabled>裁剪</button>
-        </div>
-        <div class="st-crop-body" id="stCropOpts" hidden>
-          <div class="st-crop-seg" id="stCropAspect" role="group"></div>
-          <div class="st-beauty-empty">
-            拖动取景框移动，拖四角缩放。旋转后原图外面的角会露出深色底，
-            想避开就把取景框收进去一点。
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===================== 区域四：旋转 / 翻转 / 缩放 ===================== -->
-    <section class="st-acc" id="stAccRot">
-      <button class="st-acc-head" id="stAccRotHead" aria-expanded="true">
-        <span class="st-acc-caret">▾</span>
-        <span class="st-acc-icon">↻</span>
-        <span class="st-acc-name">旋转 / 翻转</span>
-        <span class="st-acc-note">纯角度，不裁切</span>
-      </button>
-      <div class="st-acc-body" id="stAccRotBody">
-        <div class="st-crop-head">
-          <button id="stRotateBtn" class="st-btn wide" disabled>旋转 / 翻转</button>
-        </div>
-        <div class="st-crop-body" id="stRotateOpts" hidden>
-          <label class="st-mini-sl">
-            <span>旋转</span>
-            <input type="range" id="stCropRot" min="-45" max="45" step="1" value="0">
-          </label>
-          <div class="st-crop-row">
-            <span class="st-crop-val" id="stCropRotVal">0°</span>
-            <button id="stCropRotL" class="st-mini wide" title="逆时针 90°">⟲ 90°</button>
-            <button id="stCropRotR" class="st-mini wide" title="顺时针 90°">⟳ 90°</button>
-          </div>
-          <div class="st-crop-row">
-            <button id="stStraighten" class="st-btn wide"
-                    title="自动找地平线/垂直边，把歪的照片拉直（纯本地，不联网）">⚖ 自动水平校正</button>
-          </div>
-          <div class="st-crop-row">
-            <button id="stFlipH" class="st-btn wide" title="左右镜像">⇋ 水平翻转</button>
-            <button id="stFlipV" class="st-btn wide" title="上下镜像">⇅ 垂直翻转</button>
-          </div>
-          <label class="st-mini-sl">
-            <span>缩放</span>
-            <input type="range" id="stZoom" min="25" max="200" step="1" value="100">
-          </label>
-          <div class="st-crop-row">
-            <span class="st-crop-val" id="stZoomVal">100%</span>
-            <button id="stZoomFit" class="st-mini wide" title="缩到能看见整张旋转后的照片">适合窗口</button>
-          </div>
-          <div class="st-crop-row">
-            <button id="stCropCancel" class="st-btn wide">取消</button>
-            <button id="stCropApply" class="st-btn wide primary">应用</button>
-          </div>
-          <div class="st-beauty-empty">
-            旋转只是单纯转角度，取景框不会跟着变。转完露出的深色角会被保留，
-            想看清楚整张就点「适合窗口」。
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div class="st-panel-foot" id="stInfo">—</div>
+    <!-- 图标竖栏：一键切换大类 -->
+    <nav class="st-rail" id="stRail">
+      <button class="st-rail-btn on" data-page="preset"   title="预设"><i>🎛</i><span>预设</span></button>
+      <button class="st-rail-btn"    data-page="portrait" title="人像"><i>👤</i><span>人像</span></button>
+      <button class="st-rail-btn"    data-page="tone"     title="影调"><i>☀</i><span>影调</span></button>
+      <button class="st-rail-btn"    data-page="color"    title="颜色"><i>🎨</i><span>颜色</span></button>
+      <button class="st-rail-btn"    data-page="local"    title="局部"><i>✨</i><span>局部</span></button>
+      <button class="st-rail-btn"    data-page="tool"     title="工具"><i>✂</i><span>工具</span></button>
+    </nav>
   </aside>
 
 </main>

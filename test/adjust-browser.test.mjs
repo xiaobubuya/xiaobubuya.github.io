@@ -145,7 +145,10 @@ try {
       hasStudio: !!window.Studio,
       n: (window.Studio.ADJUSTMENTS || []).length,
       keys: (window.Studio.ADJUSTMENTS || []).map(a => a.key),
-      sliders: document.querySelectorAll('#stSliders input[type=range]').length,
+      // 滑杆按大类拆到「影调」「颜色」两页，所以按容器类统计而不是按 id
+      sliders: document.querySelectorAll('.st-sliders input[type=range]').length,
+      toneSliders: document.querySelectorAll('#stSliders input[type=range]').length,
+      colorSliders: document.querySelectorAll('#stSlidersColor input[type=range]').length,
       // 编译失败时页面会把引导层换成错误文案
       shaderFailed: /打不开修图功能/.test((document.getElementById('stDrop')||{}).textContent || '')
     };
@@ -160,6 +163,9 @@ try {
     assert.ok(r.keys.includes('uCurveFade'), '缺 uCurveFade');
     assert.ok(r.keys.includes('uHue'), '缺 uHue');
     assert.equal(r.sliders, 16, `滑杆数应该和调整项一致，实际 ${r.sliders}`);
+    // 拆页不许丢人：影调页 11 个（基础4+曲线4+质感3），颜色页 5 个（色彩2+HSL3）
+    assert.equal(r.toneSliders, 11, `影调页应该有 11 个滑杆，实际 ${r.toneSliders}`);
+    assert.equal(r.colorSliders, 5, `颜色页应该有 5 个滑杆，实际 ${r.colorSliders}`);
   });
 
   /* 前置断言一过就确认页面健康。

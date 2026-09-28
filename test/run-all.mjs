@@ -23,6 +23,7 @@ const FAST = [
   ['crop-geometry', '裁剪几何：采样区间的源码级等式'],
   ['sw-version', 'sw.js 外壳版本（改了 studio.* 必须升）'],
   ['panel-entry', '面板入口（disabled 的控件必须有人放开）'],
+  ['panel-pages', '面板分页（竖栏↔页面一致 / 滑杆拆页不丢人）'],
   ['line-endings', '行尾一致性（CRLF 会让多行变异假红）'],
   ['assets', '静态素材（og 绝对 URL / 图标存在且是一套）'],
   ['topbar', '修图页顶栏（窄窗口不溢出 / 不挤成一坨）'],
