@@ -1377,7 +1377,7 @@
     if (!img) return;
     ensureGeom();
     showRotateUI(true);
-    showCropUI(true);          // 旋转时要看得见取景框，才知道会保留哪一块
+    showCropOverlay(true);   // 旋转时要看得见取景框，但只显示 overlay，不显示裁剪选项
     setBrushMode(false);
     showMaskTool(false);
     syncCropRotUI(geom.rot);
@@ -2017,6 +2017,15 @@
    * 现在它只是"看不看得见取景框"的开关。裁剪和旋转分成两块 UI，
    * 共用同一个 geom —— 用户说的"只有蒙版这些是共用的"就是这个意思。
    */
+  /** 只看取景框 overlay（不含选项面板和按钮状态） */
+  function showCropOverlay(on) {
+    const cv = ensureCropCanvas();
+    // ⚠️ 不看取景框时必须把 overlay 的 pointer-events 关掉，
+    // 否则它会盖住画布，画笔就涂不上了
+    cv.style.pointerEvents = on ? 'auto' : 'none';
+    if (!on) cv.hidden = true;
+  }
+
   function showCropUI(on) {
     const sec = $('stCropOpts');
     if (sec) sec.hidden = !on;
@@ -2025,11 +2034,7 @@
       b.classList.toggle('on', on);
       b.textContent = on ? '✓ 正在裁剪…' : '裁剪';
     }
-    const cv = ensureCropCanvas();
-    // ⚠️ 不看取景框时必须把 overlay 的 pointer-events 关掉，
-    // 否则它会盖住画布，画笔就涂不上了
-    cv.style.pointerEvents = on ? 'auto' : 'none';
-    if (!on) cv.hidden = true;
+    showCropOverlay(on);
   }
 
   function showRotateUI(on) {
