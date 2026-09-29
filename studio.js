@@ -3616,7 +3616,44 @@
           { key: 'enlarge_eye',   name: '大眼',   group: 'face', def: 0 },
           { key: 'eye_zoom',      name: '眼部放大', group: 'face', def: 0 },
           { key: 'remove_eyebrow',name: '去眉毛', group: 'face', def: 0 }
-        ], filters: [] };
+        ], filters: [
+          { value: '',            name: '不用滤镜' },
+          { value: 'beautify',    name: '美肤',   common: true },
+          { value: 'whiten',      name: '亮肤',   common: true },
+          { value: 'warm',        name: '暖暖',   common: true },
+          { value: 'cutie',       name: '唯美',   common: true },
+          { value: 'clight',      name: '柔光灯', common: true },
+          { value: 'pink',        name: '粉黛',   common: true },
+          { value: 'spring',      name: '早春',   common: true },
+          { value: 'sakura',      name: '樱花',   common: true },
+          { value: 'black_white', name: '黑白' },
+          { value: 'calm',        name: '平静' },
+          { value: 'sunny',       name: '晴天' },
+          { value: 'trip',        name: '旅程' },
+          { value: 'wangjiawei',  name: '王家卫' },
+          { value: 'macaron',     name: '可人儿' },
+          { value: 'new_york',    name: '纽约' },
+          { value: '17_years_old',name: '十七岁' },
+          { value: 'tea_time',    name: '下午茶' },
+          { value: 'chaplin',     name: '卓别林' },
+          { value: 'flowers',     name: '花香' },
+          { value: 'memory',      name: '回忆' },
+          { value: 'ice_lady',    name: '冰美人' },
+          { value: 'paris',       name: '巴黎' },
+          { value: 'times',       name: '时光' },
+          { value: 'lomo',        name: 'LOMO' },
+          { value: 'old_times',   name: '旧时光' },
+          { value: 'story',       name: '故事' },
+          { value: 'abao',        name: '阿宝色' },
+          { value: 'wlight',      name: '补光灯' },
+          { value: 'glitter',     name: '绚烂' },
+          { value: 'lavender',    name: '薰衣草' },
+          { value: 'chanel',      name: '香奈儿' },
+          { value: 'prague',      name: '布拉格' },
+          { value: 'old_dream',   name: '旧梦' },
+          { value: 'blossom',     name: '桃花' },
+          { value: 'jiang_nan',   name: '江南' }
+        ] };
       }
 
       beautySchema = s;
