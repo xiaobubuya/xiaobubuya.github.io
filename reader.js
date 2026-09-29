@@ -256,7 +256,9 @@
     });
 
     function updateBar() {
-      const n = pages().length;
+      /* ⚠️ 用 contentPages() 而不是 pages()：封皮页不算内容页码。
+         否则有封皮时状态栏显示「1-2/3」，页面上印的是「2/3」和「3/3」，差 1。 */
+      const n = contentPages().length;
       $('.read-pos').textContent = R.single
         ? `${Math.min(R.spread + 1, n)} / ${n}`
         : (() => {

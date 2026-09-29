@@ -1315,7 +1315,9 @@
 
   /* b64 → 图片处理 → 上传 R2 → 登记 → 返回 photo 数据 */
   async function uploadAiImage(b64) {
-    const bin = atob(b64);
+    /* ⚠️ Agnes 可能返回纯 base64 或带 data: 前缀，统一去掉前缀再解码 */
+    const b64Data = b64.includes(',') ? b64.split(',')[1] : b64;
+    const bin = atob(b64Data);
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
 
@@ -1362,12 +1364,8 @@
       if (!r.ok) throw new Error(`上传 ${size} 失败`);
     }
 
-    const now = new Date().toISOString();
-    const r2 = await A.api('/api/photos', {
-      method: 'POST',
-      body: JSON.stringify({ k: key, w, h, takenAt: now, bytes: buf.length })
-    });
-    if (!r2.ok) throw new Error('登记失败');
+    /* ⚠️ 不注册到 photos 表 —— AI 装饰图不该混入用户照片时间线。
+       getImage 直接从 R2 取，不需要 DB 记录。 */
 
     return { k: key, w, h };
   }
