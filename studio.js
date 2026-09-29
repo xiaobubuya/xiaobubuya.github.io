@@ -2399,6 +2399,11 @@
     if (u) u.disabled = !on || mask.isEmpty;
     const cr = $('stCrop');
     if (cr) cr.disabled = !on;
+    // 一键增强（百度 AI）
+    const ec = $('stEnhanceClarity');
+    if (ec) ec.disabled = !on;
+    const ecolor = $('stEnhanceColor');
+    if (ecolor) ecolor.disabled = !on;
     // 旋转/翻转是裁剪的姊妹入口（共用同一份 geom），也得跟着图有没有一起开关。
     // ⚠️ 漏掉这一行的话按钮永远 disabled，整个旋转面板点不进来 ——
     //    症状是"旋转/翻转怎么用"，其实是入口被焊死了，而且静默、不报错。
@@ -3465,6 +3470,60 @@
   }
 
   /* ================================================================
+     一键增强（百度 AI：清晰度 + 色彩）
+     ================================================================ */
+  async function enhanceClarity() {
+    await runEnhance('clarity', '✨ 清晰度增强');
+  }
+
+  async function enhanceColor() {
+    await runEnhance('color', '🎨 色彩增强');
+  }
+
+  async function runEnhance(type, label) {
+    if (!img) return;
+    busy(true, `正在${label}…`);
+    try {
+      // 备份原图（用于撤销）
+      if (!beautyBackup && img && img.close) {
+        beautyBackup = await createImageBitmap(img);
+      }
+
+      // 转 base64（按原图送，和美化保持一致）
+      const blob = await new Promise(r => {
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        c.toBlob(r, 'image/jpeg', 0.92);
+      });
+      const b64 = await new Promise(r => {
+        const fr = new FileReader();
+        fr.onload = () => r(fr.result.split(',')[1]);
+        fr.readAsDataURL(blob);
+      });
+
+      // 调后端代理
+      const r = await fetch(`${API_BASE}/api/baidu/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: b64 })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.message || d.error || '增强失败');
+
+      // 换图 + 显示预览
+      await swapImage('data:image/jpeg;base64,' + d.image);
+      showPreview(`已${label} · ${d.ms}ms`);
+      toast(`已${label}`, 2200);
+    } catch (e) {
+      toast(`${label}失败：` + (e && e.message ? e.message : e), 4800);
+    } finally {
+      busy(false);
+    }
+  }
+
+  /* ================================================================
      把一张位图换成当前编辑图
      ----------------------------------------------------------------
      去物和美颜都要做这件事，所以抽出来。原来这段内联在
@@ -4427,6 +4486,8 @@
 
     $('stSeg').addEventListener('click', segmentPerson);
     $('stInpaint').addEventListener('click', removeObject);
+    $('stEnhanceClarity').addEventListener('click', enhanceClarity);
+    $('stEnhanceColor').addEventListener('click', enhanceColor);
 
     // 美颜结果的去留
     const ok = $('stPreviewOk'), no = $('stPreviewCancel');
@@ -4626,6 +4687,9 @@
     // —— 去物 ——
     hasInpaint,
     removeObject,
+    // —— 一键增强（百度 AI）——
+    enhanceClarity,
+    enhanceColor,
     // —— 美颜 ——
     hasBeauty,
     runBeauty,
