@@ -87,7 +87,7 @@
      按类别分组（婚纱/写真/旅拍/胶片/黑白/日常），方便快速找到想要的风格。
      hue 字段用于生成卡片预览色块（CSS 渐变），不依赖外部图片。
      ================================================================ */
-  const PRESET_CATS = ['全部','婚纱','写真','旅拍','胶片','黑白','日常'];
+  const PRESET_CATS = ['全部','我的','婚纱','写真','旅拍','胶片','黑白','日常'];
   const PRESETS = [
     { id:'wedding-soft', name:'柔光婚纱', cat:'婚纱', hue:'#f4dce4',
       v:{ uExposure:0.08, uContrast:-0.05, uSaturation:-0.03, uHighlights:0.10, uShadows:0.05, uCurveFade:0.08, uGrain:0.06 } },
@@ -2378,6 +2378,7 @@
   function enableUI(on) {
     $('stExport').disabled = !on;
     $('stReset').disabled = !on;
+    $('stSavePreset').disabled = !on;
     $('stCompare').disabled = !on;
     const ct = $('stCompareToggle');
     if (ct) ct.disabled = !on;
@@ -2560,6 +2561,56 @@
     }
   }
 
+   /* ================================================================
+      我的预设（用户自定义）
+      ----------------------------------------------------------------
+      存在 localStorage 里，key = 'myPresets'，值是数组。
+      每个预设结构同内置预设：{ id, name, hue, v }
+      id 用时间戳保证唯一。
+      ================================================================ */
+  const MY_PRESETS_KEY = 'myPresets';
+
+  function loadMyPresets() {
+    try {
+      const raw = localStorage.getItem(MY_PRESETS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  }
+
+  function saveMyPresets(presets) {
+    localStorage.setItem(MY_PRESETS_KEY, JSON.stringify(presets));
+  }
+
+  function addMyPreset(name) {
+    // 收集当前非默认的参数值
+    const v = {};
+    for (const a of ADJUSTMENTS) {
+      if (values[a.key] !== a.def) v[a.key] = values[a.key];
+    }
+    if (!Object.keys(v).length) {
+      toast('当前没有调整项，先调一下再保存');
+      return;
+    }
+    const preset = {
+      id: 'user_' + Date.now(),
+      name: name || '我的预设',
+      cat: '我的',
+      hue: '#f0e8d0',
+      v
+    };
+    const presets = loadMyPresets();
+    presets.push(preset);
+    saveMyPresets(presets);
+    toast(`已保存「${preset.name}」`);
+    return preset;
+  }
+
+  function deleteMyPreset(id) {
+    const presets = loadMyPresets().filter(p => p.id !== id);
+    saveMyPresets(presets);
+    toast('已删除');
+  }
+
   function buildPresetUI() {
     const catsBox = $('stPresetCats');
     const gridBox = $('stPresetGrid');
@@ -2580,34 +2631,81 @@
 
     // 预设卡片
     gridBox.innerHTML = '';
-    const list = presetCat === '全部' ? PRESETS : PRESETS.filter(p => p.cat === presetCat);
-    for (const p of list) {
-      const card = document.createElement('button');
-      card.className = 'st-preset-card' + (p.id === presetActiveId ? ' active' : '');
-      card.dataset.id = p.id;
-      card.disabled = !img;
 
-      // 预览：有照片时用真实渲染（capturePresetThumb），
-      // 没照片时退回渐变色块 —— 至少还能看出冷暖倾向
-      const swatch = document.createElement('div');
-      swatch.className = 'st-preset-swatch';
-      swatch.style.background = `linear-gradient(135deg, ${p.hue}, ${shadeColor(p.hue, -30)})`;
-      const thumb = capturePresetThumb(p);
-      if (thumb) {
-        swatch.style.background = `url(${thumb}) center/cover no-repeat`;
+    if (presetCat === '我的') {
+      // 我的预设：从 localStorage 读
+      const list = loadMyPresets();
+      if (list.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'st-preset-empty';
+        empty.textContent = '还没有我的预设\n调好参数后点「保存预设」';
+        empty.style.cssText = 'grid-column:1/-1;text-align:center;padding:24px;color:#888;font-size:13px;line-height:1.6';
+        gridBox.appendChild(empty);
       }
+      for (const p of list) {
+        const card = document.createElement('button');
+        card.className = 'st-preset-card' + (p.id === presetActiveId ? ' active' : '');
+        card.dataset.id = p.id;
+        card.disabled = !img;
 
-      // 名称
-      const name = document.createElement('span');
-      name.className = 'st-preset-name';
-      name.textContent = p.name;
+        const swatch = document.createElement('div');
+        swatch.className = 'st-preset-swatch';
+        swatch.style.background = `linear-gradient(135deg, ${p.hue}, ${shadeColor(p.hue, -30)})`;
+        const thumb = capturePresetThumb(p);
+        if (thumb) swatch.style.background = `url(${thumb}) center/cover no-repeat`;
 
-      card.append(swatch, name);
-      card.addEventListener('click', () => {
-        if (!img) return;
-        applyPreset(p);
-      });
-      gridBox.appendChild(card);
+        const name = document.createElement('span');
+        name.className = 'st-preset-name';
+        name.textContent = p.name;
+
+        card.append(swatch, name);
+        card.addEventListener('click', () => {
+          if (!img) return;
+          applyPreset(p);
+        });
+
+        // 长按删除
+        let timer = null;
+        card.addEventListener('touchstart', () => {
+          timer = setTimeout(() => {
+            if (confirm(`删除「${p.name}」？`)) {
+              deleteMyPreset(p.id);
+              buildPresetUI();
+            }
+          }, 600);
+        }, { passive: true });
+        card.addEventListener('touchend', () => clearTimeout(timer));
+        card.addEventListener('touchmove', () => clearTimeout(timer));
+        card.addEventListener('click', e => clearTimeout(timer));
+
+        gridBox.appendChild(card);
+      }
+    } else {
+      // 内置预设
+      const list = presetCat === '全部' ? PRESETS : PRESETS.filter(p => p.cat === presetCat);
+      for (const p of list) {
+        const card = document.createElement('button');
+        card.className = 'st-preset-card' + (p.id === presetActiveId ? ' active' : '');
+        card.dataset.id = p.id;
+        card.disabled = !img;
+
+        const swatch = document.createElement('div');
+        swatch.className = 'st-preset-swatch';
+        swatch.style.background = `linear-gradient(135deg, ${p.hue}, ${shadeColor(p.hue, -30)})`;
+        const thumb = capturePresetThumb(p);
+        if (thumb) swatch.style.background = `url(${thumb}) center/cover no-repeat`;
+
+        const name = document.createElement('span');
+        name.className = 'st-preset-name';
+        name.textContent = p.name;
+
+        card.append(swatch, name);
+        card.addEventListener('click', () => {
+          if (!img) return;
+          applyPreset(p);
+        });
+        gridBox.appendChild(card);
+      }
     }
   }
 
@@ -4046,6 +4144,18 @@
       resetAll();
       toast('已重置');
     });
+
+    // 保存预设
+    const saveBtn = $('stSavePreset');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        if (!img) { toast('先打开一张照片'); return; }
+        const name = prompt('预设名称：', '我的预设');
+        if (name === null) return;
+        const preset = addMyPreset(name.trim() || '我的预设');
+        if (preset) buildPresetUI();
+      });
+    }
 
     // 按住看原图
     const cmp = $('stCompare');
