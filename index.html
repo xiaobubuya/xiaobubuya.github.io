@@ -73,7 +73,7 @@
       <h1><span class="dot"></span>我们的婚纱照</h1>
       <div class="meta" id="meta">加载中…</div>
     </div>
-    <button id="btnUpload" class="icon-btn" aria-label="上传照片">＋</button>
+    <button id="btnUpload" class="icon-btn" aria-label="批量上传照片" title="上传照片（可多选）">＋</button>
     <button id="btnMenu" class="icon-btn" aria-label="更多">⋯</button>
   </header>
 
@@ -87,7 +87,8 @@
          又不会抢眼。⚠️ 它是装饰，所以 aria-hidden + 空 alt。 -->
     <img class="empty-art" src="icon.svg" alt="" aria-hidden="true" width="72" height="72">
     <p>还没有照片</p>
-    <p class="dim">等上传功能做好，这里就会热闹起来</p>
+    <p class="dim">点右上角「批量上传」，可以一次选多张</p>
+    <button id="btnUploadEmpty" class="primary" style="margin-top:16px">＋ 批量上传</button>
   </div>
   <div id="sentinel" class="sentinel"></div>
 
@@ -162,7 +163,7 @@
 <script>
 window.AlbumNavPage = {
   actions: [
-    { key: 'upload', label: '上传', icon: '＋', kind: 'primary', title: '上传照片' }
+    { key: 'upload', label: '批量上传', icon: '＋', kind: 'primary', title: '上传照片（可多选）' }
   ]
 };
 </script>

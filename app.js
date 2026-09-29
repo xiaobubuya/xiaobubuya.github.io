@@ -33,7 +33,7 @@ const el = {
 
   app: $('app'), meta: $('meta'), timeline: $('timeline'),
   loading: $('loading'), empty: $('empty'), sentinel: $('sentinel'),
-  btnMenu: $('btnMenu'), btnTop: $('btnTop'), btnUpload: $('btnUpload'),
+  btnMenu: $('btnMenu'), btnTop: $('btnTop'), btnUpload: $('btnUpload'), btnUploadEmpty: $('btnUploadEmpty'),
 
   menu: $('menu'), btnSlideshow: $('btnSlideshow'), btnReload: $('btnReload'),
   btnLogout: $('btnLogout'), sheetFoot: $('sheetFoot'),
@@ -728,6 +728,7 @@ if (window.AlbumUpload) {
   });
 
   el.btnUpload.addEventListener('click', () => AlbumUpload.pick());
+  if (el.btnUploadEmpty) el.btnUploadEmpty.addEventListener('click', () => AlbumUpload.pick());
 }
 
 /* ================================================================
