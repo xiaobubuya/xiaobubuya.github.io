@@ -26,6 +26,7 @@
   'use strict';
 
   const $ = id => document.getElementById(id);
+  const API_BASE = 'https://api.muyaya.world';
 
   /* ================================================================
      调整项定义
@@ -3322,7 +3323,6 @@
 
      所以是「谁能干谁干」，中间用公网 URL 交接。
      ================================================================ */
-  const API_BASE = 'https://api.muyaya.world';
 
   /** 把当前图传到临时上传，换一个火山能抓的公网 URL */
   async function uploadForAI(blob) {
