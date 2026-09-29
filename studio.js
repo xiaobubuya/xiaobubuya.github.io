@@ -2605,8 +2605,10 @@
         toast('保存失败：' + (err.error || resp.status));
         return null;
       }
+      const data = await resp.json().catch(() => ({}));
       toast(`已保存「${preset.name}」`);
-      return { id: 'user_' + Date.now(), name: preset.name, hue: preset.hue, v: preset.v, cat: '我的' };
+      // id 用后端返回的真实 id（伪造的话一旦之后要按 id 操作就对不上）
+      return { id: data.id, name: preset.name, hue: preset.hue, v: preset.v, cat: '我的' };
     } catch (e) {
       toast('保存失败：' + e.message);
       return null;
@@ -2629,7 +2631,13 @@
     }
   }
 
+  /* ⚠️ 竞态守卫：buildPresetUI 里「我的」分类是异步的（fetch 后端）。
+     用户快速切 tab 时，旧请求可能晚于新请求返回，把新内容清掉。
+     所以每次调用拿一个代际号，异步回来时只有「最新一代」才有资格写 DOM。 */
+  let presetUIVersion = 0;
+
   async function buildPresetUI() {
+    const myVersion = ++presetUIVersion;
     const catsBox = $('stPresetCats');
     const gridBox = $('stPresetGrid');
     if (!catsBox || !gridBox) return;
@@ -2653,6 +2661,7 @@
     if (presetCat === '我的') {
       // 我的预设：从后端读
       const list = await loadMyPresets();
+      if (myVersion !== presetUIVersion) return;   // 已有更新的调用，丢弃这次结果
       if (list.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'st-preset-empty';
@@ -2685,9 +2694,9 @@
         // 长按删除
         let timer = null;
         card.addEventListener('touchstart', () => {
-          timer = setTimeout(() => {
+          timer = setTimeout(async () => {
             if (confirm(`删除「${p.name}」？`)) {
-              deleteMyPreset(p.id);
+              await deleteMyPreset(p.id);
               buildPresetUI();
             }
           }, 600);
