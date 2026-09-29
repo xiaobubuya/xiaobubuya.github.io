@@ -2564,24 +2564,21 @@
    /* ================================================================
       我的预设（用户自定义）
       ----------------------------------------------------------------
-      存在 localStorage 里，key = 'myPresets'，值是数组。
-      每个预设结构同内置预设：{ id, name, hue, v }
-      id 用时间戳保证唯一。
+      存在后端（/api/presets），跨设备可用。
+      每个预设结构：{ id, name, hue, v }
       ================================================================ */
-  const MY_PRESETS_KEY = 'myPresets';
+   const MY_PRESETS_API = API_BASE + '/api/presets';
 
-  function loadMyPresets() {
+   async function loadMyPresets() {
     try {
-      const raw = localStorage.getItem(MY_PRESETS_KEY);
-      return raw ? JSON.parse(raw) : [];
+      const resp = await fetch(MY_PRESETS_API, { credentials: 'include' });
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return data.presets || [];
     } catch { return []; }
   }
 
-  function saveMyPresets(presets) {
-    localStorage.setItem(MY_PRESETS_KEY, JSON.stringify(presets));
-  }
-
-  function addMyPreset(name) {
+  async function addMyPreset(name) {
     // 收集当前非默认的参数值
     const v = {};
     for (const a of ADJUSTMENTS) {
@@ -2589,29 +2586,50 @@
     }
     if (!Object.keys(v).length) {
       toast('当前没有调整项，先调一下再保存');
-      return;
+      return null;
     }
     const preset = {
-      id: 'user_' + Date.now(),
       name: name || '我的预设',
-      cat: '我的',
       hue: '#f0e8d0',
       v
     };
-    const presets = loadMyPresets();
-    presets.push(preset);
-    saveMyPresets(presets);
-    toast(`已保存「${preset.name}」`);
-    return preset;
+    try {
+      const resp = await fetch(MY_PRESETS_API, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(preset)
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        toast('保存失败：' + (err.error || resp.status));
+        return null;
+      }
+      toast(`已保存「${preset.name}」`);
+      return { id: 'user_' + Date.now(), name: preset.name, hue: preset.hue, v: preset.v, cat: '我的' };
+    } catch (e) {
+      toast('保存失败：' + e.message);
+      return null;
+    }
   }
 
-  function deleteMyPreset(id) {
-    const presets = loadMyPresets().filter(p => p.id !== id);
-    saveMyPresets(presets);
-    toast('已删除');
+  async function deleteMyPreset(id) {
+    try {
+      const resp = await fetch(`${MY_PRESETS_API}/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (!resp.ok) {
+        toast('删除失败');
+        return;
+      }
+      toast('已删除');
+    } catch (e) {
+      toast('删除失败：' + e.message);
+    }
   }
 
-  function buildPresetUI() {
+  async function buildPresetUI() {
     const catsBox = $('stPresetCats');
     const gridBox = $('stPresetGrid');
     if (!catsBox || !gridBox) return;
@@ -2633,8 +2651,8 @@
     gridBox.innerHTML = '';
 
     if (presetCat === '我的') {
-      // 我的预设：从 localStorage 读
-      const list = loadMyPresets();
+      // 我的预设：从后端读
+      const list = await loadMyPresets();
       if (list.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'st-preset-empty';
@@ -4148,11 +4166,11 @@
     // 保存预设
     const saveBtn = $('stSavePreset');
     if (saveBtn) {
-      saveBtn.addEventListener('click', () => {
+      saveBtn.addEventListener('click', async () => {
         if (!img) { toast('先打开一张照片'); return; }
         const name = prompt('预设名称：', '我的预设');
         if (name === null) return;
-        const preset = addMyPreset(name.trim() || '我的预设');
+        const preset = await addMyPreset(name.trim() || '我的预设');
         if (preset) buildPresetUI();
       });
     }
