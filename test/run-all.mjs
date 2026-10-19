@@ -30,6 +30,7 @@ const FAST = [
   ['rotate-invariant', '旋转不变量（图片不能被拉伸）'],
   ['crop-ui', '裁剪面板 UI 状态同步（滑杆/标签/状态）'],
   ['shader-guard', 'shader 模板字符串护栏'],
+  ['shader-compile', 'shader 在真 WebGL 里编译（getShaderInfoLog）'],
   ['adjustments', '调整项 ↔ shader 一致性'],
   ['curve', '色调曲线 LUT（单调性/串扰）'],
   ['adjustments-negative', '断言有效性（变异测试）']

@@ -38,19 +38,77 @@
        ② FRAG 里加 `uniform float uXxx;`
        ③ FRAG 的 main() 里真的用上它
        ④ draw() 会自动遍历赋值（用 ADJUSTMENTS 循环，不用手加）
-     test/adjustments.test.mjs 静态比对①③之间的一致性，
-     加完记得把 test/adjust-browser.test.mjs 里的调整项**数量**也改掉
-     （那里有个硬编码的 9）。
+     test/adjustments.test.mjs 静态比对①③之间的一致性（只看数组字面量那
+     26 条，色板/分级是靠 push() 追加的）。
+     ⚠️ 浏览器测试里有三个硬编码数字要跟着改：ADJUSTMENTS 总数（含
+     色板 24 + 分级 14 = 64）、普通滑杆数（26，网格里的迷你滑杆不算
+     .st-sliders）、影调页 / 颜色页的拆分（20 / 6）。
 
      范围不强行统一：曝光 ±2 EV，质感类各自定义（见下方注释）。
      ================================================================ */
+  /* ================================================================
+     参数模型（对齐 LightCraft `DevelopSettings`；三件事里做了两件）
+     ----------------------------------------------------------------
+     ② 分节 + 眼睛开关。每一节能单独关掉，看到其余节的独立效果。
+        单趟 shader 最大的痛点就是「26 个滑块一起作用，看不出谁在起作用」，
+        眼睛开关直接解掉。
+     ③ 中性守卫。偏离默认值才生效 —— 见 shader 里每个节的 is_neutral 判断，
+        避免默认值下浮点噪声累加。
+     ① 预设版本号**还没做**：曲线算法和色板分带方式都会演进，没有版本号
+        的话改一次算法就有一批老预设语义漂移（"这个预设以前好看"）。
+        但 /api/presets 的结构不归这个仓库管，动之前得先确认后端吃不吃
+        新字段 —— 现在留个没接的常量比留个真版本号更危险。
+     ================================================================ */
+
+  /* 分节顺序 = 管线顺序。bit 是 2 的幂，拼进 uniform int uSecMask。 */
+  const SECTIONS = [
+    { id: 'light',   name: '光',      bit: 1   },
+    { id: 'tone',    name: '色调曲线', bit: 2   },
+    { id: 'color',   name: '色彩',   bit: 4   },
+    { id: 'mixer',   name: '色板',   bit: 8   },
+    { id: 'grading', name: '色彩分级', bit: 16 },
+    { id: 'detail',  name: '画质',   bit: 32 },
+    { id: 'fx',      name: '效果',   bit: 64 },
+  ];
+
+  /* 色板 8 色带的中心色相。单位是 **OkLCh 弧度**，由 sRGB HSV 色带中心
+     换算而来（纯色 → 线性 sRGB → OKLab → atan2(b,a)）。
+     顺序同 LightCraft / Lightroom：红 橙 黄 绿 蓝绿 蓝 紫 品红。 */
+  const BAND_DEFS = [
+    { key: 'Red',    name: '红',   hue:  0.510228 },
+    { key: 'Orange', name: '橙',   hue:  0.921110 },
+    { key: 'Yellow', name: '黄',   hue:  1.915835 },
+    { key: 'Green',  name: '绿',   hue:  2.487013 },
+    { key: 'Aqua',   name: '蓝绿', hue: -2.883826 },
+    { key: 'Blue',   name: '蓝',   hue: -1.678489 },
+    { key: 'Purple', name: '紫',   hue: -1.155861 },
+    { key: 'Magenta',name: '品红', hue: -0.283766 },
+  ];
+  /* 色彩分级的 4 个色轮：阴影/中间调/高光/全局。前三个按像素亮度加权，
+     全局权重恒为 1。 */
+  const WHEEL_DEFS = [
+    { key: 'Sh', name: '阴影'   },
+    { key: 'Md', name: '中间调' },
+    { key: 'Hi', name: '高光'   },
+    { key: 'Gl', name: '全局'   },
+  ];
+
   const ADJUSTMENTS = [
-    { key: 'uExposure',   name: '曝光',   group: '基础', min: -2,  max: 2,  step: 0.01, def: 0, unit: ' EV' },
+    // —— 光 ——
+    { key: 'uExposure',   name: '曝光',   group: '基础', min: -2,  max: 2,  step: 0.01, def: 0 },
     { key: 'uContrast',   name: '对比度', group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
     { key: 'uHighlights', name: '高光',   group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
     { key: 'uShadows',    name: '阴影',   group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
-    { key: 'uSaturation', name: '饱和度', group: '色彩', min: -1,  max: 1,  step: 0.01, def: 0 },
+    // 白点 / 黑点：线性空间的端点增益，和「高光/阴影」（按亮度加权）不同。
+    // 前者无条件推/压端点，后者只动亮/暗区。救欠曝通常一起用。
+    { key: 'uWhites',     name: '白点',   group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uBlacks',     name: '黑点',   group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uClarity',    name: '清晰度', group: '基础', min: -1,  max: 1,  step: 0.01, def: 0 },
+
+    // —— 色彩 ——
     { key: 'uTemp',       name: '色温',   group: '色彩', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uTint',       name: '色调',   group: '色彩', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uSaturation', name: '饱和度', group: '色彩', min: -1,  max: 1,  step: 0.01, def: 0 },
 
     // —— 色调曲线 ——
     // 四个控制点，CPU 生成单调 LUT（见 buildCurveLut）。
@@ -63,23 +121,50 @@
     { key: 'uCurveMid',    name: '曲线·中间调', group: '曲线', min: -1, max: 1, step: 0.01, def: 0 },
     { key: 'uCurveHigh',   name: '曲线·高光', group: '曲线', min: -1, max: 1, step: 0.01, def: 0 },
     { key: 'uCurveFade',   name: '褪色',   group: '曲线', min: 0,   max: 1,  step: 0.01, def: 0 },
+    // 饱和收敛（Lightroom 的 Refine Saturation）：强对比曲线会连带把饱和度
+    // 推上去（暗部压缩 + 亮部提升 = 对比拉大 = 颜色更艳）。这个参数把曲线
+    // 带来的饱和度增量按比例退掉。0 = 不收敛（保持原本行为）。
+    { key: 'uRefineSat',   name: '饱和收敛', group: '曲线', min: 0, max: 1, step: 0.01, def: 0 },
 
     // —— HSL ——
-    // 用 YIQ 近似（详见 shader 里的说明）。色相 ±1 对应 ±30°：
+    // 用 OKLab 感知空间（见 shader 里的说明）。色相 ±1 对应 ±30°：
     // 再大就不像"微调"而像"换了个滤镜"。
-    { key: 'uHue',        name: '色相',   group: 'HSL', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uHue',        name: '色相',   group: 'HSL', min: -1, max: 1, step: 0.01, def: 0 },
     { key: 'uHslSat',     name: '自然饱和度', group: 'HSL', min: -1, max: 1, step: 0.01, def: 0 },
-    { key: 'uHslLight',   name: '明度',   group: 'HSL', min: -1,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uHslLight',   name: '明度',   group: 'HSL', min: -1, max: 1, step: 0.01, def: 0 },
 
-    // —— 质感类 ——
-    // 范围刻意不统一：这三个的「满格」含义不同。
-    // 锐化 1.0 已经能看出白边（内部再乘 1.5），所以上限就 1；
+    // —— 画质 ——
+    // 范围刻意不统一：锐化 1.0 已经能看出白边（内部再乘 1.5），所以上限就 1
+    { key: 'uSharpness',   name: '锐化',    group: '画质', min: 0,   max: 1, step: 0.01, def: 0 },
+    { key: 'uDenoiseLum',  name: '去噪·亮度', group: '画质', min: 0, max: 1, step: 0.01, def: 0 },
+    { key: 'uDenoiseColor',name: '去噪·色彩', group: '画质', min: 0, max: 1, step: 0.01, def: 0 },
+    { key: 'uSharpenMask', name: '锐化遮罩', group: '画质', min: 0, max: 1, step: 0.01, def: 0 },
+
+    // —— 效果 ——
     // 暗角 1.0 是很重的压角，但正常用会在 -0.5~0.5；
     // 颗粒 1.0 是明显的胶片感，婚纱照一般 0.2~0.4 就够。
-    { key: 'uSharpness',  name: '锐化',   group: '质感', min: 0,   max: 1,  step: 0.01, def: 0 },
-    { key: 'uVignette',   name: '暗角',   group: '质感', min: -1,  max: 1,  step: 0.01, def: 0 },
-    { key: 'uGrain',      name: '颗粒',   group: '质感', min: 0,   max: 1,  step: 0.01, def: 0 },
+    { key: 'uVignette',   name: '暗角',     group: '效果', min: -1, max: 1,  step: 0.01, def: 0 },
+    { key: 'uVigMid',     name: '暗角·范围', group: '效果', min: 0,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uGrain',      name: '颗粒',     group: '效果', min: 0,  max: 1,  step: 0.01, def: 0 },
+    { key: 'uGrainSize',  name: '颗粒·粗细', group: '效果', min: 0,  max: 1,  step: 0.01, def: 0 },
   ];
+
+  // 色板（HSL 色板）：8 色带 × 3 参数。走紧凑网格 UI，不走普通滑杆。
+  for (const b of BAND_DEFS) {
+    ADJUSTMENTS.push({ key: 'uBnd' + b.key + 'Hue', name: b.name + ' 色相', group: '色板', ui: 'grid', min: -1, max: 1, step: 0.01, def: 0, band: b.key, bandAxis: 'hue' });
+    ADJUSTMENTS.push({ key: 'uBnd' + b.key + 'Sat', name: b.name + ' 饱和', group: '色板', ui: 'grid', min: -1, max: 1, step: 0.01, def: 0, band: b.key, bandAxis: 'sat' });
+    ADJUSTMENTS.push({ key: 'uBnd' + b.key + 'Lum', name: b.name + ' 明度', group: '色板', ui: 'grid', min: -1, max: 1, step: 0.01, def: 0, band: b.key, bandAxis: 'lum' });
+  }
+
+  // 色彩分级：4 色轮 × 3 参数 + 混合/平衡
+  for (const w of WHEEL_DEFS) {
+    ADJUSTMENTS.push({ key: 'uGr' + w.key + 'Hue', name: w.name + ' 色相', group: '分级', ui: 'grid', min: -1, max: 1, step: 0.01, def: 0, wheel: w.key, wheelAxis: 'hue' });
+    ADJUSTMENTS.push({ key: 'uGr' + w.key + 'Sat', name: w.name + ' 强度', group: '分级', ui: 'grid', min: 0, max: 1, step: 0.01, def: 0, wheel: w.key, wheelAxis: 'sat' });
+    ADJUSTMENTS.push({ key: 'uGr' + w.key + 'Lum', name: w.name + ' 明度', group: '分级', ui: 'grid', min: -1, max: 1, step: 0.01, def: 0, wheel: w.key, wheelAxis: 'lum' });
+  }
+  ADJUSTMENTS.push({ key: 'uGrBlend',   name: '分级·混合', group: '分级', ui: 'grid', min: 0,  max: 1, step: 0.01, def: 0, wheelAxis: 'blend' });
+  ADJUSTMENTS.push({ key: 'uGrBalance', name: '分级·平衡', group: '分级', ui: 'grid', min: -1, max: 1, step: 0.01, def: 0, wheelAxis: 'balance' });
+
 
   /* ================================================================
      预设
@@ -123,6 +208,16 @@
   const values = {};
   ADJUSTMENTS.forEach(a => { values[a.key] = a.def; });
 
+  /* 分节开关状态：每节默认全开（全开 = 全功能，和之前行为一致）。
+     用户点「眼睛」关掉某一节后，那节的所有滑块虽然还在面板里，
+     但 shader 里不会执行 —— 这样能单独看某一节的效果。 */
+  const secEnabled = new Set(SECTIONS.map(s => s.id));
+  function secMask() {
+    let m = 0;
+    for (const s of SECTIONS) if (secEnabled.has(s.id)) m |= s.bit;
+    return m;
+  }
+
   /* ================================================================
      蒙版状态
      ----------------------------------------------------------------
@@ -165,10 +260,42 @@
     uniform sampler2D uImage;
     uniform sampler2D uMask;
     uniform sampler2D uCurve;   // 256x1 的色调曲线 LUT（CPU 算好上传）
-    uniform float uExposure, uContrast, uHighlights, uShadows, uSaturation, uTemp;
-    uniform float uSharpness, uVignette, uGrain;
-    uniform float uCurveShadow, uCurveMid, uCurveHigh, uCurveFade;
+    // —— 光（线性空间）——
+    uniform float uExposure, uContrast, uHighlights, uShadows, uWhites, uBlacks, uClarity;
+    // —— 色彩 ——
+    uniform float uTemp, uTint, uSaturation;
+    // —— 色调曲线 ——
+    uniform float uCurveShadow, uCurveMid, uCurveHigh, uCurveFade, uRefineSat;
+    // —— HSL ——
     uniform float uHue, uHslSat, uHslLight;
+    // —— 画质（去噪/锐化用邻域采样，不在 grade() 里）——
+    uniform float uSharpness, uDenoiseLum, uDenoiseColor, uSharpenMask;
+    // —— 效果 ——
+    uniform float uVignette, uVigMid, uGrain, uGrainSize;
+    // —— 色板（HSL 色板，8 色带 × 色相/饱和/明度）——
+    uniform float uBndRedHue,    uBndRedSat,    uBndRedLum;
+    uniform float uBndOrangeHue, uBndOrangeSat, uBndOrangeLum;
+    uniform float uBndYellowHue, uBndYellowSat, uBndYellowLum;
+    uniform float uBndGreenHue,  uBndGreenSat,  uBndGreenLum;
+    uniform float uBndAquaHue,   uBndAquaSat,   uBndAquaLum;
+    uniform float uBndBlueHue,   uBndBlueSat,   uBndBlueLum;
+    uniform float uBndPurpleHue, uBndPurpleSat, uBndPurpleLum;
+    uniform float uBndMagentaHue,uBndMagentaSat,uBndMagentaLum;
+    // —— 色彩分级（4 色轮 × 色相/强度/明度 + 混合/平衡）——
+    uniform float uGrShHue, uGrShSat, uGrShLum;
+    uniform float uGrMdHue, uGrMdSat, uGrMdLum;
+    uniform float uGrHiHue, uGrHiSat, uGrHiLum;
+    uniform float uGrGlHue, uGrGlSat, uGrGlLum;
+    uniform float uGrBlend, uGrBalance;
+    // —— 分节开关（位掩码：bit0=光 bit1=曲线 bit2=色彩 bit3=色板 bit4=分级 bit5=画质 bit6=效果）——
+    // ⚠️ 读位必须走下面的 SEC 宏。GLSL ES 1.00（WebGL1）里能用的整数运算
+    // 只有 + - * / 和比较；「&」「%」以及 mod(int,int) / rem(int,int) 全是
+    // ES 3.00 才有的，用任何一个 shader 直接编译失败、页面显示「打不开修图功能」
+    // （这坑真的踩过：整份分节开关上线时页面白了一轮，就是栽在 & 上）。
+    // 所以读位不用取余，改成两个整数除法相减：
+    //   floor(u/n) - 2*floor(u/(2n))  = u 的第 n 位（0 或 1）
+    uniform int uSecMask;
+    #define SEC(u, n) ((((u) / (n)) - (((u) / ((n) * 2)) * 2)) >= 1)
     uniform float uOriginal;   // 1 = 显示原图（对比用）
     uniform float uSplit;      // >=0 = 左右分屏对比的竖线位置（<0 关闭）
     uniform float uUseMask;    // 1 = 调整只作用在蒙版内
@@ -221,109 +348,245 @@
     float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
     /** 这一趟调色的全部逻辑，抽出来是为了局部调整时能调两次 */
+    /* ================================================================
+       grade() —— 调色主函数（对齐 LightCraft 5 阶段管线）
+       ----------------------------------------------------------------
+       管线顺序（对齐 Lightroom 经典顺序，曝光最早）：
+         ① 曝光（线性空间，**最前**）：乘 2^EV
+         ② 光（线性空间）：白点/黑点、清晰度、高光/阴影
+         ③ 色调曲线（sRGB 空间）：点曲线 LUT + 饱和收敛
+         ④ 色彩 + 色板 + 分级（OKLab 感知空间）：色温/色调、饱和、色板 8 带、色彩分级
+         ⑤ 对比度（sRGB 感知空间）
+
+       关于曝光的位置（跟旧版相反）：
+       · 曝光放在**最前**。这是 Lightroom 的顺序（exposure → contrast →
+         highlights → shadows → whites → blacks → clarity），也是用户最
+         熟悉的语义：「高光」指的是**曝光之后**的亮区。
+       · 代价：两个滑杆不再独立。压 -1 EV 之后再拉「高光」，抬的是曝光
+         之后的亮区 —— 这正是 LR 里「先压暗、再靠高光/阴影救回来」的
+         经典用法。同一组滑杆值在不同曝光下作用范围不一样，这是特性
+         不是 bug。
+       · 曾试过 exposure-last（曝光放最后）：好处是滑杆互相解耦，
+         坏处是跟 LR 语义不一致，从 LR 导预设时阴影/高光的落点会偏。
+         权衡后回到 exposure-first。
+       · 顺序里没完全对齐 LR 的部分：LR 是 exposure→contrast→highlights
+         →shadows→whites→blacks→clarity，这里是 exposure→whites/blacks
+         →clarity→highlights/shadows→…→contrast。只对齐了最关键的一步
+         （曝光最早），整条链重排超出本次范围。
+       · adjust-browser 的「曝光在高光之后/之前」像素测试锁住了现在的
+         语义，挪回去它会红。
+       · **白点**用 smoothstep 滚降（中灰以下不动，白点以上平滑到 1.0），
+         **黑点**用 soft-max 软拐点。思路来自 LightCraft ToneMap，但这里是
+         **display-referred** 变体：输入是 sRGB JPEG 不是 scene-linear RAW，
+         所以照 LightCraft 的「ToneMap::display」做法在显示域做滚降；它那套
+         log-EV + extended Reinhard 的「ToneMap::hdr」连中灰都动，套到 JPEG
+         上会让「重置 = 原图」不成立。
+       · **vibrance 有肤色保护**：加饱和时 sRGB 25°（皮肤橙）只吃 40% 力度。
+       · **gamut mapping**：色彩阶段把颜色推出 sRGB 色域时沿亮度轴收缩。
+       · **饱和收敛**把曲线带来的饱和度增量按比例退掉，解决强对比曲线
+         让颜色过艳的问题（Lightroom 的 Refine Saturation）。
+       · **分节开关**：整节关掉就直接跳过；色板/分级在参数全 0 时整段不跑，
+         默认状态下不产生任何浮点扰动。
+       ================================================================ */
+    const float GREY = 0.18;
+
+    /* sRGB 25°（皮肤橙）在 OkLCh 里的色相（弧度）。
+       拉自然饱和度时这块压到 40% 力度 —— 否则脸一拉就发橙。 */
+    const float SKIN_HUE = 1.05490857;
+
+    /* 把色相折回 [-PI, PI]。GLSL ES 1.00 没有 rem()，用 floor 自己做。 */
+    float wrapHue(float a) { return a - 6.2831853 * floor(a / 6.2831853 + 0.5); }
+
+    /* Gamut mapping：超出 sRGB 色域的线性颜色朝自己的亮度收缩。
+       饱和度拉高 / 色彩分级之后颜色会跑出色域，直接 clamp 会压成灰。
+       这里沿亮度轴收缩 —— 亮度不变，只退饱和度。
+       在色域内时 t=1，完全不动（零成本）。 */
+    vec3 gamutMap(vec3 r) {
+      float yy = clamp(dot(r, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+      float t = 1.0;
+      if (r.r < 0.0)      t = min(t, yy / max(yy - r.r, 1e-9));
+      else if (r.r > 1.0) t = min(t, (1.0 - yy) / max(r.r - yy, 1e-9));
+      if (r.g < 0.0)      t = min(t, yy / max(yy - r.g, 1e-9));
+      else if (r.g > 1.0) t = min(t, (1.0 - yy) / max(r.g - yy, 1e-9));
+      if (r.b < 0.0)      t = min(t, yy / max(yy - r.b, 1e-9));
+      else if (r.b > 1.0) t = min(t, (1.0 - yy) / max(r.b - yy, 1e-9));
+      if (t >= 1.0) return r;
+      return vec3(yy + (r.r - yy) * t, yy + (r.g - yy) * t, yy + (r.b - yy) * t);
+    }
+
+
     vec3 grade(vec3 c) {
-      c = toLinear(c);
+      vec3 lin = toLinear(c);
 
-      // 曝光：线性空间下乘 2^EV
-      c *= pow(2.0, uExposure);
+      /* ===== ① 曝光（线性空间，**最前**）===== */
+      if (SEC(uSecMask, 1) && uExposure != 0.0) {
+        lin *= pow(2.0, uExposure);
+      }
 
-      // 高光 / 阴影：按亮度分区加权，避免影响中间调。
-      //
-      // ⚠️ 系数是「作用幅度」，必须明显小于 1，否则 -1 就等于乘 0。
-      // 第一版写成 c += uHighlights * hiW * c，
-      // 实测亮灰 240 直接掉到 84、暗灰 48 掉到 1 —— 那是抹平不是压暗。
-      //
-      // 阴影还做了不对称：提亮给足幅度（暗部本来就需要更多提亮才看得出来），
-      // 压暗时收敛，免得直接压成死黑。
-      // 阴影的权重区间必须收窄。
-      // 第一版用 smoothstep(0.0, 0.45, l)，而中灰的线性亮度是 0.216 ——
-      // 落在区间内拿到 53% 权重，导致「阴影+1」把中灰 128 抬到了 156。
-      // 中间调被带动，是分区调整最典型的失误。
-      // 0.20 这个上界：中灰权重为 0，暗灰(48)权重约 0.93。
-      float l = luma(c);
-      float hiW = smoothstep(0.30, 1.0, l);
-      float loW = 1.0 - smoothstep(0.0, 0.20, l);
-      c *= 1.0 + uHighlights * hiW * 0.5;
-      c *= 1.0 + uShadows * loW * (uShadows > 0.0 ? 1.0 : 0.5);
+      /* ===== ② 光（线性空间）===== */
+      if (SEC(uSecMask, 1)) {
+        // 白点 / 黑点 —— 对齐 LightCraft ToneMap::hdr 的思路。
+        //
+        // 旧版是线性空间的端点增益（lin *= 1+w*0.25 / max(lin-k,0)），
+        // 三个问题：
+        //   · 白点是纯乘法，中灰跟着抬 —— LR 里白点不该动中调
+        //   · 高光没有滚降，直接 clamp 到 1 —— 过渡是硬的
+        //   · 黑点是硬 max，暗部有可见的硬折角
+        //
+        // 新版：白点用 smoothstep 滚降（中灰以下不动），
+        //       黑点用 soft-max 软拐点（光滑的 max(0, v-k)）。
+        // ⚠️ 只在 whites/blacks 非零时跑，保住「全 0 = 完全不改画面」。
+        if (uWhites != 0.0 || uBlacks != 0.0) {
+          if (uWhites != 0.0) {
+            // 白点 = 映射到 1.0 的线性亮度。
+            // +1 → 0.65（高光更早饱和 = 更亮），-1 → 1.35（高光延后 = 更暗）
+            float wl = clamp(1.0 - uWhites * 0.35, 0.4, 2.5);
+            if (wl <= 1.0) {
+              // 高光滚降：wl 以下不动，wl 以上平滑到 1.0
+              vec3 t = smoothstep(wl * 0.7, wl, lin);
+              lin = mix(lin, vec3(1.0), t);
+            } else {
+              // 高光压暗：wl>1 时白点在画布外，乘法压缩高光。
+              // ⚠️ 1/wl 对 wl=1.35 只有 0.741，和输入 0.745 几乎一样，
+              // 得用 lin * (1/wl) 才能产生可见的压暗。
+              vec3 t = smoothstep(0.4, 1.0, lin);
+              lin = mix(lin, lin * (1.0 / wl), t);
+            }
+          }
+          if (uBlacks != 0.0) {
+            if (uBlacks < 0.0) {
+              // 压黑位：soft-max 软拐点，再归一化保持 0→0、1→1
+              float k = clamp(-uBlacks * 0.035, 0.0, 0.25);
+              float e = 0.004;
+              vec3 v = lin - k;
+              vec3 soft = (v + sqrt(v * v + e * e)) * 0.5;
+              float s0 = (-k + sqrt(k * k + e * e)) * 0.5;
+              float s1 = ((1.0 - k) + sqrt((1.0 - k) * (1.0 - k) + e * e)) * 0.5;
+              lin = (soft - s0) / (s1 - s0);
+            } else {
+              // 提亮黑位：抬 toe（黑点往上移）
+              float k = clamp(uBlacks * 0.03, 0.0, 0.2);
+              lin = k + (1.0 - k) * lin;
+            }
+          }
+          lin = clamp(lin, 0.0, 1.0);
+        }
 
-      // 色温：暖 → 抬红压蓝；冷 → 反之。轻微抬绿保持亮度观感
-      c.r *= 1.0 + uTemp * 0.18;
-      c.b *= 1.0 - uTemp * 0.18;
-      c.g *= 1.0 + abs(uTemp) * 0.02;
+        // 清晰度（去雾）：线性空间的 S 曲线，绕中灰
+        if (uClarity != 0.0) {
+          float l = luma(lin);
+          float s = clamp((l - GREY) / (1.0 - GREY), 0.0, 1.0);
+          float sc = s * s * (3.0 - 2.0 * s);   // smoothstep S 形
+          lin = mix(lin, vec3(mix(GREY, 1.0, sc)), abs(uClarity));
+        }
 
-      c = toSrgb(c);
+        // 高光 / 阴影：按亮度加权
+        //
+        // ⚠️ 系数是「作用幅度」，必须明显小于 1，否则 -1 就等于乘 0。
+        // 第一版写成 c += uHighlights * hiW * c，
+        // 实测亮灰 240 直接掉到 84、暗灰 48 掉到 1 —— 那是抹平不是压暗。
+        //
+        // 阴影还做了不对称：提亮给足幅度（暗部本来就需要更多提亮才看得出来），
+        // 压暗时收敛，免得直接压成死黑。
+        // 阴影的权重区间必须收窄。
+        // 第一版用 smoothstep(0.0, 0.45, l)，而中灰的线性亮度是 0.216 ——
+        // 落在区间内拿到 53% 权重，导致「阴影+1」把中灰 128 抬到了 156。
+        // 中间调被带动，是分区调整最典型的失误。
+        // 0.20 这个上界：中灰权重为 0，暗灰(48)权重约 0.93。
+        if (uHighlights != 0.0 || uShadows != 0.0) {
+          float l = luma(lin);
+          float hiW = smoothstep(0.30, 1.0, l);
+          float loW = 1.0 - smoothstep(0.0, 0.20, l);
+          if (uHighlights != 0.0) lin *= 1.0 + uHighlights * hiW * 0.5;
+          if (uShadows != 0.0)    lin *= 1.0 + uShadows * loW * (uShadows > 0.0 ? 1.0 : 0.5);
+        }
+      }
 
-      /* ---------------- 色调曲线 ----------------
+      /* ===== ③ 色调曲线（sRGB 空间）=====
          曲线按**亮度**查表再整体缩放（RGB 同比），不是三个通道各查一次。
-
          为什么不做成独立 RGB 曲线：那会立刻引入偏色（三通道的曲线
          稍微不同就是一张彩色滤镜），而这里要的是**影调**控制。
-         婚纱照要的是"影调好看"，不是"换了个色"。
 
          LUT 由 CPU 生成（见 buildCurveLut）：那里能写真正的
          单调三次插值，比在 GLSL 里用 mix/smoothstep 叠出来精确得多，
          而且能保证**单调**（不单调的曲线会让影调出现反转，很难看）。
-         ================================================ */
-      if (uCurveFade != 0.0 || uCurveShadow != 0.0
-          || uCurveMid != 0.0 || uCurveHigh != 0.0) {
-        float y = luma(c);
+         ================================================================ */
+      if (SEC(uSecMask, 2)
+          && (uCurveFade != 0.0 || uCurveShadow != 0.0
+              || uCurveMid != 0.0 || uCurveHigh != 0.0)) {
+        vec3 cs = toSrgb(lin);
+        vec3 csBefore = cs;   // 曲线前状态，饱和收敛要用
+        float y = luma(cs);
         // 采样位置避开 0 和 1：CLAMP_TO_EDGE 下边界像素正好落在
         // 纹理边缘，某些驱动会取到半个像素的混合值
         float lut = texture2D(uCurve, vec2(clamp(y, 0.0, 1.0) * 0.99609375 + 0.001953125, 0.5)).r;
 
-        /* 曲线带来的亮度变化，**加法**加到 RGB 上（不是按比例缩放）。
-           ------------------------------------------------------------
-           为什么不能用比例（c *= lut / y）：
-           纯黑（y = 0）会除以零，只能特判跳过 —— 而"跳过"正好把
-           **褪色最该起作用的像素**漏掉了：纯黑图配褪色，实测输出还是 0。
-           （一开始就是按比例写的，加了 y > 0.0001 的保护，症状就是这条。）
-
-           也不能无脑加：亮饱和色加过头会某个通道越界，被 clamp 之后
-           **色相会偏**（比如亮红 +0.05 冲顶后变成粉白）。
-           所以按剩余余量缩一下 delta —— 保证不越界，这样影调抬了、
-           色相饱和度都还是对的。 */
+        // 曲线带来的亮度变化，**加法**加到 RGB 上（不是按比例缩放）。
+        // 为什么不能用比例（c *= lut / y）：纯黑（y = 0）会除以零。
+        // 也不能无脑加：亮饱和色加过头会某个通道越界，被 clamp 之后色相会偏。
+        // 所以按剩余余量缩一下 delta。
         float delta = lut - y;
         if (delta != 0.0) {
-          float mx = max(max(c.r, c.g), c.b);
+          float mx = max(max(cs.r, cs.g), cs.b);
           float room = (delta > 0.0) ? (1.0 - mx) : mx;
           float k = (delta > 0.0)
             ? min(1.0, room / max(delta, 1e-4))
             : min(1.0, room / max(-delta, 1e-4));
-          c += delta * k;
+          cs += delta * k;
         }
+
+        // 饱和收敛（Lightroom "Refine Saturation"）：
+        // 强对比曲线（暗部压缩 + 亮部提升）会把饱和度推上去。
+        // 这个参数按 (s_before / s_after)^(1-refine) 把增量退掉。
+        // 0 = 不收敛（保持原行为），1 = 完全退回到曲线前的饱和度。
+        if (uRefineSat > 0.0) {
+          float c0 = max(max(csBefore.r, csBefore.g), csBefore.b) - min(min(csBefore.r, csBefore.g), csBefore.b);
+          float c1 = max(max(cs.r, cs.g), cs.b) - min(min(cs.r, cs.g), cs.b);
+          float y0 = luma(csBefore);
+          float y1 = luma(cs);
+          float sat0 = c0 / max(y0, 1e-4);
+          float sat1 = c1 / max(y1, 1e-4);
+          if (sat1 > 1e-6 && sat0 > 1e-6) {
+            float kr = clamp(pow(sat0 / sat1, 1.0 - uRefineSat), 0.0, 4.0);
+            cs = vec3(y1) + (cs - vec3(y1)) * kr;
+          }
+        }
+        lin = toLinear(cs);
       }
 
-      // 对比度：绕中灰旋转（sRGB 空间，符合直觉）
-      c = (c - 0.5) * (1.0 + uContrast) + 0.5;
+      /* ===== ④ 色彩 + 色板 + 分级（OKLab 感知空间）=====
+         ⚠️ 输入必须是**线性** sRGB，不是 gamma 编码的。
+         OKLab（Björn Ottosson, 2020）先把线性 sRGB 开立方根到近似 LMS 锥体响应，
+         再做矩阵。代价是三次 pow，但准确性值得 —— YIQ 在肤色（红橙黄）
+         附近感知偏差大，婚纱照全是肤色，这一点很要命。
+         ================================================================ */
+       /* ④ 对比度**不**在这里触发 OKLab：它绕中灰做加法（④ 段，sRGB 空间），
+          不需要感知空间往返。把它放进 needColor 会白跑一趟 OKLab，
+          更麻烦的是 ③ 末尾的 clamp(linOut, 0,1) 会先把「白点」抬上去的
+          >1 线性高光截平，对比度拿到的就少了层次。 */
+      /* 色板 / 分级在参数全 0 时整段不跑：否则默认状态每个像素都要付
+         8 次 exp + 1 次 atan2，而且 OKLab 往返会带来极小的浮点漂移
+         （「重置 = 原图」就会差最后一两位）。 */
+      bool anyBand = uBndRedHue != 0.0 || uBndRedSat != 0.0 || uBndRedLum != 0.0
+                  || uBndOrangeHue != 0.0 || uBndOrangeSat != 0.0 || uBndOrangeLum != 0.0
+                  || uBndYellowHue != 0.0 || uBndYellowSat != 0.0 || uBndYellowLum != 0.0
+                  || uBndGreenHue != 0.0 || uBndGreenSat != 0.0 || uBndGreenLum != 0.0
+                  || uBndAquaHue != 0.0 || uBndAquaSat != 0.0 || uBndAquaLum != 0.0
+                  || uBndBlueHue != 0.0 || uBndBlueSat != 0.0 || uBndBlueLum != 0.0
+                  || uBndPurpleHue != 0.0 || uBndPurpleSat != 0.0 || uBndPurpleLum != 0.0
+                  || uBndMagentaHue != 0.0 || uBndMagentaSat != 0.0 || uBndMagentaLum != 0.0;
+      /* 分级只认 sat/lum：色相没有强度时不产生偏移，混合/平衡只调权重。 */
+      bool anyGrading = uGrShSat != 0.0 || uGrShLum != 0.0
+                     || uGrMdSat != 0.0 || uGrMdLum != 0.0
+                     || uGrHiSat != 0.0 || uGrHiLum != 0.0
+                     || uGrGlSat != 0.0 || uGrGlLum != 0.0;
+      bool needColor = (SEC(uSecMask, 4) && (uTemp != 0.0
+                       || uTint != 0.0 || uSaturation != 0.0 || uHue != 0.0
+                       || uHslSat != 0.0 || uHslLight != 0.0))
+                     || (SEC(uSecMask, 8) && anyBand)
+                     || (SEC(uSecMask, 16) && anyGrading);
 
-      // 饱和度：朝灰度插值
-      float g = luma(c);
-      c = mix(vec3(g), c, 1.0 + uSaturation);
-
-      /* ---------------- HSL（OKLab 感知色彩空间） ----------------
-         ⚠️ 这里从 YIQ 换成了 OKLab。原因：YIQ 是 1950 年代为模拟电视
-         广播设计的，它的色度平面和人的感知差得比较远 —— 在肤色
-         （红橙黄那一带）附近尤其明显：同样的色相旋转量，脸上会偏得
-         比背景更厉害。婚纱照全是肤色，这一点很要命。
-
-         OKLab（Björn Ottosson, 2020）是专门为「感知均匀」设计的：
-         先把线性 sRGB 开立方根到近似 LMS 锥体响应，再做矩阵。
-         代价是三次 pow —— 比 YIQ 贵一点，但换来的准确性值得，
-         而且**省掉了 atan2**（见下）。
-
-         几个要点：
-         · 输入必须是**线性** sRGB，不是 gamma 编码的
-         · 色相旋转 = 在 (a, b) 平面上转，不用 atan2
-           （只有「按色相分区间调」才需要角度；我们没有分区间）
-         · 开立方根用 pow(x, 1/3)，x 需要 >= 0；
-           这里是线性光，公式上恒为正，还是 clip 一下防数值抖动
-
-         它排在饱和度**之后**：先定调子（饱和度），再微调色相/明度，
-         符合修图的实际顺序 —— 反过来会出现"调完色相饱和度又变了"。
-         ================================================ */
-      if (uHue != 0.0 || uHslSat != 0.0 || uHslLight != 0.0) {
-        vec3 lin = toLinear(c);
-
+      if (needColor) {
         // 线性 sRGB -> OKLab
         vec3 lms = vec3(
           dot(lin, vec3(0.4122214708, 0.5363325363, 0.0514459929)),
@@ -335,41 +598,125 @@
         float A = dot(lms, vec3(1.9779984951, -2.4285922050,  0.4505937099));
         float B = dot(lms, vec3(0.0259040371,  0.7827717662, -0.8086757660));
 
-        // —— 饱和度 ——
-        /* ⚠️ 正负要分开处理：
-           往负（去色）走时用户要的是「变灰」，那是**明确意图**，
-           不该被任何"保护"削弱 —— 直接等比缩。
-           往正（加艳）走时才需要保护：已经很艳的地方再乘会溢出，
-           而"自然饱和度"的本意就是「不够的补上、够了的别碰」。
+        /* ----- ③a 色彩 ----- */
+        if (SEC(uSecMask, 4)) {
+          // 色温：暖 → 抬 A（红/绿方向）；冷 → 反之
+          if (uTemp != 0.0) { A += uTemp * 0.06; L += uTemp * 0.03; }
+          // 色调：洋红 ↔ 绿
+          if (uTint != 0.0) { B += uTint * 0.04; }
 
-           第一版两边都用同一个 room 系数，结果 -1 只降了约 47%
-           （纯红 208,32,32 变成 183,73,64），根本不是"去色" ——
-           实测出来的。 */
-        if (uHslSat > 0.0) {
+          // 自然饱和度（vibrance）：只补低饱和的色，高饱和的别碰。
+          // 对齐 LightCraft colorops.rs：
+          //   low = 1 - clamp(c/0.22, 0, 1)               —— 饱和点 0.22，low² 加权
+          //   skin = 1 - 0.6 * exp(-((h-h_skin)/0.35)²)    —— 肤色压 60%
+          //   c *= (1 + v * low² * skin * 1.2)              —— 最大增幅 ×1.2
+          //
+          // 为什么要肤色保护：婚纱照几乎每张照片都是人脸。vibrance 本质是
+          // 「给不够艳的色补饱和」，而皮肤恰恰是低饱和的橙色 —— 一拉人脸
+          // 就发橙。把 sRGB 25°（皮肤橙）对应的 OkLCh 色相那块压到 40%，
+          // 肤色只吃 4 成力度，别的颜色吃满。
+          // ⚠️ 只保护「加饱和」(>0)；减饱和本来就要压肤色，不该保护。
+          if (uHslSat > 0.0) {
+            float chroma = sqrt(A * A + B * B);
+            float low = 1.0 - clamp(chroma / 0.22, 0.0, 1.0);
+            float h = atan(B, A);
+            float d = wrapHue(h - SKIN_HUE);
+            float skin = 1.0 - 0.6 * exp(-(d / 0.35) * (d / 0.35));
+            float k = max(0.0, 1.0 + uHslSat * low * low * skin * 1.2);
+            A *= k;
+            B *= k;
+          } else if (uHslSat < 0.0) {
+            A *= 1.0 + uHslSat;
+            B *= 1.0 + uHslSat;
+          }
+
+          // 饱和度：等比缩放
+          if (uSaturation != 0.0) {
+            A *= 1.0 + uSaturation;
+            B *= 1.0 + uSaturation;
+          }
+
+          // 色相：在 (A, B) 平面上旋转，±1 对应 ±30°
+          if (uHue != 0.0) {
+            float ang = uHue * 0.5236;
+            float ca = cos(ang), sa = sin(ang);
+            float A2 = A * ca - B * sa;
+            float B2 = A * sa + B * ca;
+            A = A2; B = B2;
+          }
+
+          // 明度：OKLab 的 L 本身就是感知亮度
+          if (uHslLight > 0.0)      L = mix(L, 1.0, uHslLight);
+          else if (uHslLight < 0.0) L = mix(L, 0.0, -uHslLight);
+        }
+
+        /* ----- ③b 色板（HSL 色板，8 色带）-----
+           在 OkLCh 里做：把 (A, B) 转成 (chroma, hue)，按 8 个色带的
+           权重加权混合各自的色相/饱和/明度调整，再转回 (A, B)。
+           权重用高斯核（exp(-d²·4)）并归一化 —— 近似 partition of unity，
+           保证各带调整互相平滑过渡，不会在色带边界跳变。
+           chroma_w = min(chroma/0.12, 1) 让低饱和像素不被色板带跑。
+           ================================================================ */
+        if (SEC(uSecMask, 8) && anyBand) {
+          float h = atan(B, A);
           float chroma = sqrt(A * A + B * B);
-          float room = 1.0 - clamp(chroma / 0.30, 0.0, 0.85);
-          A *= 1.0 + uHslSat * room;
-          B *= 1.0 + uHslSat * room;
-        } else if (uHslSat < 0.0) {
-          A *= 1.0 + uHslSat;
-          B *= 1.0 + uHslSat;
+          float cw = min(chroma / 0.12, 1.0);
+
+          // 8 色带的 OkLCh 中心色相（弧度，由 sRGB HSV 换算）
+          float w0 = exp(-pow(abs(mod(h -  0.510228  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float w1 = exp(-pow(abs(mod(h -  0.921110  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float w2 = exp(-pow(abs(mod(h -  1.915835  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float w3 = exp(-pow(abs(mod(h -  2.487013  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float w4 = exp(-pow(abs(mod(h - -2.883826  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float w5 = exp(-pow(abs(mod(h - -1.678489  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float w6 = exp(-pow(abs(mod(h - -1.155861  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float w7 = exp(-pow(abs(mod(h - -0.283766  + 3.14159265, 6.28318530) - 3.14159265), 2.0) * 4.0);
+          float ws = w0 + w1 + w2 + w3 + w4 + w5 + w6 + w7;
+          if (ws > 1e-6) { w0 /= ws; w1 /= ws; w2 /= ws; w3 /= ws; w4 /= ws; w5 /= ws; w6 /= ws; w7 /= ws; }
+
+          // 加权混合各带的调整量（色相 ±1 = ±30°，饱和/明度 ±1 是力度）
+          float dh = (w0 * uBndRedHue    + w1 * uBndOrangeHue + w2 * uBndYellowHue + w3 * uBndGreenHue
+                    + w4 * uBndAquaHue   + w5 * uBndBlueHue   + w6 * uBndPurpleHue + w7 * uBndMagentaHue) * 0.5236;
+          float ds =  w0 * uBndRedSat    + w1 * uBndOrangeSat + w2 * uBndYellowSat + w3 * uBndGreenSat
+                    + w4 * uBndAquaSat   + w5 * uBndBlueSat   + w6 * uBndPurpleSat + w7 * uBndMagentaSat;
+          float dl = (w0 * uBndRedLum    + w1 * uBndOrangeLum + w2 * uBndYellowLum + w3 * uBndGreenLum
+                    + w4 * uBndAquaLum   + w5 * uBndBlueLum   + w6 * uBndPurpleLum + w7 * uBndMagentaLum) * 0.15;
+
+          h += dh * cw;
+          chroma *= max(1.0 + ds, 0.0);
+          L += dl * cw * sqrt(max(L, 0.05));
+          A = chroma * cos(h);
+          B = chroma * sin(h);
         }
 
-        // —— 色相：在 (a,b) 平面上旋转，±1 对应 ±30° ——
-        if (uHue != 0.0) {
-          float ang = uHue * 0.5236;
-          float ca = cos(ang), sa = sin(ang);
-          float A2 = A * ca - B * sa;
-          float B2 = A * sa + B * ca;
-          A = A2; B = B2;
-        }
+        /* ----- ③c 色彩分级（4 色轮）-----
+           阴影/中间调/高光三个轮按像素亮度加权，全局轮权重恒为 1。
+           权重用 smoothstep：阴影从暗到亮衰减，高光从暗到亮上升，
+           中间调 = 1 - 阴影 - 高光（补集）。
+           blending 控制阴影和高光的过渡宽度，balance 把分界点从 0.5 平移。
+           ================================================================ */
+        if (SEC(uSecMask, 16) && anyGrading) {
+          float m = 0.5 - uGrBalance * 0.25;
+          float width = 0.15 + uGrBlend * 0.5;
+          float ws = 1.0 - smoothstep(m - width, m + width * 0.25, L);
+          float wh = smoothstep(m - width * 0.25, m + width, L);
+          float wm = max(0.0, 1.0 - ws - wh);
 
-        // —— 明度：直接用 OKLab 的 L ——
-        // OKLab 的 L 本身就是感知亮度（0=黑，1=白），所以 ±1 就是
-        // 推到纯黑/纯白，整条色阶力度一致 —— 不需要再自己算 max/min
-        // 去凑一个"亮度"（上一版就是这么绕的）。
-        if (uHslLight > 0.0)      L = mix(L, 1.0, uHslLight);
-        else if (uHslLight < 0.0) L = mix(L, 0.0, -uHslLight);
+          // 每个轮的 (hue, sat) → (a, b) 偏移
+          // hue ±1 → ±180°，sat 0..1 → 幅度 0..0.15，lum ±1 → ±0.1
+          float shA = uGrShSat * 0.15 * cos(uGrShHue * 3.14159265);
+          float shB = uGrShSat * 0.15 * sin(uGrShHue * 3.14159265);
+          float mdA = uGrMdSat * 0.15 * cos(uGrMdHue * 3.14159265);
+          float mdB = uGrMdSat * 0.15 * sin(uGrMdHue * 3.14159265);
+          float hiA = uGrHiSat * 0.15 * cos(uGrHiHue * 3.14159265);
+          float hiB = uGrHiSat * 0.15 * sin(uGrHiHue * 3.14159265);
+          float glA = uGrGlSat * 0.15 * cos(uGrGlHue * 3.14159265);
+          float glB = uGrGlSat * 0.15 * sin(uGrGlHue * 3.14159265);
+
+          A += ws * shA + wm * mdA + wh * hiA + glA;
+          B += ws * shB + wm * mdB + wh * hiB + glB;
+          L += ws * uGrShLum * 0.1 + wm * uGrMdLum * 0.1 + wh * uGrHiLum * 0.1 + uGrGlLum * 0.1;
+        }
 
         // OKLab -> 线性 sRGB
         float l_ = L + 0.3963377774 * A + 0.2158037573 * B;
@@ -383,13 +730,23 @@
         );
 
         // 回到 sRGB。⚠️ 大范围改动后 OKLab 可能给出负值或 >1 的线性值
-        // （超出 sRGB 色域），必须 clamp —— 否则后面 toSrgb 里的 pow
-        // 会拿到负数
-        c = toSrgb(clamp(linOut, 0.0, 1.0));
+        // （超出 sRGB 色域）。直接 clamp 会把超出的颜色压成灰（饱和度被吃掉），
+        // 所以先做 gamut mapping：沿亮度轴收缩，只退饱和度、不动亮度。
+        lin = gamutMap(linOut);
       }
 
-      return c;
+      // 安全网：② 光阶段的清晰度/高光也可能把值推出 [0,1]
+      lin = clamp(lin, 0.0, 1.0);
+
+      /* ===== ⑤ 对比度（sRGB 感知空间，绕中灰）===== */
+      vec3 c2 = toSrgb(lin);
+      if (SEC(uSecMask, 4) && uContrast != 0.0) {
+        c2 = (c2 - 0.5) * (1.0 + uContrast) + 0.5;
+      }
+
+      return c2;
     }
+
 
     /* ================================================================
        锐化（USM）—— 在**原始分辨率**的源图上做，不在 grade() 里
@@ -405,7 +762,51 @@
        用原图 texel 的代价是屏幕预览时看着比导出略轻 ——
        这是两者不一致里代价最小的取舍。
        ================================================================ */
+    /* ================================================================
+       去噪 —— 3x3 邻域均值，按局部方差自适应混合
+       ----------------------------------------------------------------
+       和锐化一样用原图 texel 步长（见 sharpen 说明）。
+       亮度去噪：局部方差大（噪声）的地方多向均值靠，方差小（细节）的地方少靠。
+       色彩去噪：直接混向均值颜色，对色彩噪点（暗部色斑）效果直接。
+       顺序：先去噪、再锐化 —— 反过来会让锐化放大噪声。
+       ================================================================ */
+    vec3 denoise(vec3 src, vec2 uv) {
+      if (!SEC(uSecMask, 32)) return src;
+      if (uDenoiseLum == 0.0 && uDenoiseColor == 0.0) return src;
+
+      // 3x3 邻域均值
+      vec3 sum = vec3(0.0);
+      vec3 sumSq = vec3(0.0);
+      for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+          vec3 s = texture2D(uImage, uv + vec2(float(x), float(y)) * uTexel).rgb;
+          sum += s;
+          sumSq += s * s;
+        }
+      }
+      vec3 mean = sum / 9.0;
+      // 局部方差 = E[x²] - E[x]²
+      vec3 variance = max(sumSq / 9.0 - mean * mean, vec3(0.0));
+      float vLuma = luma(variance);
+
+      // 自适应权重：方差越大（越像噪声）越向均值靠，但设上限
+      // 避免把真实细节也抹掉。阈值 0.005 约等于 255 制下的 ±11 灰阶噪声。
+      float wL = uDenoiseLum * clamp(vLuma / 0.005, 0.0, 1.0);
+      // 色彩去噪按**最大通道**方差算 —— 暗部色斑不一定体现在亮度上
+      float wC = uDenoiseColor * clamp(max(variance.r, max(variance.g, variance.b)) / 0.005, 0.0, 1.0);
+
+      // 亮度：只把 luma 分量往均值推，色彩分量原样保留
+      float lOut = luma(mix(src, mean, wL));
+      vec3 outL = src + (lOut - luma(src));
+      // 色彩：整体混向均值。wC 已按色彩方差自适应，再乘 0.5 收敛一点，
+      // 免得连细节一起抹
+      outL = mix(outL, mean, wC * 0.5);
+
+      return clamp(outL, 0.0, 1.0);
+    }
+
     vec3 sharpen(vec3 src, vec2 uv) {
+      if (!SEC(uSecMask, 32)) return src;
       if (uSharpness == 0.0) return src;
       vec3 blur = vec3(0.0);
       // 3x3 均值。用均值而不是高斯，是为了省采样 ——
@@ -418,7 +819,15 @@
       blur /= 9.0;
       // USM：原图 + 幅度 ×（原图 - 模糊）。幅度上限 1.5，
       // 再高暗部会出现明显的白边
-      return clamp(src + (src - blur) * uSharpness * 1.5, 0.0, 1.0);
+      vec3 usm = clamp(src + (src - blur) * uSharpness * 1.5, 0.0, 1.0);
+      // 锐化遮罩：只在边缘锐化，平滑区域保留原图。
+      // 0 = 全锐化（原行为），1 = 只在边缘锐化。
+      if (uSharpenMask > 0.0) {
+        float edge = clamp(abs(luma(src) - luma(blur)) * 8.0, 0.0, 1.0);
+        float mask = uSharpenMask * (1.0 - edge);   // 平滑区域权重
+        usm = mix(usm, src, mask);
+      }
+      return usm;
     }
 
     /* ================================================================
@@ -439,7 +848,9 @@
     vec3 grain(vec3 c) {
       if (uGrain == 0.0) return c;
       // 按像素坐标取噪声，保证每个像素固定不变（不然一动就闪）
-      float n = hash21(gl_FragCoord.xy) - 0.5;
+      // uGrainSize 控制颗粒粗细：0 = 默认（每像素一个噪声），1 = 粗颗粒（约 7 像素一个噪声）
+      float freq = mix(1.0, 0.15, uGrainSize);
+      float n = hash21(gl_FragCoord.xy * freq) - 0.5;
       // 中间调给满，暗部和亮部收敛
       float mid = 1.0 - abs(luma(c) - 0.5) * 2.0;
       mid = mid * mid;                 // 让收窄更明显一点
@@ -464,8 +875,9 @@
       if (uVignette == 0.0) return c;
       vec2 d = (vUv - 0.5) * vec2(uAspect, 1.0) / max(1.0, uAspect);
       float r = length(d) * 1.414;      // 归一化：角上约等于 1
-      // 从中心向外开始压，中心 1/3 完全不碰（否则人脸先暗下去）
-      float w = smoothstep(0.35, 1.05, r);
+      // uVigMid 控制暗角起点位置：0 = 默认（中心 1/3 不碰），1 = 只压最四角
+      float inner = 0.35 + uVigMid * 0.3;
+      float w = smoothstep(inner, 1.05, r);
 
       // 把符号揉进 amt 里：正值 → 正 amt → 乘 (1-amt) 压暗；
       // 负值 → 负 amt → (1-amt) 大于 1 → 提亮。
@@ -537,8 +949,9 @@
         return;
       }
 
-      // 锐化在调色之前，而且作用在源图上
-      vec3 sharp = sharpen(src, u);
+      // 先去噪、再锐化（反过来会让锐化放大噪声），然后调色
+      vec3 den = denoise(src, u);
+      vec3 sharp = sharpen(den, u);
 
       // ⚠️ 局部调整时混的也是 sharp 而不是 src ——
       // 混 src 的话，涂了蒙版之后锐化会在蒙版内被"混掉"，
@@ -559,8 +972,10 @@
       // 暗角和颗粒放在蒙版混合**之后**：它们是"整张照片的收尾处理"，
       // 不是"某个区域的调整"。放进蒙版里的话，涂一小块区域会让
       // 那块的暗角被抹掉，看起来像破了个洞。
-      c = vignette(c);
-      c = grain(c);
+      if (SEC(uSecMask, 64)) {
+        c = vignette(c);
+        c = grain(c);
+      }
 
       c = clamp(c, 0.0, 1.0);
 
@@ -828,6 +1243,7 @@
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
     for (const a of ADJUSTMENTS) uniforms[a.key] = gl.getUniformLocation(program, a.key);
+    uniforms.uSecMask = gl.getUniformLocation(program, 'uSecMask');
     uniforms.uImage = gl.getUniformLocation(program, 'uImage');
     uniforms.uMask = gl.getUniformLocation(program, 'uMask');
     uniforms.uOriginal = gl.getUniformLocation(program, 'uOriginal');
@@ -1023,6 +1439,7 @@
       resetGeometryUniforms();
     }
 
+    gl.uniform1i(uniforms.uSecMask, secMask());
     for (const a of ADJUSTMENTS) gl.uniform1f(uniforms[a.key], values[a.key]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -2433,7 +2850,7 @@
      所以预设、重置、导出、undo 全部不用跟着改。
      ================================================================ */
   const SLIDER_GROUPS = {
-    stSliders:      ['基础', '曲线', '质感'],
+    stSliders:      ['基础', '曲线', '画质', '效果'],
     stSlidersColor: ['色彩', 'HSL'],
   };
 
@@ -2507,6 +2924,194 @@
       row.append(top, input);
       box.appendChild(row);
       show();
+    }
+  }
+
+  /* ================================================================
+     分节开关（眼睛图标）
+     ----------------------------------------------------------------
+     每一节一个眼睛按钮，点击切换启停。
+     关掉某节后，shader 里那节的代码不执行 —— 用来单独看效果。
+     这是 LightCraft 的非破坏性理念：参数模型和数据分离，
+     每一节独立可控。
+     ================================================================ */
+  function buildSecBar() {
+    const bar = $('stSecBar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    for (const s of SECTIONS) {
+      const item = document.createElement('div');
+      item.className = 'st-sec-item on';
+      item.dataset.sec = s.id;
+      item.title = '点击关闭「' + s.name + '」节（单独看效果）';
+      item.innerHTML = '<span class="st-sec-eye">👁</span><span>' + s.name + '</span>';
+      item.addEventListener('click', () => {
+        if (secEnabled.has(s.id)) { secEnabled.delete(s.id); item.classList.remove('on'); }
+        else { secEnabled.add(s.id); item.classList.add('on'); }
+        draw();
+      });
+      s._toggle = item;
+      bar.appendChild(item);
+    }
+  }
+
+  /* ================================================================
+     色板 / 分级网格
+     ----------------------------------------------------------------
+     色板：8 色带 × 色相/饱和/明度，紧凑表格
+     分级：4 色轮 × 色相/强度/明度 + 混合/平衡
+     网格里的迷你滑杆比正常滑杆小，适合横向排列。
+     ================================================================ */
+  function buildMiniSlider(a) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;min-width:28px;';
+
+    const val = document.createElement('div');
+    val.className = 'st-mini-val';
+    val.textContent = '0';
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.className = 'st-mini';
+    input.min = a.min; input.max = a.max; input.step = a.step;
+    input.value = a.def;
+    input.dataset.key = a.key;
+
+    const show = () => {
+      const v = values[a.key];
+      const changed = Math.abs(v - a.def) > 1e-6;
+      const n = Math.round(v * 100);
+      val.textContent = (n > 0 ? '+' : '') + n;
+      val.classList.toggle('changed', changed);
+      input.value = v;
+      // 更新滑杆中线位置
+      const mid = ((a.def - a.min) / (a.max - a.min)) * 100;
+      input.style.setProperty('--mid', mid + '%');
+    };
+
+    input.addEventListener('input', () => {
+      values[a.key] = parseFloat(input.value);
+      show();
+      draw();
+      onManualAdjust();
+    });
+
+    a._show = show;
+    a._grid = true;
+    show();
+    wrap.append(val, input);
+    return wrap;
+  }
+
+  function buildGrid() {
+    // —— 色板 ——
+    const mixerBox = $('stMixerGrid');
+    if (mixerBox) {
+      mixerBox.innerHTML = '';
+      const title = document.createElement('div');
+      title.className = 'st-grid-title';
+      title.textContent = '色板';
+      mixerBox.appendChild(title);
+
+      const table = document.createElement('table');
+      table.className = 'st-grid-table';
+
+      // 表头：色带名 + 色相/饱和/明度
+      const thead = document.createElement('tr');
+      const th0 = document.createElement('th');
+      th0.textContent = '';
+      thead.appendChild(th0);
+      for (const band of BAND_DEFS) {
+        const th = document.createElement('th');
+        th.textContent = band.name;
+        th.className = 'st-band-label';
+        thead.appendChild(th);
+      }
+      table.appendChild(thead);
+
+      // 三行：色相 / 饱和 / 明度
+      for (const [axis, label] of [['hue', '色相'], ['sat', '饱和'], ['lum', '明度']]) {
+        const tr = document.createElement('tr');
+        const th = document.createElement('th');
+        th.textContent = label;
+        tr.appendChild(th);
+        for (const band of BAND_DEFS) {
+          const td = document.createElement('td');
+          const a = ADJUSTMENTS.find(x => x.band === band.key && x.bandAxis === axis);
+          if (a) td.appendChild(buildMiniSlider(a));
+          tr.appendChild(td);
+        }
+        table.appendChild(tr);
+      }
+      mixerBox.appendChild(table);
+    }
+
+    // —— 色彩分级 ——
+    const gradBox = $('stGradingGrid');
+    if (gradBox) {
+      gradBox.innerHTML = '';
+      const title = document.createElement('div');
+      title.className = 'st-grid-title';
+      title.textContent = '色彩分级';
+      gradBox.appendChild(title);
+
+      const table = document.createElement('table');
+      table.className = 'st-grid-table';
+
+      // 表头
+      const thead = document.createElement('tr');
+      const th0 = document.createElement('th');
+      th0.textContent = '';
+      thead.appendChild(th0);
+      for (const w of WHEEL_DEFS) {
+        const th = document.createElement('th');
+        th.textContent = w.name;
+        th.className = 'st-wheel-label';
+        thead.appendChild(th);
+      }
+      table.appendChild(thead);
+
+      // 三行：色相 / 强度 / 明度
+      for (const [axis, label] of [['hue', '色相'], ['sat', '强度'], ['lum', '明度']]) {
+        const tr = document.createElement('tr');
+        const th = document.createElement('th');
+        th.textContent = label;
+        tr.appendChild(th);
+        for (const w of WHEEL_DEFS) {
+          const td = document.createElement('td');
+          const a = ADJUSTMENTS.find(x => x.wheel === w.key && x.wheelAxis === axis);
+          if (a) td.appendChild(buildMiniSlider(a));
+          tr.appendChild(td);
+        }
+        table.appendChild(tr);
+      }
+
+      // 混合 / 平衡
+      const trExtra = document.createElement('tr');
+      const thExtra = document.createElement('th');
+      thExtra.textContent = '';
+      trExtra.appendChild(thExtra);
+      for (const [axis, label] of [['blend', '混合'], ['balance', '平衡']]) {
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        const a = ADJUSTMENTS.find(x => x.wheelAxis === axis);
+        // ⚠️ wrap 必须提到 if 外面：它在块外用过。第一版写在 if 里，
+        // `a ? wrap : ...` 一求值就 ReferenceError，整个 boot() 崩掉，
+        // 页面显示「打不开修图功能」（静态测试全抓不到，因为语法是合法的）。
+        const wrap = a ? buildMiniSlider(a) : document.createElement('span');
+        if (a) {
+          // 显示名称
+          const lbl = document.createElement('div');
+          lbl.style.cssText = 'font-size:9px;color:var(--st-txt-dim);margin-bottom:1px;';
+          lbl.textContent = label;
+          wrap.prepend(lbl);
+        }
+        td.appendChild(wrap);
+        trExtra.appendChild(td);
+      }
+      table.appendChild(trExtra);
+
+      gradBox.appendChild(table);
     }
   }
 
@@ -4505,16 +5110,19 @@
       // 漏掉一处就会出现「按钮灰着但明明能撤销」这种别扭状态。
       mask.onchange = () => { syncMaskUI(); };
       initGL();
-      // 16 个滑杆拆到「影调」「颜色」两个容器（都在「调整」页，见 SLIDER_GROUPS）
+      // 滑杆拆到「影调」「颜色」两个容器（都在「调整」页，见 SLIDER_GROUPS）
       for (const [boxId, groups] of Object.entries(SLIDER_GROUPS)) {
         buildSliders(boxId, groups);
       }
-      // 护栏：任何调整项都必须真的生成滑杆。
+      // 分节开关 + 色板/分级网格
+      buildSecBar();
+      buildGrid();
+      // 护栏：任何调整项都必须真的生成滑杆（或标记为 grid UI）。
       // 漏了一个的症状是「面板里没有这个滑杆」，但预设/导出照样跑，
       // 静默且难发现 —— 在这里就炸出来。
       for (const a of ADJUSTMENTS) {
-        if (!a._show) throw new Error(
-          '调整项「' + a.name + '」没生成滑杆（SLIDER_GROUPS 漏了分组「' + a.group + '」）');
+        if (!a._show && !a._grid) throw new Error(
+          '调整项「' + a.name + '」没生成 UI（SLIDER_GROUPS 漏了分组「' + a.group + '」）');
       }
       buildPresetUI();
       initRail();

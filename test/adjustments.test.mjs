@@ -161,6 +161,92 @@ t('⭐ 锐化的步长用原图尺寸，不是画布尺寸', () => {
     'uTexel 用了 canvas 尺寸 —— 会让锐化半径随窗口大小变化');
 });
 
+/* ---------------- 3b. 分节开关（uSecMask）接线 ----------------
+   分节是 `uniform int`，上面的 uniform 扫描只认 `uniform float`，
+   所以整条链子（声明 → uniform1i 赋值 → shader 里按 bit 判断）
+   全靠这一组断言。删掉任何一环都不会报错，只会"眼睛按钮是装饰品"。 */
+
+t('⭐ 分节开关：shader 声明 uniform int，draw() 用 uniform1i 赋值', () => {
+  assert.ok(/^[ \t]*uniform\s+int\s+uSecMask\s*;/m.test(FRAG),
+    'shader 里没有 `uniform int uSecMask;` —— 分节开关整条链断了');
+  const body = fnBody(SRC, 'function draw(');
+  assert.ok(/gl\.uniform1i\(uniforms\.uSecMask,\s*secMask\(\)\)/.test(body),
+    'draw() 没有 `gl.uniform1i(uniforms.uSecMask, secMask())`。'
+    + '⚠️ int 必须用 uniform1i：用 uniform1f 会被 WebGL 静默忽略，'
+    + '症状是"眼睛按钮点了没反应"，而且控制台什么都不说');
+  assert.ok(/function secMask\(\)/.test(SRC), '找不到 secMask()');
+  assert.ok(/const secEnabled\s*=/.test(SRC), '找不到 secEnabled（眼睛开关的状态）');
+});
+
+t('⭐ 分节开关：SECTIONS 每一节的 bit 在 shader 里都被检查过', () => {
+  const secBlock = SRC.match(/const SECTIONS = (\[[\s\S]*?\n  \]);/);
+  assert.ok(secBlock, '没找到 SECTIONS 定义');
+  const SECTIONS = new Function('return ' + secBlock[1])();
+  const bits = SECTIONS.map(s => s.bit);
+  assert.ok(bits.length >= 2, 'SECTIONS 不该是空的');
+  assert.equal(new Set(bits).size, bits.length, 'SECTIONS 里有重复的 bit');
+  for (const b of bits) {
+    assert.ok(b > 0 && (b & (b - 1)) === 0, `bit ${b} 不是 2 的幂`);
+  }
+  const missing = bits.filter(b => !new RegExp('SEC\\(uSecMask,\\s*' + b + '\\s*\\)').test(FRAG));
+  assert.equal(missing.length, 0,
+    `这些分节的 bit 在 shader 里没被检查过（眼睛关不掉）：${missing.join(', ')}`);
+});
+
+t('⭐ 分节开关：shader 里没有 GLSL ES 3.00 才有的运算符', () => {
+  // WebGL1 = GLSL ES 1.00。ES 1.00 里位运算和取余全都不存在：
+  //   `&` `|` `^` `~` `<<` `>>` `%%` 都是 ES 3.00 才有的，
+  //   连 mod(int,int) / rem(int,int) 都没有（只有 float 版本）。
+  // 一出现就是 shader 编译失败，页面白掉。读位必须走 SEC 宏。
+  // ⚠️ `&&` `||` 是逻辑运算，先剔掉再查，否则误报。
+  const code = FRAG.replace(/\/\/.*$/gm, '').replace(/\/[\s\S]*?\*\//g, '');
+  const stripped = code.replace(/&&/g, '').replace(/\|\|/g, '');
+  const bad = [...stripped.matchAll(/([&%~^]|<<|>>)/g)].map(m => m[1]);
+  assert.equal(bad.length, 0,
+    `shader 里出现了 ES 1.00 不支持的运算符：${[...new Set(bad)].join(' ')}。`
+    + '它们只会让 shader 编译失败、页面显示「打不开修图功能」');
+});
+
+t('⭐ 分节开关：SEC 宏是纯整数除法，不是 mod / rem / 位运算', () => {
+  const m = FRAG.match(/#define\s+SEC\s*\(([^)]*)\)\s*(.+)/);
+  assert.ok(m, 'shader 里没有 #define SEC 宏 —— 读位没有统一入口');
+  const body = m[2];
+  assert.ok(!/mod\s*\(|rem\s*\(|&|%/.test(body),
+    `SEC 宏用了 ES 1.00 不支持的运算：${body}`);
+  assert.ok(body.includes('/') && (body.includes('>=') || body.includes('==')),
+    `SEC 宏应该用两个整数除法相减再比较：${body}`);
+});
+
+t('色板 / 分级的紧凑网格确实接到了容器上', () => {
+  // ui: 'grid' 的项不走 buildSliders，改走 buildGrid。容器或网格构建
+  // 函数缺一个，那批参数就静默消失（预设能用、面板里看不到）。
+  // ⚠️ 这些项是靠 ADJUSTMENTS.push() 追加的，上面那个正则只抠得到数组
+  // 字面量，所以这里从 BAND_DEFS / WHEEL_DEFS 反推总数。
+  const grab = name => {
+    const b = SRC.match(new RegExp('const ' + name + ' = (\\[[\\s\\S]*?\\n  \\]);'));
+    assert.ok(b, '没找到 ' + name + ' 定义');
+    return new Function('return ' + b[1])();
+  };
+  const bands = grab('BAND_DEFS');
+  const wheels = grab('WHEEL_DEFS');
+  assert.equal(bands.length, 8, '色板应该是 8 个色带');
+  assert.equal(wheels.length, 4, '分级应该是 4 个色轮');
+  const expect = bands.length * 3 + wheels.length * 3 + 2;   // 混合 + 平衡
+  assert.ok(SRC.includes("ADJUSTMENTS.push({ key: 'uBnd'"), '找不到色板的 push 循环');
+  assert.ok(SRC.includes("ADJUSTMENTS.push({ key: 'uGr'"), '找不到分级的 push 循环');
+  assert.ok(/ui:\s*'grid'/.test(SRC), '网格项应该标记 ui: \'grid\'（否则 boot 护栏抓不到它）');
+  assert.ok(/function buildGrid\(\)/.test(SRC), '找不到 buildGrid()');
+  // buildGrid() 用 $('id') 拿容器，容器本身在 studio.html 里
+  const HTML = fs.readFileSync(path.join(HERE, '..', 'studio.html'), 'utf8');
+  for (const id of ['stSecBar', 'stMixerGrid', 'stGradingGrid']) {
+    assert.ok(SRC.includes("$('" + id + "')"),
+      `studio.js 里没有引用容器 ${id}（buildGrid / buildSecBar 会静默跳过）`);
+    assert.ok(HTML.includes('id="' + id + '"'),
+      `studio.html 里没有容器 ${id}`);
+  }
+  console.log(`      （色板 ${bands.length}×3 + 分级 ${wheels.length}×3 + 2 = ${expect} 个网格参数）`);
+});
+
 /* ---------------- 4. 顺序约束（最容易错的地方） ---------------- */
 
 t('⭐ 暗角和颗粒在蒙版混合**之后**', () => {
@@ -201,10 +287,11 @@ t('锐化在 grade() 之前', () => {
   // （这个漏洞是负向测试发现的：把 sharpen 调用改成 src，测试全绿。）
   //
   // ⚠️ sharpen 现在多带一个 uv 参数（几何变换之后要按变换后的坐标
-  //    取邻居），所以匹配的是 sharpen(src, u) 而不是 sharpen(src)。
-  assert.ok(/sharpen\(src, u\)/.test(main),
-    'main() 里没有调用 sharpen(src, u) —— 锐化根本没接上');
-  assert.ok(main.indexOf('sharpen(src, u)') < main.indexOf('grade(sharp)'),
+  //    取邻居），所以匹配的是 sharpen(den, u) 而不是 sharpen(src)。
+  // （den 是去噪后的结果，去噪在锐化之前。）
+  assert.ok(/sharpen\(den, u\)/.test(main),
+    'main() 里没有调用 sharpen(den, u) —— 锐化根本没接上');
+  assert.ok(main.indexOf('sharpen(den, u)') < main.indexOf('grade(sharp)'),
     '锐化应该在调色之前');
 });
 
@@ -217,7 +304,7 @@ t('⭐ 锐化不在 grade() 里（否则会被调用两次）', () => {
   // 它是单点采样（不是邻域）、固定 1 次、和设备上的纹理读取一样便宜，
   // 和锐化的 3x3 邻域完全是两码事。
   const gradeBody = FRAG.slice(FRAG.indexOf('vec3 grade('),
-                                FRAG.indexOf('vec3 sharpen('));
+                                FRAG.indexOf('vec3 denoise('));
   const samples = [...gradeBody.matchAll(/texture2D\(/g)].length;
   assert.ok(samples <= 1,
     `grade() 里有 ${samples} 次纹理采样 —— 最多只允许 1 次（曲线 LUT 查表）。`
@@ -277,7 +364,7 @@ t('比较原图时直接返回，不经过任何调整', () => {
   const origIdx = main.indexOf('uOriginal > 0.5');
   assert.ok(origIdx > -1, '没找到原图分支');
   const branch = main.slice(origIdx, main.indexOf('return;', origIdx));
-  assert.ok(!/sharpen|grade|vignette|grain/.test(branch),
+  assert.ok(!/sharpen|denoise|grade|vignette|grain/.test(branch),
     '原图分支里混进了调整调用 —— 按住对比键看到的不是原图');
 });
 

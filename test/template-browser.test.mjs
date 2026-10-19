@@ -107,24 +107,31 @@ try {
 
   /* ---------------- 模板 UI（需要桌面桥，Chrome 里没有） ---------------- */
 
-  await t('⚠️ 模板按钮需要 Electron 的桌面桥（Chrome 里测不了）', SETUP + `
+  await t('⚠️ 模板按钮需要桌面桥；美颜滑杆浏览器版也能用', SETUP + `
     /* 这里**故意**不做"模板数量"之类的断言：
        模板是主进程经 IPC 下发的，而这个测试跑在纯 Chrome 里，
        没有 window.AlbumStudio 桥 —— 所以 templates 一定是空的。
        模板下发的验证在 album-studio/test/electron-schema.test.js，
-       那边用真的 Electron 跑。 */
+       那边用真的 Electron 跑。
+       ⚠️ 但美颜参数**不再**依赖桌面桥（190c924 起浏览器走内置 schema +
+       后端代理），面板里应该是能拖的滑杆，不是"请用桌面版"的空提示。 */
     return {
       hasBridge: !!(window.AlbumStudio && window.AlbumStudio.megviiSchema),
       tplCount: window.Studio.templates.length,
-      beautyPanelText: (document.getElementById('stBeautyBody') || {}).textContent || ''
+      beautyPanelText: (document.getElementById('stBeautyBody') || {}).textContent || '',
+      beautySliders: document.querySelectorAll('#stBeautyBody input[data-bsl]').length,
+      hasGo: !!document.getElementById('stBeautyGo')
     };
   `, r => {
     assert.equal(r.hasBridge, false,
       'Chrome 里不该有桌面桥；如果有了说明测试环境变了，这条要重写');
     assert.equal(r.tplCount, 0, 'Chrome 里拿不到模板表是预期的');
-    // 面板要给出可操作的提示，而不是空白
-    assert.ok(/桌面版/.test(r.beautyPanelText),
-      `美颜面板应该提示需要桌面版，实际「${r.beautyPanelText.trim().slice(0, 40)}」`);
+    // 浏览器版的美颜面板必须可操作：内置 schema 的 10 个参数 + 出图按钮
+    assert.ok(/磨皮/.test(r.beautyPanelText),
+      `浏览器版美颜面板应该有参数滑杆，实际「${r.beautyPanelText.trim().slice(0, 40)}」`);
+    assert.ok(r.beautySliders >= 8,
+      `美颜面板的参数滑杆应该 ≥ 8 个（内置 schema 是 10 个），实际 ${r.beautySliders}`);
+    assert.equal(r.hasGo, true, '美颜面板缺「看一下效果」按钮');
   });
 
   /* ---------------- 左右分屏对比 ---------------- */

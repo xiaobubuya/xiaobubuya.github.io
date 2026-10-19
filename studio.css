@@ -713,3 +713,85 @@
   .st-sep{margin:0 3px}
   .st-title{max-width:none}
 }
+
+/* ================================================================
+   分节开关 + 色板/分级网格
+   ================================================================ */
+
+/* 分节开关栏：一行眼睛图标，点击切换各节启停 */
+.st-sec-bar{
+  display:flex; flex-wrap:wrap; gap:4px;
+  padding:6px 0 4px; border-bottom:1px solid var(--st-line);
+  margin-bottom:8px;
+}
+.st-sec-item{
+  display:flex; align-items:center; gap:3px;
+  font-size:11px; line-height:1; cursor:pointer;
+  padding:3px 6px; border-radius:4px;
+  color:var(--st-txt-dim); user-select:none;
+  border:1px solid transparent;
+}
+.st-sec-item:hover{ background:rgba(255,255,255,.06); }
+.st-sec-item.on{ color:var(--st-txt); border-color:var(--st-line); }
+.st-sec-eye{ font-size:13px; opacity:.5; }
+.st-sec-item.on .st-sec-eye{ opacity:1; }
+
+/* 色板/分级网格容器 */
+.st-grid{ margin-bottom:10px; }
+.st-grid-title{
+  font-size:11px; font-weight:600; color:var(--st-txt-dim);
+  padding:4px 0 6px; display:flex; align-items:center; gap:6px;
+}
+.st-grid-table{ width:100%; border-collapse:collapse; }
+.st-grid-table th, .st-grid-table td{
+  padding:1px 0; text-align:center; font-size:10px;
+  color:var(--st-txt-dim); line-height:1.2;
+}
+.st-grid-table th{ font-weight:500; }
+.st-grid-table td{ padding:2px 1px; }
+
+/* 网格里的迷你滑杆 */
+.st-mini{
+  -webkit-appearance:none; appearance:none;
+  width:100%; height:14px; margin:0;
+  background:transparent; cursor:pointer;
+}
+.st-mini::-webkit-slider-runnable-track{
+  height:3px; border-radius:2px;
+  background:linear-gradient(to right,
+    var(--st-line) 0%, var(--st-line) var(--mid,50%),
+    rgba(255,255,255,.15) var(--mid,50%), rgba(255,255,255,.15) 100%);
+}
+.st-mini::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width:10px; height:10px; border-radius:50%;
+  background:var(--st-accent); margin-top:-3.5px;
+  border:none;
+}
+.st-mini::-moz-range-track{
+  height:3px; border-radius:2px;
+  background:linear-gradient(to right,
+    var(--st-line) 0%, var(--st-line) var(--mid,50%),
+    rgba(255,255,255,.15) var(--mid,50%), rgba(255,255,255,.15) 100%);
+}
+.st-mini::-moz-range-thumb{
+  width:10px; height:10px; border-radius:50%;
+  background:var(--st-accent); border:none;
+}
+.st-mini-val{
+  font-size:9px; color:var(--st-txt-dim);
+  text-align:center; min-width:20px;
+  font-variant-numeric:tabular-nums;
+}
+.st-mini-val.changed{ color:var(--st-accent); }
+
+/* 色板色带标签（红橙黄绿...） */
+.st-band-label{
+  font-size:9px; font-weight:600;
+  width:18px; display:inline-block;
+  text-align:center;
+}
+.st-wheel-label{
+  font-size:9px; font-weight:600;
+  text-align:center;
+}

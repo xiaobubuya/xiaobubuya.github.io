@@ -169,6 +169,16 @@
           <!-- 颜色：色温/饱和度 + HSL（色相/自然饱和度/明度） -->
           <div class="st-sliders" id="stSlidersColor"></div>
 
+          <!-- 分节开关（眼睛图标）：关掉某节后 shader 不执行那节，
+               用来单独看某一节的效果。对齐 LightCraft 的非破坏性理念。 -->
+          <div class="st-sec-bar" id="stSecBar"></div>
+
+          <!-- 色板（HSL 色板）：8 色带 × 色相/饱和/明度，紧凑网格 -->
+          <div class="st-grid" id="stMixerGrid"></div>
+
+          <!-- 色彩分级：4 色轮 × 色相/强度/明度 + 混合/平衡 -->
+          <div class="st-grid" id="stGradingGrid"></div>
+
           <!-- 选区 / 蒙版：共用工具。常规调整时 = 「调整只作用在
                涂过的区域」；抹除时 = 「要抹掉什么」。
                「抹掉选区」也留在这 —— 它就是对着选区做的操作。 -->

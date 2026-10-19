@@ -83,7 +83,7 @@ function restoreFromHead(file) {
  * 第二版改成"只看变异表的 to 片段在不在"，**还是误判**：
  * 因为有一条变异的 to 本身就是基线代码 ——
  *     name: '锐化整个没接上（main 里直接用 src）'
- *     from: 'vec3 sharp = sharpen(src, u);'
+ *     from: 'vec3 sharp = sharpen(den, u);'
  *     to:   'vec3 sharp = src;'
  * `to` 是"删掉锐化调用"的样子，但基线里本来就别处有 `vec3 sharp = src;`，
  * 于是 includes(to) 命中，护栏第二次吃掉了改动。
@@ -95,6 +95,12 @@ function restoreFromHead(file) {
 function looksMutated(src) {
   const hits = [];
   for (const mu of MUTATIONS) {
+    if (mu.fn) {
+      // 函数式变异用 anchor（干净版独有）+ leftover（变异版独有）判断
+      if (mu.from && mu.leftover
+          && !src.includes(mu.from) && src.includes(mu.leftover)) hits.push(mu.name);
+      continue;
+    }
     // 没有 from 的变异（纯删除/结构性改动）用不了这套判据，跳过
     if (!mu.to || !mu.from) continue;
     if (!src.includes(mu.from) && src.includes(mu.to)) hits.push(mu.name);
@@ -125,8 +131,8 @@ const MUTATIONS = [
   },
   {
     name: '移除 uGrain 的 uniform 声明（颗粒滑杆静默失效）',
-    from: 'uniform float uSharpness, uVignette, uGrain;',
-    to: 'uniform float uSharpness, uVignette;'
+    from: 'uniform float uVignette, uVigMid, uGrain, uGrainSize;',
+    to: 'uniform float uVignette, uVigMid, uGrainSize;'
   },
   {
     name: '颗粒不按亮度调制（暗部浮一层灰雾）',
@@ -140,7 +146,7 @@ const MUTATIONS = [
   },
   {
     name: '锐化整个没接上（main 里直接用 src）',
-    from: 'vec3 sharp = sharpen(src, u);',
+    from: 'vec3 sharp = sharpen(den, u);',
     to: 'vec3 sharp = src;'
   },
 
@@ -187,7 +193,7 @@ const MUTATIONS = [
     name: 'HSL 的 OKLab 输入忘了转线性（把 gamma 编码当线性用）',
     // 感知色彩空间的前提是**线性光**输入。喂 sRGB 进去会让
     // 暗部被过度处理（因为 gamma 编码在暗部压缩得厉害）
-    from: '        vec3 lin = toLinear(c);\n',
+    from: '      vec3 lin = toLinear(c);\n',
     to: '',
     tests: ['adjust-browser.test.mjs']
   },
@@ -196,8 +202,8 @@ const MUTATIONS = [
     // 第一版就是这样：正负共用一个 room 系数，实测纯红 -1 之后
     // OKLab chroma 还剩 53%，根本不是"去色"。用 OKLab chroma
     // 当指标才测得出来（RGB 通道差会被色相影响，定不准阈值）。
-    from: `          A *= 1.0 + uHslSat;
-          B *= 1.0 + uHslSat;`,
+    from: `            A *= 1.0 + uHslSat;
+            B *= 1.0 + uHslSat;`,
     to: `          float chroma2 = sqrt(A * A + B * B);
           float room2 = 1.0 - clamp(chroma2 / 0.30, 0.0, 0.85);
           A *= 1.0 + uHslSat * room2;
@@ -206,8 +212,8 @@ const MUTATIONS = [
   },
   {
     name: 'HSL 明度没做正负分支（只能提亮不能压暗）',
-    from: `        if (uHslLight > 0.0)      L = mix(L, 1.0, uHslLight);
-        else if (uHslLight < 0.0) L = mix(L, 0.0, -uHslLight);`,
+    from: `          if (uHslLight > 0.0)      L = mix(L, 1.0, uHslLight);
+          else if (uHslLight < 0.0) L = mix(L, 0.0, -uHslLight);`,
     to: '        if (uHslLight > 0.0) L = mix(L, 1.0, uHslLight);',
     tests: ['adjust-browser.test.mjs']
   },
@@ -219,6 +225,79 @@ const MUTATIONS = [
     from: 'float delta = lut - y;',
     to: 'float delta = (y > 0.0001) ? (lut - y) * 0.0 : 0.0;',
     tests: ['adjust-browser.test.mjs']
+  },
+
+  /* ---------------- 分节开关（uSecMask） ----------------
+     这三条专治「眼睛按钮是装饰品」：链路断了不报错，只是点了没反应。 */
+  {
+    name: '删掉 uniform int uSecMask 声明（分节开关整条链断）',
+    from: 'uniform int uSecMask;',
+    to: '// uniform int uSecMask;',
+    tests: ['adjustments.test.mjs']
+  },
+  {
+    name: 'int 误用 uniform1f（WebGL 静默忽略，眼睛按钮点了没反应）',
+    from: 'gl.uniform1i(uniforms.uSecMask, secMask());',
+    to: 'gl.uniform1f(uniforms.uSecMask, secMask());',
+    tests: ['adjustments.test.mjs']
+  },
+  {
+    name: '效果这一节的 bit 检查被删（眼睛关不掉，bit 64 是唯一的门）',
+    from: '      if (SEC(uSecMask, 64)) {',
+    to: '      {',
+    tests: ['adjustments.test.mjs']
+  },
+  {
+    name: '分节读位改回位运算 &（GLSL ES 1.00 不支持，shader 直接编译失败）',
+    from: '#define SEC(u, n) ((((u) / (n)) - (((u) / ((n) * 2)) * 2)) >= 1)',
+    to: '#define SEC(u, n) (((u) & (n)) != 0)',
+    tests: ['adjustments.test.mjs']
+  },
+
+  /* ---------------- 运行时 ReferenceError（语法合法，静态检查全绿） ---------------- */
+  {
+    name: '分级面板的 wrap 塞回 if 块里（块作用域，boot() 直接崩）',
+    // 这是实测踩到的：`const wrap` 写在 `if (a) { ... }` 里，块外用
+    // `a ? wrap : ...` 一求值就 ReferenceError。整个 boot() 崩掉，
+    // 页面显示「打不开修图功能」。语法完全合法，node --check 和所有
+    // 静态测试都抓不到 —— 只有真的把页面加载起来才会暴露，
+    // 所以抓它的是 shader-compile。
+    tests: ['shader-compile.test.mjs'],
+    from: `        const wrap = a ? buildMiniSlider(a) : document.createElement('span');
+        if (a) {`,
+    to: `        if (a) {
+          const wrap = buildMiniSlider(a);`
+  },
+
+  /* ---------------- 管线顺序（结构性改动，用 fn 表达） ---------------- */
+  {
+    name: '曝光挪回管线末尾（exposure-last，跟 LR 语义相反）',
+    // 曝光是 ① 还是 ⑤ 决定了「高光」指的是曝光前还是曝光后的亮区。
+    // LR 是 exposure-first，也是用户最熟悉的「先压暗再靠高光/阴影救回」的用法。
+    // 抓它的是 adjust-browser 的像素测试（不是静态检查 —— 静态看不出管线顺序）。
+    // 这个变异是「搬代码」，单次字符串 replace 表达不了，所以用 fn。
+    tests: ['adjust-browser.test.mjs'],
+    from: `      /* ===== ① 曝光（线性空间，**最前**）===== */`,
+    leftover: '// 变异：曝光挪回末尾（exposure-last）',
+    fn: src => {
+      const block = `      /* ===== ① 曝光（线性空间，**最前**）===== */
+      if (SEC(uSecMask, 1) && uExposure != 0.0) {
+        lin *= pow(2.0, uExposure);
+      }
+
+`;
+      if (!src.includes(block)) throw new Error('找不到 grade() 开头的曝光块');
+      let out = src.replace(block, '', 1);
+      const tail = `      return c2;`;
+      if (out.indexOf(tail, out.indexOf('⑤ 对比度')) < 0) throw new Error('找不到 grade() 末尾');
+      out = out.replace(tail, `      // 变异：曝光挪回末尾（exposure-last）
+      if (SEC(uSecMask, 1) && uExposure != 0.0) {
+        c2 = toSrgb(toLinear(c2) * pow(2.0, uExposure));
+      }
+
+      return c2;`, 1);
+      return out;
+    }
   }
 ];
 
@@ -280,6 +359,17 @@ let lastRaw = null;
 
 for (const mu of MUTATIONS) {
   t(mu.name, () => {
+    if (mu.fn) {
+      /* 函数式变异：`from`/`to` 只做锚点检查，真正的改动交给 mu.fn。
+         适用于「搬一段代码到别处」这种单次字符串 replace 表达不了的变异。
+         `leftover` 是变异版独有的片段，供启动自检认残骸（见 looksMutated）。 */
+      const anchor = mu.from;
+      if (anchor && !original.includes(anchor)) {
+        throw new Error(`变异锚点找不到了（代码改过？）：${anchor}`);
+      }
+      fs.writeFileSync(FILE, mu.fn(original), 'utf8');
+      return runAndCheck(mu);
+    }
     if (!original.includes(mu.from)) {
       /* ⚠️ 这个错误有两种完全不同的原因，别只往"代码改过"上想：
          ① 代码真的改了（变异表要跟着更新）
@@ -303,6 +393,12 @@ for (const mu of MUTATIONS) {
       throw new Error(`变异目标片段找不到了（代码改过？）：${mu.from}${hint}`);
     }
     fs.writeFileSync(FILE, original.replace(mu.from, mu.to), 'utf8');
+    return runAndCheck(mu);
+  });
+}
+
+/** 变异已写盘，跑对应的测试并断言「测试变红」 */
+function runAndCheck(mu) {
     let n, failedRaw = null;
     try {
       // 跑这个变异**对应的**测试文件（默认只有静态那个）
@@ -329,7 +425,6 @@ for (const mu of MUTATIONS) {
       `改坏之后 ${(mu.tests || ['adjustments.test.mjs']).join(' / ')} 居然还是全绿 —— `
       + '这条断言是装饰品，抓不到问题'
       + (failedRaw ? `\n     被测测试输出尾部：${JSON.stringify(failedRaw.tail)}` : ''));
-  });
 }
 
 /* ---------------- 还原检查（顺带防住上面那个 PowerShell 坑） ---------------- */

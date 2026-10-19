@@ -141,7 +141,7 @@ try {
 
   /* ---------------- 前置：页面可用 ---------------- */
 
-  await t('页面加载，shader 编译通过（16 个调整项都在）', SETUP + `    return {
+  await t('页面加载，shader 编译通过（64 个调整项都在）', SETUP + `    return {
       hasStudio: !!window.Studio,
       n: (window.Studio.ADJUSTMENTS || []).length,
       keys: (window.Studio.ADJUSTMENTS || []).map(a => a.key),
@@ -155,17 +155,20 @@ try {
   `, r => {
     assert.equal(r.hasStudio, true, 'window.Studio 不存在');
     assert.equal(r.shaderFailed, false, 'shader 编译失败（页面显示"打不开修图功能"）');
-    assert.equal(r.n, 16, `调整项应该是 16 个，实际 ${r.n}`);
+    // 64 = 26 条普通调整项 + 色板 8x3 + 分级 4x3 + 混合/平衡 2
+    assert.equal(r.n, 64, `调整项应该是 64 个，实际 ${r.n}`);
     assert.ok(r.keys.includes('uSharpness'), '缺 uSharpness');
     assert.ok(r.keys.includes('uVignette'), '缺 uVignette');
     assert.ok(r.keys.includes('uGrain'), '缺 uGrain');
     assert.ok(r.keys.includes('uCurveShadow'), '缺 uCurveShadow');
     assert.ok(r.keys.includes('uCurveFade'), '缺 uCurveFade');
     assert.ok(r.keys.includes('uHue'), '缺 uHue');
-    assert.equal(r.sliders, 16, `滑杆数应该和调整项一致，实际 ${r.sliders}`);
-    // 拆页不许丢人：影调页 11 个（基础4+曲线4+质感3），颜色页 5 个（色彩2+HSL3）
-    assert.equal(r.toneSliders, 11, `影调页应该有 11 个滑杆，实际 ${r.toneSliders}`);
-    assert.equal(r.colorSliders, 5, `颜色页应该有 5 个滑杆，实际 ${r.colorSliders}`);
+    // ⚠️ 不等于调整项总数：色板/分级走的是紧凑网格（.st-grid），
+    // 不在 .st-sliders 里，不产生普通滑杆节点
+    assert.equal(r.sliders, 26, `普通滑杆应该是 26 个，实际 ${r.sliders}`);
+    // 拆页不许丢人：影调页 20 个（基础7+曲线5+画质4+效果4），颜色页 6 个（色彩3+HSL3）
+    assert.equal(r.toneSliders, 20, `影调页应该有 20 个滑杆，实际 ${r.toneSliders}`);
+    assert.equal(r.colorSliders, 6, `颜色页应该有 6 个滑杆，实际 ${r.colorSliders}`);
   });
 
   /* 前置断言一过就确认页面健康。
@@ -181,6 +184,9 @@ try {
         (document.getElementById('stDrop') || {}).textContent || ''),
       n: (window.Studio && window.Studio.ADJUSTMENTS || []).length
     }))()`, { timeout: 15000 }).catch(e => ({ err: e.message }));
+    // 16 是**宽松的地板**，只用来判断「页面根本没起来」。精确数字（64）
+    // 由上面那条用例断言 —— 这里卡太死的话，删一个调整项就会让整轮
+    // 在 preflight 阶段整体跳过，报错位置完全对不上真实原因。
     if (health.err || !health.hasStudio || health.shaderFailed || health.n < 16) {
       console.log(`  ⛔ 页面不可用，跳过后续用例：${JSON.stringify(health)}`);
       console.log(`\n通过 ${pass} 项，失败 ${fail + 1} 项\n`);
@@ -394,16 +400,19 @@ try {
   /* ---------------- 色调曲线（读像素验证） ---------------- */
 
   await t('⭐ 曲线·阴影 提亮暗部、不影响亮部', SETUP + `
-    await load(makeImage('flat'));
-    // 用曝光把整张图压暗，让它的亮度落在"暗部"
-    window.Studio.setValue('uExposure', -1.8);
-    const before = lum(px(0.5, 0.5));
+    await load(makeImage('edge'));   // 左半 #404040（64）/ 右半 #c0c0c0（192）
+    // ⚠️ 直接用真暗的图测，**不要**再用曝光压暗：曝光在管线**最后**做 gain，
+    // 曲线吃的是未曝光的原图 —— 靠曝光先压暗再测曲线，曲线看到的是中调，
+    // 测出来的根本不是「阴影」。
+    const before = { dark: lum(px(0.25, 0.5)), bright: lum(px(0.75, 0.5)) };
     window.Studio.setValue('uCurveShadow', 1.0);
-    const after = lum(px(0.5, 0.5));
+    const after = { dark: lum(px(0.25, 0.5)), bright: lum(px(0.75, 0.5)) };
     return { before, after };
   `, r => {
-    assert.ok(r.after > r.before + 10,
-      `曲线·阴影+1 应该提亮暗部：${r.before.toFixed(1)} -> ${r.after.toFixed(1)}`);
+    assert.ok(r.after.dark - r.before.dark > 10,
+      `曲线·阴影+1 应该提亮暗部：${r.before.dark.toFixed(1)} -> ${r.after.dark.toFixed(1)}`);
+    assert.ok(Math.abs(r.after.bright - r.before.bright) < 3,
+      `亮部不该被带动：${r.before.bright.toFixed(1)} -> ${r.after.bright.toFixed(1)}`);
   });
 
   await t('⭐ 褪色：黑位被抬起来（暗部不再纯黑）', SETUP + `
@@ -763,6 +772,260 @@ try {
     // 饱和度 -1 = 完全去色，RGB 三通道应该基本相等
     const spread = Math.max(r.sat.r, r.sat.g, r.sat.b) - Math.min(r.sat.r, r.sat.g, r.sat.b);
     assert.ok(spread < 6, `饱和度 -1 应该去色，实际通道差 ${spread}`);
+  });
+
+  await t('⭐ 曝光在高光之前（exposure-first，跟 LR 一致）：高光的落点随曝光移动', SETUP + `
+    await load(makeImage('flat'));   // 整张 #808080 中灰
+    // 线性空间（和 shader 里的 toLinear 同一个公式）。
+    // 断言必须用**线性**值算比值：sRGB 编码是非线性的，拿 0-255 直接算会错。
+    const toLin = v => { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const read = () => toLin(lum(px(0.5, 0.5)));
+    window.Studio.setValue('uHighlights', 1.0);
+    window.Studio.setValue('uExposure', 0);
+    const a = read();
+    window.Studio.setValue('uExposure', 1.5);
+    const b = read();
+    return { a, b, ratio: b / a, gain: Math.pow(2, 1.5),
+             over: (b / a) / Math.pow(2, 1.5) };
+  `, r => {
+    // 中灰的线性亮度约 0.214，正好在高光门限 smoothstep(0.30, 1.0) 的**下方**，
+    // 所以「曝光 0 + 高光 +1」几乎不动。
+    assert.ok(r.a > 0.18 && r.a < 0.26,
+      `中灰基线在 ${r.a.toFixed(3)}，偏离 0.214 —— 高光在中灰处不该生效`);
+    // 曝光 +1.5 把中灰的线性亮度抬到 0.605，**跨过**高光门限，高光才开始生效。
+    // 于是 b/a 明显大于纯 gain 2^1.5 = 2.828 —— 实测约 3.42（over ≈ 1.21）。
+    // exposure-last 的话高光先作用（还是中灰，权重 0），再曝光，
+    // b/a 会紧贴 2.828（over ≈ 0.99）—— 用 over > 1.10 把两种语义分开。
+    assert.ok(r.over > 1.10,
+      `曝光 +1.5 后线性亮度应该在纯 gain ${r.gain.toFixed(3)} 倍之上**再多一截**`
+      + `（曝光先抬高亮度、跨过高光门限，高光才开始生效 —— 这正是 LR 的语义），`
+      + `实测 ${r.ratio.toFixed(3)} 倍 = 纯 gain 的 ${r.over.toFixed(3)} 倍。`
+      + '接近 1.0 说明高光的落点不随曝光移动，那是 exposure-last 的语义');
+  });
+
+  // ---- 从 LightCraft 移植的新功能：像素级验证 ----
+
+  await t('⭐ vibrance 肤色保护：拉自然饱和度时肤色只吃 4 成力度，绿色吃满',
+    SETUP + `
+    const c = document.createElement('canvas');
+    c.width = 400; c.height = 200;
+    const x = c.getContext('2d');
+    // ⚠️ 必须用**同等 chroma** 的色对：low² 因子对低 chroma 色给更多 boost，
+    // 如果肤色 chroma 比对照色低，low² 会把 skin 保护的效果完全盖掉。
+    // #E09060 chroma≈0.116，#50A070 chroma≈0.109，差 <10%。
+    x.fillStyle = '#E09060'; x.fillRect(0, 0, 200, 200);
+    x.fillStyle = '#50A070'; x.fillRect(200, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await window.Studio.openFile(new File([blob], 'skin.png', { type: 'image/png' }));
+    window.Studio.resetAll();
+    function oklabChroma([R, G, B]) {
+      const f = v => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+      const r0 = f(R / 255), g0 = f(G / 255), b0 = f(B / 255);
+      const L = Math.cbrt(0.4122214708*r0 + 0.5363325363*g0 + 0.0514459929*b0);
+      const M = Math.cbrt(0.2119034982*r0 + 0.6806995451*g0 + 0.1073969566*b0);
+      const S = Math.cbrt(0.0883024619*r0 + 0.2817188376*g0 + 0.6299787005*b0);
+      const a = 1.9779984951*L - 2.4285922050*M + 0.4505937099*S;
+      const bb = 0.0259040371*L + 0.7827717662*M - 0.8086757660*S;
+      return Math.hypot(a, bb);
+    }
+    const cSkin0 = oklabChroma(px(0.25, 0.5));
+    const cBlue0 = oklabChroma(px(0.75, 0.5));
+    window.Studio.setValue('uHslSat', 1.0);
+    const cSkin1 = oklabChroma(px(0.25, 0.5));
+    const cBlue1 = oklabChroma(px(0.75, 0.5));
+    return { skinRatio: cSkin1 / Math.max(cSkin0, 1e-6), blueRatio: cBlue1 / Math.max(cBlue0, 1e-6) };
+  `, r => {
+    assert.ok(r.skinRatio < r.blueRatio,
+      `肤色 chroma 增幅（${r.skinRatio.toFixed(3)}）应该小于蓝色（${r.blueRatio.toFixed(3)}）`
+      + ' —— 肤色保护没生效，拉 vibrance 会让脸发橙');
+    assert.ok(r.skinRatio > 1.05,
+      `肤色也应该被提升（只是少一些）：${r.skinRatio.toFixed(3)}`);
+  });
+
+  await t('⭐ vibrance 力度曲线：饱和点 0.22 以下越淡加得越多，以上完全不动',
+    SETUP + `
+    const c = document.createElement('canvas');
+    c.width = 600; c.height = 200;
+    const x = c.getContext('2d');
+    // 三个绿色（避开肤色保护区间），OkLab chroma 约 0.038 / 0.121 / 0.295。
+    // 第三个已经越过饱和点 0.22 —— 按 low² 曲线应该完全不加。
+    x.fillStyle = '#788C78'; x.fillRect(0, 0, 200, 200);
+    x.fillStyle = '#3C8C50'; x.fillRect(200, 0, 200, 200);
+    x.fillStyle = '#00FF00'; x.fillRect(400, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await window.Studio.openFile(new File([blob], 'vib.png', { type: 'image/png' }));
+    window.Studio.resetAll();
+    function chroma([R, G, B]) {
+      const f = v => { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      const r0 = f(R), g0 = f(G), b0 = f(B);
+      const L = Math.cbrt(0.4122214708*r0 + 0.5363325363*g0 + 0.0514459929*b0);
+      const M = Math.cbrt(0.2119034982*r0 + 0.6806995451*g0 + 0.1073969566*b0);
+      const S = Math.cbrt(0.0883024619*r0 + 0.2817188376*g0 + 0.6299787005*b0);
+      return Math.hypot(1.9779984951*L - 2.4285922050*M + 0.4505937099*S,
+                        0.0259040371*L + 0.7827717662*M - 0.8086757660*S);
+    }
+    const at = u => chroma(px(u, 0.5));
+    const c0 = [at(1 / 6), at(0.5), at(5 / 6)];
+    window.Studio.setValue('uHslSat', 1.0);
+    const c1 = [at(1 / 6), at(0.5), at(5 / 6)];
+    return { ratios: c1.map((v, i) => v / Math.max(c0[i], 1e-6)) };
+  `, r => {
+    const [low, mid, high] = r.ratios;
+    assert.ok(low > 1.5,
+      `低饱和绿的 chroma 增幅只有 ${low.toFixed(2)} —— low² 加权应该给它最多（预期 ~1.8）`);
+    assert.ok(low > mid * 1.15,
+      `低饱和（${low.toFixed(2)}）应该明显大于中饱和（${mid.toFixed(2)}）—— low² 曲线没生效`);
+    assert.ok(mid < 1.4,
+      `中饱和绿的增幅 ${mid.toFixed(2)} 太大，饱和点 0.22 的收敛没生效（预期 ~1.24）`);
+    assert.ok(Math.abs(high - 1) < 0.02,
+      `chroma 已过饱和点（0.295 > 0.22）的绿不该再加艳：${high.toFixed(3)}（预期 1.0）`);
+  });
+
+  await t('⭐ 白点中灰不动：uWhites 只动高光，中灰基本不变',
+    SETUP + `
+    await load(makeImage('flat'));
+    const toLin = v => { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const read = () => toLin(lum(px(0.5, 0.5)));
+    const base = read();
+    window.Studio.setValue('uWhites', 1.0);
+    const up = read();
+    window.Studio.setValue('uWhites', -1.0);
+    const down = read();
+    return { base, up, down, upDelta: Math.abs(up - base) / base, downDelta: Math.abs(down - base) / base };
+  `, r => {
+    assert.ok(r.upDelta < 0.03,
+      `uWhites +1 后中灰变化 ${(r.upDelta*100).toFixed(1)}%（${r.base.toFixed(3)} -> ${r.up.toFixed(3)}），`
+      + '应该在 3% 以内。超过说明白点在动中调（纯乘法增益的老写法）');
+    assert.ok(r.downDelta < 0.03,
+      `uWhites -1 后中灰变化 ${(r.downDelta*100).toFixed(1)}%（${r.base.toFixed(3)} -> ${r.down.toFixed(3)}），`
+      + '应该在 3% 以内');
+  });
+
+  await t('⭐ 白点方向：uWhites +1 提亮高光、-1 压暗高光',
+    SETUP + `
+    const c = document.createElement('canvas');
+    c.width = 200; c.height = 200;
+    const x = c.getContext('2d');
+    x.fillStyle = '#E0E0E0'; x.fillRect(0, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await window.Studio.openFile(new File([blob], 'bright.png', { type: 'image/png' }));
+    window.Studio.resetAll();
+    const toLin = v => { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const read = () => toLin(lum(px(0.5, 0.5)));
+    const base = read();
+    window.Studio.setValue('uWhites', 1.0);
+    const up = read();
+    window.Studio.setValue('uWhites', -1.0);
+    const down = read();
+    return { base, up, down };
+  `, r => {
+    assert.ok(r.up > r.base + 0.05,
+      `uWhites +1 应该提亮高光：${r.base.toFixed(3)} -> ${r.up.toFixed(3)}`);
+    assert.ok(r.down < r.base - 0.05,
+      `uWhites -1 应该压暗高光：${r.base.toFixed(3)} -> ${r.down.toFixed(3)}`);
+  });
+
+  await t('⭐ 黑点方向：uBlacks -1 压暗暗部、+1 提亮暗部',
+    SETUP + `
+    const c = document.createElement('canvas');
+    c.width = 200; c.height = 200;
+    const x = c.getContext('2d');
+    x.fillStyle = '#202020'; x.fillRect(0, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await window.Studio.openFile(new File([blob], 'dark.png', { type: 'image/png' }));
+    window.Studio.resetAll();
+    const toLin = v => { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const read = () => toLin(lum(px(0.5, 0.5)));
+    const base = read();
+    window.Studio.setValue('uBlacks', -1.0);
+    const down = read();
+    window.Studio.setValue('uBlacks', 1.0);
+    const up = read();
+    return { base, down, up };
+  `, r => {
+    assert.ok(r.down < r.base * 0.7,
+      `uBlacks -1 应该压暗暗部：${r.base.toFixed(4)} -> ${r.down.toFixed(4)}`);
+    assert.ok(r.up > r.base + 0.005,
+      `uBlacks +1 应该提亮暗部（抬黑位）：${r.base.toFixed(4)} -> ${r.up.toFixed(4)}`);
+  });
+
+  await t('⭐ 黑点 soft knee：压黑位时白场被归一化保住，纯黑仍是纯黑',
+    SETUP + `
+    const c = document.createElement('canvas');
+    c.width = 400; c.height = 200;
+    const x = c.getContext('2d');
+    x.fillStyle = '#000000'; x.fillRect(0, 0, 200, 200);
+    x.fillStyle = '#FFFFFF'; x.fillRect(200, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await window.Studio.openFile(new File([blob], 'knee.png', { type: 'image/png' }));
+    window.Studio.resetAll();
+    window.Studio.setValue('uBlacks', -1.0);
+    const toLin = v => { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return { black: toLin(lum(px(0.25, 0.5))), white: toLin(lum(px(0.75, 0.5))) };
+  `, r => {
+    assert.ok(r.black < 0.005,
+      `纯黑被抬到了 ${r.black.toFixed(4)} —— 软拐点的归一化应该保持 0→0`);
+    assert.ok(r.white > 0.98,
+      `白场被压到了 ${r.white.toFixed(4)}（旧版硬 max(lin-k,0) 会只剩 ~0.965）`
+      + ' —— soft knee 之后没重新归一化到 1');
+  });
+
+  await t('⭐ gamut mapping：拉爆色域后沿亮度轴收缩，不被 clamp 压暗',
+    SETUP + `
+    const c = document.createElement('canvas');
+    c.width = 200; c.height = 200;
+    const x = c.getContext('2d');
+    // 橙色 #FF8000：uSaturation=1 后线性 RGB 是 (1.75, -0.04, -0.17)。
+    // 直接 clamp 成 (1,0,0) 会把线性亮度从 0.334 压到 0.213（暗 36%）。
+    x.fillStyle = '#FF8000'; x.fillRect(0, 0, 200, 200);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    await window.Studio.openFile(new File([blob], 'orange.png', { type: 'image/png' }));
+    window.Studio.resetAll();
+
+    const enc = v => { v = v / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const linLum = ([R, G, B]) => 0.2126 * enc(R) + 0.7152 * enc(G) + 0.0722 * enc(B);
+
+    /* 期望值不是拍脑袋的常量：用和 shader 同一套 OKLab 矩阵把
+       「拉饱和 → 回线性 → gamut map」独立算一遍。
+       ⚠️ gamut mapping 保住的是**收缩前那一刻**的线性亮度（linOut），
+       不是原始颜色的亮度 —— 在 OKLab 里缩放 A/B 本身就会轻微改变
+       线性亮度（饱和运算的性质，Lightroom 也一样）。拿原始亮度当
+       基准会误判成「gamut mapping 没生效」。 */
+    const [r0, g0, b0] = [enc(255), enc(128), enc(0)];
+    const Lm = Math.cbrt(0.4122214708*r0 + 0.5363325363*g0 + 0.0514459929*b0);
+    const Mm = Math.cbrt(0.2119034982*r0 + 0.6806995451*g0 + 0.1073969566*b0);
+    const Sm = Math.cbrt(0.0883024619*r0 + 0.2817188376*g0 + 0.6299787005*b0);
+    const L_ = 0.2104542553*Lm + 0.7936177850*Mm - 0.0040720468*Sm;
+    // saturation = +1 → A、B 各 ×2
+    const A = (1.9779984951*Lm - 2.4285922050*Mm + 0.4505937099*Sm) * 2;
+    const B = (0.0259040371*Lm + 0.7827717662*Mm - 0.8086757660*Sm) * 2;
+    const l_ = L_ + 0.3963377774*A + 0.2158037573*B;
+    const m_ = L_ - 0.1055613458*A - 0.0638541728*B;
+    const s_ = L_ - 0.0894841775*A - 1.2914855480*B;
+    const linOut = [
+      4.0767416621*l_**3 - 3.3077115913*m_**3 + 0.2309699292*s_**3,
+      -1.2684380046*l_**3 + 2.6097574011*m_**3 - 0.3413193965*s_**3,
+      -0.0041960863*l_**3 - 0.7034186147*m_**3 + 1.7076147010*s_**3
+    ];
+    const yPre = 0.2126*linOut[0] + 0.7152*linOut[1] + 0.0722*linOut[2];
+    const yClamp = 0.2126*Math.min(1, Math.max(0, linOut[0]))
+                 + 0.7152*Math.min(1, Math.max(0, linOut[1]))
+                 + 0.0722*Math.min(1, Math.max(0, linOut[2]));
+
+    window.Studio.setValue('uSaturation', 1.0);
+    const after = linLum(px(0.5, 0.5));
+    return { after, yPre, yClamp };
+  `, r => {
+    const d = Math.abs(r.after - r.yPre) / r.yPre;
+    assert.ok(d < 0.02,
+      `gamut mapping 后线性亮度 ${r.after.toFixed(4)}，应该≈收缩前的 ${r.yPre.toFixed(4)}`
+      + `（差 ${(d*100).toFixed(1)}%）。偏得远说明颜色没走 gamut mapping 而是直接 clamp 了`
+      + `（clamp 会给 ${r.yClamp.toFixed(4)}，暗 ${(Math.abs(r.yClamp-r.yPre)/r.yPre*100).toFixed(0)}%）`);
+    // 夹具自检：这个色必须真的能区分「gamut map」和「clamp」，
+    // 否则上面那条断言在两条实现下都能过，等于没测。
+    assert.ok(Math.abs(r.yClamp - r.yPre) / r.yPre > 0.25,
+      `测试色选得不好：clamp 只差 ${(Math.abs(r.yClamp-r.yPre)/r.yPre*100).toFixed(0)}%，`
+      + '区分不出 gamut mapping 有没有生效');
   });
 
 } finally {

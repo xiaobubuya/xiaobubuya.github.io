@@ -124,7 +124,11 @@ t('新面板骨架的容器都在', () => {
 /** 从 ADJUSTMENTS 里抠每个调整项的分组名 */
 const adjBlock = /const ADJUSTMENTS\s*=\s*\[([\s\S]*?)\n  \];/.exec(js);
 const adjGroups = adjBlock ? [...adjBlock[1].matchAll(/group:\s*'([^']+)'/g)].map(m => m[1]) : [];
+// 色板/分级走网格 UI，不走 SLIDER_GROUPS
+const gridGroups = new Set(['色板', '分级']);
 const adjCount = adjBlock ? [...adjBlock[1].matchAll(/^\s*\{\s*key:/gm)].length : 0;
+// adjCount 只统计数组字面量里的条目（26 个），push() 里的色板/分级
+// 条目不计入。总数 = 26 + 8×3 + 4×3 + 2 = 64（见 ADJUSTMENTS 定义）。
 
 /** 从 SLIDER_GROUPS 里抠 { 容器id: [分组] } */
 const sgBlock = /const SLIDER_GROUPS\s*=\s*\{([\s\S]*?)\n  \};/.exec(js);
@@ -135,13 +139,15 @@ if (sgBlock) {
   }
 }
 
-t('ADJUSTMENTS 有 16 个调整项', () => {
-  assert.equal(adjCount, 16, `应该是 16 个，实际 ${adjCount}`);
+t('ADJUSTMENTS 数组字面量有 26 个调整项', () => {
+  assert.equal(adjCount, 26, `应该是 26 个，实际 ${adjCount}`);
 });
 
-t('SLIDER_GROUPS 覆盖了每一个分组（漏了就是滑杆消失）', () => {
+t('SLIDER_GROUPS 覆盖了每一个非网格分组（漏了就是滑杆消失）', () => {
   const all = new Set(Object.values(sliderGroups).flat());
-  const missing = [...new Set(adjGroups)].filter(g => !all.has(g));
+  // 只检查非 grid 的分组（色板/分级走网格 UI，不走 SLIDER_GROUPS）
+  const sliderGroupsSet = new Set(adjGroups.filter(g => !gridGroups.has(g)));
+  const missing = [...sliderGroupsSet].filter(g => !all.has(g));
   assert.deepEqual(missing, [],
     `这些分组的滑杆没落到任何容器里，用户看不到：${missing.join(', ')}`);
 });
@@ -166,8 +172,8 @@ t('buildSliders 接了分组过滤', () => {
 });
 
 t('启动时有护栏：漏生成的调整项直接报错', () => {
-  assert.ok(/a\._show\)/.test(js) && /没生成滑杆/.test(js),
-    'boot() 里没有检查「每个调整项都生成了滑杆」');
+  assert.ok(/a\._show/.test(js) && /a\._grid/.test(js) && /没生成 UI/.test(js),
+    'boot() 里没有检查「每个调整项都生成了 UI」');
 });
 
 /* ---------------- 6. 局部调整开关跟着选区显隐 ---------------- */
