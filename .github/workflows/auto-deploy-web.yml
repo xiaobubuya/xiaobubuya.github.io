@@ -111,7 +111,10 @@ jobs:
           rm -rf photocraft/
           mkdir -p photocraft/
 
-          unzip -q "/tmp/$ZIP" -d photocraft/
+          unzip -q "/tmp/$ZIP" -d "/tmp/photocraft-extract/"
+          # zip 内含子目录，移到根层
+          find "/tmp/photocraft-extract/" -mindepth 1 -maxdepth 1 -type d -exec mv {}/* photocraft/ \;
+          rm -rf "/tmp/photocraft-extract/"
           echo "Deployed PhotoCraft $TAG → photocraft/"
 
       # ─── 6. 下载 LightCraft web 包 ─────────────────────────
@@ -141,7 +144,9 @@ jobs:
 
           rm -rf lightcraft/
           mkdir -p lightcraft/
-          unzip -q "/tmp/$ZIP" -d lightcraft/
+          unzip -q "/tmp/$ZIP" -d "/tmp/lightcraft-extract/"
+          find "/tmp/lightcraft-extract/" -mindepth 1 -maxdepth 1 -type d -exec mv {}/* lightcraft/ \;
+          rm -rf "/tmp/lightcraft-extract/"
           echo "Deployed LightCraft $TAG → lightcraft/"
 
       # ─── 8. 更新版本追踪文件并提交 ─────────────────────────
