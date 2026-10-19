@@ -33,9 +33,11 @@
      没有重写规则，`/album` 会直接 404 —— 点一下就白屏。
      顺带：`currentKey()` 里两种形式都要认（见那段注释）。 */
   var ITEMS = [
-    { key: 'photos', href: '/',             label: '照片', icon: '▦', desc: '看照片和上传' },
-    { key: 'album',  href: '/album.html',   label: '相册', icon: '▤', desc: '把照片排成册' },
-    { key: 'studio', href: '/studio.html',  label: '修图', icon: '✦', desc: '精修单张照片' }
+    { key: 'photos',   href: '/',              label: '照片', icon: '▦', desc: '看照片和上传' },
+    { key: 'album',    href: '/album.html',    label: '相册', icon: '▤', desc: '把照片排成册' },
+    { key: 'photo',    href: '/photocraft/',   label: '调色', icon: '🎨', desc: 'PhotoCraft 专业调色' },
+    { key: 'light',    href: '/lightcraft/',   label: '修图', icon: '🖼', desc: 'LightCraft 照片管理' }
+    /* { key: 'studio', href: '/studio.html',   label: '修图', icon: '✦', desc: '精修单张照片' }  —— 隐藏：已用 PhotoCraft/LightCraft 替代 */
   ];
 
   var SETTINGS_LABEL = '设置';
@@ -61,7 +63,9 @@
     var file = p.split('/').pop() || '';
     if (p === '/' || file === 'index.html') return 'photos';
     if (/^\/?album/.test(p) || file === 'album.html') return 'album';
-    if (/^\/?studio/.test(p) || file === 'studio.html') return 'studio';
+    if (/^\/?studio/.test(p) || file === 'studio.html') return null; /* studio 已隐藏 */
+    if (/^\/?photocraft/.test(p)) return 'photo';
+    if (/^\/?lightcraft/.test(p)) return 'light';
     return null;                       // share 等页面：不高亮任何一个
   }
 
