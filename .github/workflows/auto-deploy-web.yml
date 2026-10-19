@@ -1,0 +1,172 @@
+name: Auto-deploy Web Apps
+
+# 每 6 小时检查一次上游 release，有新版本就自动下载部署。
+# 也可以手动触发：Actions → Auto-deploy Web Apps → Run workflow
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # ─── 1. 检出仓库 ───────────────────────────────────────
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ─── 2. 获取上游最新版本号 ──────────────────────────────
+      - name: Check upstream versions
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 读本地已部署的版本（不存在则视为空）
+          if [ -f .web-versions.json ]; then
+            echo "local=$(cat .web-versions.json)" >> "$GITHUB_OUTPUT"
+          else
+            echo "local=none" >> "$GITHUB_OUTPUT"
+          fi
+
+          # 查 PhotoCraft 最新 release
+          pc_api=$(curl -s "https://api.github.com/repos/storytold/photocraft/releases/latest")
+          pc_tag=$(echo "$pc_api" | jq -r '.tag_name // empty')
+          if [ -z "$pc_tag" ]; then
+            echo "::warning::PhotoCraft latest release not found"
+            pc_tag="none"
+          fi
+
+          # 查 LightCraft 最新 release
+          lc_api=$(curl -s "https://api.github.com/repos/storytold/lightcraft/releases/latest")
+          lc_tag=$(echo "$lc_api" | jq -r '.tag_name // empty')
+          if [ -z "$lc_tag" ]; then
+            echo "::warning::LightCraft latest release not found"
+            lc_tag="none"
+          fi
+
+          echo "pc_tag=$pc_tag" >> "$GITHUB_OUTPUT"
+          echo "lc_tag=$lc_tag" >> "$GITHUB_OUTPUT"
+          echo "Latest: PhotoCraft=$pc_tag  LightCraft=$lc_tag"
+
+      # ─── 3. 判断是否需要更新 ──────────────────────────────
+      - name: Decide if update needed
+        id: decide
+        shell: bash
+        run: |
+          LOCAL=$(cat .web-versions.json 2>/dev/null || echo "")
+          PC="${{ steps.versions.outputs.pc_tag }}"
+          LC="${{ steps.versions.outputs.lc_tag }}"
+
+          UPDATE_PC=false
+          UPDATE_LC=false
+
+          if [ "$PC" != "none" ] && [ "$LOCAL" != "$PC" ]; then
+            UPDATE_PC=true
+          fi
+          if [ "$LC" != "none" ] && [ "$LOCAL" != "$LC" ]; then
+            UPDATE_LC=true
+          fi
+
+          NEEDS_UPDATE=false
+          if [ "$UPDATE_PC" = "true" ] || [ "$UPDATE_LC" = "true" ]; then
+            NEEDS_UPDATE=true
+          fi
+
+          echo "update_pc=$UPDATE_PC" >> "$GITHUB_OUTPUT"
+          echo "update_lc=$UPDATE_LC" >> "$GITHUB_OUTPUT"
+          echo "needs_update=$NEEDS_UPDATE" >> "$GITHUB_OUTPUT"
+          echo "Will update: PhotoCraft=$UPDATE_PC  LightCraft=$UPDATE_LC"
+
+      # ─── 4. 下载 PhotoCraft web 包 ─────────────────────────
+      - name: Download PhotoCraft web
+        if: steps.decide.outputs.update_pc == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.versions.outputs.pc_tag }}"
+          VER="${TAG#v}"   # v0.10.0 → 0.10.0
+          ZIP="photocraft-web-${VER}.zip"
+          URL="https://github.com/storytold/photocraft/releases/download/${TAG}/${ZIP}"
+
+          echo "Downloading $URL ..."
+          curl -L -o "/tmp/$ZIP" "$URL"
+          echo "Size: $(du -h "/tmp/$ZIP")"
+
+      # ─── 5. 部署 PhotoCraft web 包 ─────────────────────────
+      - name: Deploy PhotoCraft web
+        if: steps.decide.outputs.update_pc == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.versions.outputs.pc_tag }}"
+          VER="${TAG#v}"
+          ZIP="photocraft-web-${VER}.zip"
+
+          # 清理旧版本
+          rm -rf photocraft/
+          mkdir -p photocraft/
+
+          unzip -q "/tmp/$ZIP" -d photocraft/
+          echo "Deployed PhotoCraft $TAG → photocraft/"
+
+      # ─── 6. 下载 LightCraft web 包 ─────────────────────────
+      - name: Download LightCraft web
+        if: steps.decide.outputs.update_lc == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.versions.outputs.lc_tag }}"
+          VER="${TAG#v}"
+          ZIP="lightcraft-web-${VER}.zip"
+          URL="https://github.com/storytold/lightcraft/releases/download/${TAG}/${ZIP}"
+
+          echo "Downloading $URL ..."
+          curl -L -o "/tmp/$ZIP" "$URL"
+          echo "Size: $(du -h "/tmp/$ZIP")"
+
+      # ─── 7. 部署 LightCraft web 包 ─────────────────────────
+      - name: Deploy LightCraft web
+        if: steps.decide.outputs.update_lc == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.versions.outputs.lc_tag }}"
+          VER="${TAG#v}"
+          ZIP="lightcraft-web-${VER}.zip"
+
+          rm -rf lightcraft/
+          mkdir -p lightcraft/
+          unzip -q "/tmp/$ZIP" -d lightcraft/
+          echo "Deployed LightCraft $TAG → lightcraft/"
+
+      # ─── 8. 更新版本追踪文件并提交 ─────────────────────────
+      - name: Commit changes
+        if: steps.decide.outputs.needs_update == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PC="${{ steps.versions.outputs.pc_tag }}"
+          LC="${{ steps.versions.outputs.lc_tag }}"
+
+          # 记录本次部署的版本
+          # 格式: photocraft=<tag>,lightcraft=<tag>
+          echo "photocraft=$PC,lightcraft=$LC" > .web-versions.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A .web-versions.json photocraft/ lightcraft/
+          git commit -m "deploy: update web apps (photocraft=$PC lightcraft=$LC)" || echo "Nothing to commit"
+          git push
+
+          echo "✅ Deployed: PhotoCraft $PC, LightCraft $LC"
+
+      # ─── 9. 不需要更新时跳过 ───────────────────────────────
+      - name: Already up to date
+        if: steps.decide.outputs.needs_update == 'false'
+        run: echo "✅ Already up to date (photocraft=${{ steps.versions.outputs.pc_tag }}, lightcraft=${{ steps.versions.outputs.lc_tag }})"
