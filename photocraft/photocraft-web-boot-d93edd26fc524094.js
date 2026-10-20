@@ -49,7 +49,7 @@ function __wbg_get_imports() {
             const ret = arg0.createElement(getStringFromWasm0(arg1, arg2));
             return ret;
         }, arguments); },
-        __wbg_default_3be207569848fb4e: function() { return handleError(function (arg0) {
+        __wbg_default_18fb619001a79667: function() { return handleError(function (arg0) {
             const ret = _default(arg0);
             return ret;
         }, arguments); },
@@ -136,16 +136,16 @@ function __wbg_get_imports() {
             const ret = new Object();
             return ret;
         },
+        __wbg_new_623c5e91dae694b1: function() { return handleError(function (arg0, arg1) {
+            const ret = new DecompressionStream(getStringFromWasm0(arg0, arg1));
+            return ret;
+        }, arguments); },
         __wbg_new_661230f001cf2087: function() { return handleError(function () {
             const ret = new TransformStream();
             return ret;
         }, arguments); },
         __wbg_new_83ca405eae412a62: function() { return handleError(function () {
             const ret = new Headers();
-            return ret;
-        }, arguments); },
-        __wbg_new_99260f11fe056f27: function() { return handleError(function (arg0, arg1) {
-            const ret = new DecompressionStream(getStringFromWasm0(arg0, arg1));
             return ret;
         }, arguments); },
         __wbg_new_from_slice_9a868026ffa4208a: function(arg0, arg1) {
@@ -182,7 +182,7 @@ function __wbg_get_imports() {
         __wbg_queueMicrotask_a72f977e97f23c5f: function(arg0) {
             queueMicrotask(arg0);
         },
-        __wbg_readable_3f322cf1a8b6dbfc: function(arg0) {
+        __wbg_readable_4579a180a959b54c: function(arg0) {
             const ret = arg0.readable;
             return ret;
         },
@@ -264,11 +264,11 @@ function __wbg_get_imports() {
             const ret = arg0.then(arg1);
             return ret;
         },
-        __wbg_writable_44735d15a1cee85d: function(arg0) {
+        __wbg_writable_0fe841bd807dd4d9: function(arg0) {
             const ret = arg0.writable;
             return ret;
         },
-        __wbg_writable_6bb914d7b4f598e8: function(arg0) {
+        __wbg_writable_44735d15a1cee85d: function(arg0) {
             const ret = arg0.writable;
             return ret;
         },
