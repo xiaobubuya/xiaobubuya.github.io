@@ -58,17 +58,20 @@ jobs:
         id: decide
         shell: bash
         run: |
-          LOCAL=$(cat .web-versions.json 2>/dev/null || echo "")
+          # .web-versions.json 是 "photocraft=<tag>,lightcraft=<tag>"，按应用分开解析。
+          LOCAL_PC=$(grep -o 'photocraft=[^,]*' .web-versions.json 2>/dev/null | cut -d= -f2 || true)
+          LOCAL_LC=$(grep -o 'lightcraft=[^,]*'  .web-versions.json 2>/dev/null | cut -d= -f2 || true)
           PC="${{ steps.versions.outputs.pc_tag }}"
           LC="${{ steps.versions.outputs.lc_tag }}"
 
           UPDATE_PC=false
           UPDATE_LC=false
 
-          if [ "$PC" != "none" ] && [ "$LOCAL" != "$PC" ]; then
+          # 版本号对不上 —— 或者产物根本不在（上次解包静默失败留下的坑）—— 都要重新部署。
+          if [ "$PC" != "none" ] && { [ "$LOCAL_PC" != "$PC" ] || [ ! -f photocraft/index.html ]; }; then
             UPDATE_PC=true
           fi
-          if [ "$LC" != "none" ] && [ "$LOCAL" != "$LC" ]; then
+          if [ "$LC" != "none" ] && { [ "$LOCAL_LC" != "$LC" ] || [ ! -f lightcraft/index.html ]; }; then
             UPDATE_LC=true
           fi
 
@@ -111,11 +114,17 @@ jobs:
           rm -rf photocraft/
           mkdir -p photocraft/
 
-          unzip -q "/tmp/$ZIP" -d "/tmp/photocraft-extract/"
-          # zip 内含子目录，移到根层
-          find "/tmp/photocraft-extract/" -mindepth 1 -maxdepth 1 -type d -exec mv {}/* photocraft/ \;
-          rm -rf "/tmp/photocraft-extract/"
-          echo "Deployed PhotoCraft $TAG → photocraft/"
+          EXTRACT="$(mktemp -d)"
+          unzip -q "/tmp/$ZIP" -d "$EXTRACT"
+          # zip 里是一个 photocraft-web-<ver>/ 目录：把它的内容（含隐藏文件）搬到根层。
+          # 注意不能用 `find ... -exec mv {}/* dest/ \;`：find 不经过 shell，`*` 不会被展开，
+          # mv 会失败，而 find 仍然返回 0 → 步骤「成功」但目录是空的。
+          cp -a "$EXTRACT"/photocraft-web-*/. photocraft/
+          rm -rf "$EXTRACT"
+
+          # 防御：解包出来没有入口文件就直接失败，别再静默「成功但没部署」。
+          test -f photocraft/index.html || { echo "::error::photocraft/index.html 缺失，解包失败"; exit 1; }
+          echo "Deployed PhotoCraft $TAG → photocraft/ ($(find photocraft -type f | wc -l) files)"
 
       # ─── 6. 下载 LightCraft web 包 ─────────────────────────
       - name: Download LightCraft web
@@ -144,10 +153,15 @@ jobs:
 
           rm -rf lightcraft/
           mkdir -p lightcraft/
-          unzip -q "/tmp/$ZIP" -d "/tmp/lightcraft-extract/"
-          find "/tmp/lightcraft-extract/" -mindepth 1 -maxdepth 1 -type d -exec mv {}/* lightcraft/ \;
-          rm -rf "/tmp/lightcraft-extract/"
-          echo "Deployed LightCraft $TAG → lightcraft/"
+
+          EXTRACT="$(mktemp -d)"
+          unzip -q "/tmp/$ZIP" -d "$EXTRACT"
+          # 同 PhotoCraft：内容（含隐藏文件）从 lightcraft-web-<ver>/ 搬到根层。
+          cp -a "$EXTRACT"/lightcraft-web-*/. lightcraft/
+          rm -rf "$EXTRACT"
+
+          test -f lightcraft/index.html || { echo "::error::lightcraft/index.html 缺失，解包失败"; exit 1; }
+          echo "Deployed LightCraft $TAG → lightcraft/ ($(find lightcraft -type f | wc -l) files)"
 
       # ─── 8. 更新版本追踪文件并提交 ─────────────────────────
       - name: Commit changes
