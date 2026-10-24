@@ -7,8 +7,15 @@
 (function() {
   'use strict';
 
-  const API_BASE = 'http://120.48.86.101:3000';
-  const WS_URL = 'ws://120.48.86.101:3000/ws?key=bubu';
+  // Use relative URLs when served from same origin (server nginx proxy)
+  // Fall back to direct server URL when on GitHub Pages
+  const IS_SAME_ORIGIN = window.location.protocol === 'http:' || 
+    (window.location.hostname === 'muyaya.world' && window.location.port === '');
+  
+  const API_BASE = IS_SAME_ORIGIN ? '' : 'http://120.48.86.101:3000';
+  const WS_URL = IS_SAME_ORIGIN 
+    ? (window.location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + window.location.host + '/ws?key=bubu'
+    : 'ws://120.48.86.101:3000/ws?key=bubu';
   const API_KEY = 'bubu';
 
   // ── State ──
