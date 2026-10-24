@@ -87,6 +87,12 @@ body{display:flex;flex-direction:column;height:100vh;height:100dvh}
 .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* Tool selector */
+.tool-selector{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:2px;gap:2px}
+.tool-btn{border:none;background:transparent;color:var(--text2);padding:5px 12px;font-size:12px;border-radius:6px;cursor:pointer;transition:all .2s;font-weight:500}
+.tool-btn.active{background:var(--accent);color:#000;font-weight:600}
+.tool-btn:hover:not(.active){color:var(--text);background:rgba(255,255,255,.05)}
+
 /* Mobile responsive */
 @media(max-width:768px){
   .preview{position:absolute;inset:0;z-index:50;width:100%}
@@ -113,7 +119,13 @@ body{display:flex;flex-direction:column;height:100vh;height:100dvh}
       <span id="statusText">连接中...</span>
     </span>
   </div>
-  <button class="btn btn-clear" onclick="clearChat()" title="清空对话">🗑️</button>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="tool-selector">
+      <button class="tool-btn active" id="toolPhoto" onclick="setTool('photocraft')">🎨 调色</button>
+      <button class="tool-btn" id="toolLight" onclick="setTool('lightcraft')">🖼️ 修图</button>
+    </div>
+    <button class="btn btn-clear" onclick="clearChat()" title="清空对话">🗑️</button>
+  </div>
 </div>
 
 <!-- Main -->
@@ -121,7 +133,7 @@ body{display:flex;flex-direction:column;height:100vh;height:100dvh}
   <!-- Chat -->
   <div class="chat-area" id="chatArea">
     <div class="messages" id="messages">
-      <div class="msg system">上传图片，用自然语言描述你想要的效果</div>
+      <div class="msg system">上传图片，用自然语言描述你想要的效果。<br>🎨 <b>调色</b> = PhotoCraft（色温/饱和度/滤镜）　🖼️ <b>修图</b> = LightCraft（磨皮/去雾/光影）</div>
     </div>
     <div class="input-area">
       <input type="file" id="fileInput" accept="image/*" style="display:none">
@@ -171,6 +183,20 @@ let ws = null;
 let currentImage = null;
 let currentTaskId = null;
 let isProcessing = false;
+let currentTool = 'photocraft';
+
+// ── Tool selector ──────────────────────────────────────────────────
+function setTool(tool) {
+  currentTool = tool;
+  document.getElementById('toolPhoto').classList.toggle('active', tool === 'photocraft');
+  document.getElementById('toolLight').classList.toggle('active', tool === 'lightcraft');
+  const input = document.getElementById('msgInput');
+  if (tool === 'lightcraft') {
+    input.placeholder = '输入修图指令，如：磨皮、提亮、去雾...';
+  } else {
+    input.placeholder = '输入调色指令，如：调亮一点，加暖色调...';
+  }
+}
 
 // ── Status ─────────────────────────────────────────────────────────
 function setStatus(state, text) {
@@ -333,6 +359,7 @@ async function send() {
     message: text,
     imageId: currentImage.imageId,
     imageFilename: currentImage.filename,
+    tool: currentTool,
   }));
 
   // Also try HTTP fallback
@@ -340,7 +367,7 @@ async function send() {
     const res = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
-      body: JSON.stringify({ message: text, imageId: currentImage.imageId, imageFilename: currentImage.filename }),
+      body: JSON.stringify({ message: text, imageId: currentImage.imageId, imageFilename: currentImage.filename, tool: currentTool }),
     });
     const data = await res.json();
     if (data.taskId) {
