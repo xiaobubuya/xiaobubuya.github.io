@@ -9,12 +9,95 @@
 import init, * as bindings from './photocraft-web-boot-26446d01b24367d7.js';
 const wasm = await init({ module_or_path: './photocraft-web-boot-26446d01b24367d7_bg.wasm' });
 
-
+// Expose WASM bindings for external use
 window.wasmBindings = bindings;
+window.wasm = wasm;
 
+// PhotoCraft integration API for AI Widget
+window.photocraft = {
+  /**
+   * Check if there's an image loaded in the editor
+   */
+  hasImage: () => {
+    const canvas = document.getElementById('photocraft_canvas');
+    if (!canvas) return false;
+    try {
+      canvas.toDataURL();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  /**
+   * Get the current image as Base64 data URL
+   */
+  getImage: () => {
+    const canvas = document.getElementById('photocraft_canvas');
+    if (!canvas) return null;
+    try {
+      return canvas.toDataURL('image/png');
+    } catch (e) {
+      console.warn('[PhotoCraft] Cannot get image (canvas may be tainted):', e);
+      return null;
+    }
+  },
+
+  /**
+   * Get the current image as Blob
+   */
+  getImageBlob: () => {
+    return new Promise((resolve) => {
+      const canvas = document.getElementById('photocraft_canvas');
+      if (!canvas) {
+        resolve(null);
+        return;
+      }
+      canvas.toBlob((blob) => {
+        resolve(blob);
+      }, 'image/png');
+    });
+  },
+
+  /**
+   * Set image from data URL
+   */
+  setImage: (dataUrl) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.getElementById('photocraft_canvas');
+        if (!canvas) {
+          reject(new Error('Canvas not found'));
+          return;
+        }
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(true);
+      };
+      img.onerror = (e) => reject(e);
+      img.src = dataUrl;
+    });
+  },
+
+  /**
+   * Get editor info
+   */
+  getInfo: () => ({
+    type: 'photocraft',
+    hasImage: window.photocraft.hasImage(),
+    canvasSize: {
+      width: document.getElementById('photocraft_canvas')?.width || 0,
+      height: document.getElementById('photocraft_canvas')?.height || 0
+    }
+  })
+};
+
+console.log('[PhotoCraft] Integration API loaded:', window.photocraft);
 
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
-
 </script>
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #262626; }

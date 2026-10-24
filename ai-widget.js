@@ -3,6 +3,10 @@
  * 嵌入 PhotoCraft / LightCraft 编辑器页面
  *
  * Usage: <script src="/ai-widget.js"></script>
+ *
+ * Integration:
+ * - PhotoCraft: window.photocraft.getImage() / setImage()
+ * - LightCraft: window.lightcraft.getImage() / setImage()
  */
 (function() {
   'use strict';
@@ -24,13 +28,99 @@
   let panelOpen = false;
   let reconnectTimer = null;
   let reconnectAttempts = 0;
+  let editorType = null; // 'photocraft' | 'lightcraft' | null
   const MAX_RECONNECT = 10;
+
+  // ── Editor Integration ──
+  function detectEditor() {
+    if (window.photocraft && window.photocraft.hasImage) {
+      editorType = 'photocraft';
+      currentTool = 'photocraft';
+      return 'PhotoCraft';
+    }
+    if (window.lightcraft && window.lightcraft.hasImage) {
+      editorType = 'lightcraft';
+      currentTool = 'lightcraft';
+      return 'LightCraft';
+    }
+    return null;
+  }
+
+  async function getEditorImage() {
+    if (editorType === 'photocraft' && window.photocraft.getImage) {
+      return window.photocraft.getImage();
+    }
+    if (editorType === 'lightcraft' && window.lightcraft.getImage) {
+      return window.lightcraft.getImage();
+    }
+    return null;
+  }
+
+  async function sendResultToEditor(resultUrl) {
+    if (!editorType) return false;
+    
+    try {
+      // Download result image
+      const res = await fetch(resultUrl);
+      const blob = await res.blob();
+      const reader = new FileReader();
+      
+      return new Promise((resolve) => {
+        reader.onload = async () => {
+          const dataUrl = reader.result;
+          if (editorType === 'photocraft' && window.photocraft.setImage) {
+            try {
+              await window.photocraft.setImage(dataUrl);
+              resolve(true);
+            } catch (e) {
+              console.warn('[AI Widget] Failed to set image in PhotoCraft:', e);
+              resolve(false);
+            }
+          } else if (editorType === 'lightcraft' && window.lightcraft.setImage) {
+            try {
+              await window.lightcraft.setImage(dataUrl);
+              resolve(true);
+            } catch (e) {
+              console.warn('[AI Widget] Failed to set image in LightCraft:', e);
+              resolve(false);
+            }
+          } else {
+            resolve(false);
+          }
+        };
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.warn('[AI Widget] Failed to send result to editor:', e);
+      return false;
+    }
+  }
+
+  async function autoLoadEditorImage() {
+    if (!editorType) return;
+    
+    const dataUrl = await getEditorImage();
+    if (!dataUrl) {
+      addMsg('system', '⚠️ 无法从编辑器获取图片，请手动上传');
+      return;
+    }
+    
+    addMsg('system', '📷 已从 ' + editorType + ' 获取图片，正在上传...');
+    
+    // Convert data URL to Blob
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], 'editor_image.png', { type: 'image/png' });
+    
+    // Upload to server
+    await uploadFile(file);
+  }
 
   // ── CSS ──
   const css = `
     #ai-widget-btn{position:fixed;bottom:20px;right:20px;z-index:99999;background:#2d8cf0;color:#fff;width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:transform .2s,box-shadow .2s}
     #ai-widget-btn:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(0,0,0,.4)}
     #ai-widget-btn .badge{position:absolute;top:-2px;right:-2px;background:#e74c3c;color:#fff;font-size:10px;width:16px;height:16px;border-radius:50%;display:none;align-items:center;justify-content:center}
+    #ai-widget-btn .badge.show{display:flex}
 
     #ai-widget-panel{position:fixed;bottom:90px;right:20px;z-index:99998;width:400px;max-height:560px;background:#1a1a2e;border:1px solid #333;border-radius:12px;display:none;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden}
     #ai-widget-panel.open{display:flex}
@@ -48,6 +138,7 @@
     #ai-widget-tool{flex:1;border:1px solid #444;background:#16213e;color:#aaa;padding:5px 8px;font-size:11px;border-radius:6px;cursor:pointer;transition:all .2s;text-align:center}
     #ai-widget-tool.active{background:#2d8cf0;color:#fff;border-color:#2d8cf0}
     #ai-widget-tool:hover:not(.active){background:#222;color:#fff}
+    #ai-widget-tool:disabled{opacity:.5;cursor:not-allowed}
 
     #ai-widget-messages{flex:1;overflow-y:auto;padding:12px;min-height:200px;max-height:300px}
     #ai-widget-messages .msg{max-width:85%;margin-bottom:10px;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word}
@@ -114,6 +205,8 @@
   const fileInput = document.getElementById('ai-file-input');
   const uploadBtn = document.getElementById('ai-upload-btn');
   const uploadHint = document.getElementById('ai-upload-hint');
+  const toolPhoto = document.getElementById('ai-tool-photo');
+  const toolLight = document.getElementById('ai-tool-light');
 
   // ── WebSocket ──
   function connectWS() {
@@ -305,11 +398,11 @@
   });
 
   // ── Tool selector ──
-  document.querySelectorAll('#ai-widget-toolbar .tool').forEach(btn => {
-    btn.addEventListener('click', () => {
+  document.querySelectorAll('#ai-widget-toolbar .tool').forEach(button => {
+    button.addEventListener('click', () => {
       document.querySelectorAll('#ai-widget-toolbar .tool').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentTool = btn.dataset.tool;
+      button.classList.add('active');
+      currentTool = button.dataset.tool;
       msgInput.placeholder = currentTool === 'lightcraft'
         ? '输入修图指令，如：磨皮、提亮、去雾...'
         : '输入调色指令，如：调亮一点，加暖色调...';
@@ -317,23 +410,56 @@
   });
 
   // ── Result preview ──
-  function showResult(url, commands) {
+  async function showResult(url, commands) {
     let fullUrl = url;
     if (url.startsWith('/')) fullUrl = API_BASE + url;
-    const html = '<div>✅ 处理完成</div><img src="' + fullUrl + '" onclick="window.open(this.src)">';
+    
+    let html = '<div>✅ 处理完成</div><img src="' + fullUrl + '" onclick="window.open(this.src)">';
     if (commands && commands.length) {
       html += '<div style="font-size:11px;color:#888;margin-top:4px">🎯 ' + commands.join(', ') + '</div>';
     }
+    
+    // Auto-apply to editor if in editor mode
+    if (editorType) {
+      html += '<div style="margin-top:8px;font-size:11px;color:#2ecc71">📥 正在自动应用到编辑器...</div>';
+    }
+    
+    html += '<div style="font-size:11px;color:#888;margin-top:4px">📥 右键图片可保存</div>';
     addMsg('bot', html);
+    
+    // Auto-apply to editor
+    if (editorType) {
+      const success = await sendResultToEditor(fullUrl);
+      if (success) {
+        addMsg('system', '✅ 已自动应用到编辑器');
+      } else {
+        addMsg('error', '❌ 自动应用失败，请手动下载');
+      }
+    }
   }
 
   // ── Panel toggle ──
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     panelOpen = !panelOpen;
     panel.classList.toggle('open', panelOpen);
     btn.innerHTML = panelOpen ? '✕' : '✨<span class="badge">!</span>';
+    
     if (panelOpen) {
       connectWS();
+      
+      // Detect editor and auto-load image
+      const editorName = detectEditor();
+      if (editorName) {
+        addMsg('system', '🔗 已连接 ' + editorName + ' 编辑器');
+        
+        // Disable tool switching when in editor (auto-detected)
+        toolPhoto.disabled = true;
+        toolLight.disabled = true;
+        
+        // Auto-load image from editor
+        await autoLoadEditorImage();
+      }
+      
       msgInput.focus();
     }
   });
@@ -345,5 +471,13 @@
   });
 
   // ── Init ──
+  // Detect editor on load
+  const detectedEditor = detectEditor();
+  if (detectedEditor) {
+    // Show badge to indicate integration
+    const badge = btn.querySelector('.badge');
+    if (badge) badge.classList.add('show');
+  }
+  
   connectWS();
 })();
