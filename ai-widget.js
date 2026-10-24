@@ -99,20 +99,61 @@
   async function autoLoadEditorImage() {
     if (!editorType) return;
     
-    const dataUrl = await getEditorImage();
-    if (!dataUrl) {
+    // 获取编辑器图片并压缩
+    const compressedImage = await compressEditorImage();
+    if (!compressedImage) {
       addMsg('system', '⚠️ 无法从编辑器获取图片，请手动上传');
       return;
     }
     
-    addMsg('system', '📷 已从 ' + editorType + ' 获取图片，正在上传...');
+    const { blob, sizeKB } = compressedImage;
+    addMsg('system', `📷 已从 ${editorType} 获取图片 (${sizeKB}KB)，正在上传...`);
     
-    // Convert data URL to Blob
-    const blob = await (await fetch(dataUrl)).blob();
-    const file = new File([blob], 'editor_image.png', { type: 'image/png' });
-    
-    // Upload to server
+    // 创建文件并上传
+    const file = new File([blob], 'editor_image.jpg', { type: 'image/jpeg' });
     await uploadFile(file);
+  }
+  
+  // 压缩编辑器图片（JPEG 格式，限制最大尺寸 1920px，质量 85%）
+  async function compressEditorImage() {
+    const canvas = editorType === 'photocraft' 
+      ? document.getElementById('photocraft_canvas')
+      : document.getElementById('lightcraft_canvas');
+    
+    if (!canvas) return null;
+    
+    try {
+      // 限制最大分辨率（AI 处理不需要超过 1920px）
+      const MAX_SIZE = 1920;
+      let width = canvas.width;
+      let height = canvas.height;
+      
+      if (width > MAX_SIZE || height > MAX_SIZE) {
+        const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      
+      // 创建压缩用的 canvas
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      const ctx = tempCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, 0, width, height);
+      
+      // 使用 JPEG 格式，质量 85%（比 PNG 小很多）
+      const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.85);
+      const blob = await (await fetch(dataUrl)).blob();
+      
+      return {
+        blob: blob,
+        sizeKB: Math.round(blob.size / 1024)
+      };
+    } catch (e) {
+      console.warn('[AI Widget] Failed to compress image:', e);
+      // 如果压缩失败，返回原始图片
+      return { blob: null, sizeKB: 0 };
+    }
   }
 
   // ── CSS ──
