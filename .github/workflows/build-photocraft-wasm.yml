@@ -104,7 +104,7 @@ diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
 +#[wasm_bindgen]
 +pub fn execute_command(id: &str, params_json: &str) -> Result<String, String> {
 +    let params: Value = serde_json::from_str(params_json)
-+        .map_err(|e| format!("Invalid JSON params: {e}"))?;
++        .map_err(|e| format("="));
 +    match execute_and_repaint(id, params) {
 +        Ok(result) => Ok(result.to_string()),
 +        Err(e) => Err(e.to_string()),
