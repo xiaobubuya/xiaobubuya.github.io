@@ -36,7 +36,8 @@
     { key: 'photos',   href: '/',              label: '照片', icon: '▦', desc: '看照片和上传' },
     { key: 'album',    href: '/album.html',    label: '相册', icon: '▤', desc: '把照片排成册' },
     { key: 'photo',    href: '/photocraft/',   label: '调色', icon: '🎨', desc: 'PhotoCraft 专业调色' },
-    { key: 'light',    href: '/lightcraft/',   label: '修图', icon: '🖼', desc: 'LightCraft 照片管理' }
+    { key: 'light',    href: '/lightcraft/',   label: '修图', icon: '🖼', desc: 'LightCraft 照片管理' },
+    { key: 'ai',       href: '/ai-agent.html', label: 'AI 修图', icon: '✨', desc: '自然语言 AI 修图' }
     /* { key: 'studio', href: '/studio.html',   label: '修图', icon: '✦', desc: '精修单张照片' }  —— 隐藏：已用 PhotoCraft/LightCraft 替代 */
   ];
 
@@ -66,6 +67,7 @@
     if (/^\/?studio/.test(p) || file === 'studio.html') return null; /* studio 已隐藏 */
     if (/^\/?photocraft/.test(p)) return 'photo';
     if (/^\/?lightcraft/.test(p)) return 'light';
+    if (/^\/?ai-agent/.test(p) || file === 'ai-agent.html') return 'ai';
     return null;                       // share 等页面：不高亮任何一个
   }
 
