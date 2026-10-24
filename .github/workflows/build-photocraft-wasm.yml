@@ -1,4 +1,4 @@
-name: Build PhotoCraft WASM with AI Bridge
+name: Build PhotoCraft WASM
 
 on:
   workflow_dispatch:
@@ -27,16 +27,12 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install Trunk
-        uses: actions-rs/cargo@master
-        with:
-          command: install
-          args: trunk --locked
+        run: cargo install trunk --locked
 
       - name: Apply AI Bridge patch
         run: |
           echo "Applying AI Bridge patch to web.rs..."
           
-          # Read the original web.rs
           WEB_RS="apps/photocraft-web/src/web.rs"
           
           # Add imports after existing use statements
@@ -46,7 +42,7 @@ jobs:
           sed -i '/use std::collections::/,+1a use photocraft_engine::Session;' $WEB_RS
           sed -i '/use std::collections::/,+1a use serde_json::Value;' $WEB_RS
           
-          # Add global variables and helper functions after "type Served = ..."
+          # Add global variables and helper functions at the end of file
           cat >> $WEB_RS << 'RUSTEOF'
 
 // ============================================================
@@ -138,14 +134,26 @@ RUSTEOF
             apps/photocraft-web/target/release/photocraft_web_bg.wasm.br
           if-no-files-found: error
 
-      - name: Copy to deploy repo
-        if: github.repository == 'xiaobubuya/photocraft'
+      - name: Deploy to GitHub Pages
+        uses: actions/upload-artifact@v4
+        with:
+          name: photocraft-deploy
+          path: |
+            apps/photocraft-web/target/release/photocraft_web_bg.wasm
+            apps/photocraft-web/target/release/photocraft-web-boot-*.js
+            apps/photocraft-web/target/release/photocraft_web_bg.wasm.br
+          if-no-files-found: error
+
+      - name: Commit to deploy repo
         run: |
-          echo "=== Copying artifacts to deploy repo ==="
+          echo "=== Deploying to xiaobubuya.github.io ==="
           
           # Checkout deploy repo
           git clone https://github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
           cd ../deploy-repo
+          
+          # Create photocraft directory if not exists
+          mkdir -p photocraft
           
           # Copy WASM files
           cp ../photocraft/apps/photocraft-web/target/release/photocraft_web_bg.wasm photocraft/
@@ -154,7 +162,7 @@ RUSTEOF
           
           # Commit and push
           git add .
-          git commit -m "chore: update PhotoCraft WASM with AI Bridge ($GITHUB_RUN_NUMBER)"
+          git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})"
           git push
           
-          echo "=== Artifacts deployed! ==="
+          echo "=== Artifacts deployed successfully! ==="
