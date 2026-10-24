@@ -29,91 +29,120 @@ jobs:
       - name: Install Trunk
         run: cargo install trunk --locked
 
+      - name: Create AI Bridge patch file
+        run: |
+          cat > /tmp/ai-bridge.patch << 'PATCHEOF'
+diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
+--- a/apps/photocraft-web/src/web.rs
++++ b/apps/photocraft-web/src/web.rs
+@@ -1,6 +1,10 @@
+ use std::cell::Cell;
++use std::cell::RefCell;
++use std::rc::Rc;
+ use std::collections::{HashMap, HashSet};
++use photocraft_engine::EngineError;
++use photocraft_engine::Session;
++use serde_json::Value;
+ use std::rc::Rc;
+ 
+ type Inbox = Arc<Mutex<Vec<(String, Vec<u8>)>>>;
+@@ -24,6 +28,80 @@ type Served = Arc<Mutex<ServedFonts>>;
+ type Served = Arc<Mutex<ServedFonts>>;
+ 
++// ============================================================
++// AI Command Bridge: Global Session reference for JS
++// ============================================================
++
++/// Global Session reference for #[wasm_bindgen] functions.
++/// wasm32 is single-threaded, Rc + RefCell is safe.
++static SESSION: Rc<RefCell<Option<Session>>> = Rc::new(RefCell::new(None));
++/// UI repaint callback (provided by eframe context)
++static REPAINT: Rc<Cell<Option<fn()>>> = Rc::new(Cell::new(None));
++
++/// Store Session globally for JS execute_command() calls.
++fn store_session(session: Session) {
++    *SESSION.borrow_mut() = Some(session);
++}
++
++/// Register UI repaint callback.
++fn store_repaint_callback(cb: fn()) {
++    REPAINT.replace(Some(cb));
++}
++
++/// Trigger UI repaint so eframe re-renders.
++fn trigger_repaint() {
++    if let Some(cb) = REPAINT.get() {
++        cb();
++    }
++}
++
++/// Execute command and trigger repaint.
++fn execute_and_repaint(id: &str, params: Value) -> photocraft_engine::Result<Value> {
++    let mut session = SESSION.borrow_mut();
++    let Some(ref mut s) = *session else {
++        return Err(EngineError::NoDocument);
++    };
++    let result = s.execute(id, params)?;
++    trigger_repaint();
++    Ok(result)
++}
++
++/// Check if there is an active Session.
++#[wasm_bindgen]
++pub fn has_session() -> bool {
++    SESSION.borrow().is_some()
++}
++
++/// Execute a PhotoCraft command.
++/// @param id - Command ID, e.g. "adjust.exposure"
++/// @param params_json - JSON string params, e.g. '{"amount":0.3}'
++/// @returns JSON string result
++#[wasm_bindgen]
++pub fn execute_command(id: &str, params_json: &str) -> Result<String, String> {
++    let params: Value = serde_json::from_str(params_json)
++        .map_err(|e| format!("Invalid JSON params: {e}"))?;
++    match execute_and_repaint(id, params) {
++        Ok(result) => Ok(result.to_string()),
++        Err(e) => Err(e.to_string()),
++    }
++}
++
++/// Trigger UI repaint.
++#[wasm_bindgen]
++pub fn request_repaint() {
++    trigger_repaint();
++}
++
+ pub fn start() {
+     eframe::WebLogger::init(log::LevelFilter::Info).ok();
+@@ -100,7 +178,8 @@ pub fn start() {
+                 let (session, warnings) = crate::preset_bridge::session(presets.clone());
++                store_session(session.clone());
+                 preset_warnings.extend(warnings);
+                 let drag = listen_drag(&pen_target);
+                 let mut app = PhotocraftApp::new(session, services(inbox.clone(), place_inbox.clone(), drag_pos_service(pen_target.clone(), drag)));
+@@ -115,6 +194,9 @@ pub fn start() {
+                 }
+                 listen_pen(&pen_target, app.stylus.feed.clone());
+                 app.set_theme(&cc.egui_ctx, ThemeKind::Pro);
++                // Register repaint callback for execute_command()
++                let ctx_clone = cc.egui_ctx.clone();
++                store_repaint_callback(move || { ctx_clone.request_repaint(); });
+                 if let Some(rs) = cc.wgpu_render_state.clone()
+                     && !force_cpu
+                 {
+PATCHEOF
+          echo "Patch file created successfully"
+
       - name: Apply AI Bridge patch
         run: |
-          echo "Applying AI Bridge patch to web.rs..."
-          
-          WEB_RS="apps/photocraft-web/src/web.rs"
-          
-          # Add imports after existing use statements
-          sed -i '/use std::cell::Cell;/a use std::cell::RefCell;' $WEB_RS
-          sed -i '/use std::cell::Cell;/a use std::rc::Rc;' $WEB_RS
-          sed -i '/use std::collections::/,+1a use photocraft_engine::EngineError;' $WEB_RS
-          sed -i '/use std::collections::/,+1a use photocraft_engine::Session;' $WEB_RS
-          sed -i '/use std::collections::/,+1a use serde_json::Value;' $WEB_RS
-          
-          # Add global variables and helper functions at the end of file
-          cat >> $WEB_RS << 'RUSTEOF'
-
-// ============================================================
-// AI Command Bridge: Global Session reference for JS
-// ============================================================
-
-/// Global Session reference for #[wasm_bindgen] functions.
-/// wasm32 is single-threaded, Rc + RefCell is safe.
-static SESSION: Rc<RefCell<Option<Session>>> = Rc::new(RefCell::new(None));
-/// UI repaint callback (provided by eframe context)
-static REPAINT: Rc<Cell<Option<fn()>>> = Rc::new(Cell::new(None));
-
-/// Store Session globally for JS execute_command() calls.
-fn store_session(session: Session) {
-    *SESSION.borrow_mut() = Some(session);
-}
-
-/// Register UI repaint callback.
-fn store_repaint_callback(cb: fn()) {
-    REPAINT.replace(Some(cb));
-}
-
-/// Trigger UI repaint so eframe re-renders.
-fn trigger_repaint() {
-    if let Some(cb) = REPAINT.get() {
-        cb();
-    }
-}
-
-/// Execute command and trigger repaint.
-fn execute_and_repaint(id: &str, params: Value) -> photocraft_engine::Result<Value> {
-    let mut session = SESSION.borrow_mut();
-    let Some(ref mut s) = *session else {
-        return Err(EngineError::NoDocument);
-    };
-    let result = s.execute(id, params)?;
-    trigger_repaint();
-    Ok(result)
-}
-
-/// Check if there is an active Session.
-#[wasm_bindgen]
-pub fn has_session() -> bool {
-    SESSION.borrow().is_some()
-}
-
-/// Execute a PhotoCraft command.
-/// @param id - Command ID, e.g. "adjust.exposure"
-/// @param params_json - JSON string params, e.g. '{"amount":0.3}'
-/// @returns JSON string result
-#[wasm_bindgen]
-pub fn execute_command(id: &str, params_json: &str) -> Result<String, String> {
-    let params: Value = serde_json::from_str(params_json)
-        .map_err(|e| format!("Invalid JSON params: {e}"))?;
-    match execute_and_repaint(id, params) {
-        Ok(result) => Ok(result.to_string()),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-/// Trigger UI repaint.
-#[wasm_bindgen]
-pub fn request_repaint() {
-    trigger_repaint();
-}
-RUSTEOF
-          
+          echo "Applying AI Bridge patch..."
+          patch -p1 < /tmp/ai-bridge.patch
           echo "Patch applied successfully!"
+          
           echo ""
           echo "=== Verifying patch ==="
-          grep -n "execute_command\|has_session\|request_repaint\|SESSION\|REPAINT" $WEB_RS | head -20
+          grep -n "execute_command\|has_session\|request_repaint\|SESSION\|REPAINT" apps/photocraft-web/src/web.rs | head -20
 
       - name: Build WASM with Trunk
         working-directory: apps/photocraft-web
@@ -135,16 +164,6 @@ RUSTEOF
           if-no-files-found: error
 
       - name: Deploy to GitHub Pages
-        uses: actions/upload-artifact@v4
-        with:
-          name: photocraft-deploy
-          path: |
-            apps/photocraft-web/target/release/photocraft_web_bg.wasm
-            apps/photocraft-web/target/release/photocraft-web-boot-*.js
-            apps/photocraft-web/target/release/photocraft_web_bg.wasm.br
-          if-no-files-found: error
-
-      - name: Commit to deploy repo
         run: |
           echo "=== Deploying to xiaobubuya.github.io ==="
           
