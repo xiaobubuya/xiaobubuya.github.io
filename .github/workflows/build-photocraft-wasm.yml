@@ -10,7 +10,7 @@ on:
   push:
     paths:
       - '.github/workflows/build-photocraft-wasm.yml'
-      - 'ai-bridge.patch'
+      - 'apply-bridge.js'
 
 jobs:
   build-wasm:
@@ -25,7 +25,7 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Checkout deploy repo for patch file
+      - name: Checkout deploy repo for scripts
         uses: actions/checkout@v4
         with:
           repository: xiaobubuya/xiaobubuya.github.io
@@ -40,16 +40,13 @@ jobs:
       - name: Install Trunk
         run: cargo install trunk --locked
 
-      - name: Apply AI Bridge patch
+      - name: Apply AI Bridge modifications
         run: |
-          echo "Applying AI Bridge patch..."
-          cp deploy-repo/ai-bridge.patch /tmp/ai-bridge.patch
-          patch -p1 < /tmp/ai-bridge.patch
-          echo "Patch applied successfully!"
-          
+          echo "=== Applying AI Bridge modifications ==="
+          node deploy-repo/apply-bridge.js
           echo ""
-          echo "=== Verifying patch ==="
-          grep -n "execute_command\|has_session\|request_repaint\|SESSION\|REPAINT" apps/photocraft-web/src/web.rs | head -20
+          echo "=== Verifying modifications ==="
+          grep -n "execute_command\|has_session\|request_repaint\|SESSION\|REPAINT\|store_session" apps/photocraft-web/src/web.rs
 
       - name: Build WASM with Trunk
         working-directory: apps/photocraft-web
@@ -74,19 +71,15 @@ jobs:
         run: |
           echo "=== Deploying to xiaobubuya.github.io ==="
           
-          # Checkout deploy repo
           git clone https://github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
           cd ../deploy-repo
           
-          # Create photocraft directory if not exists
           mkdir -p photocraft
           
-          # Copy WASM files
           cp ../photocraft/apps/photocraft-web/target/release/photocraft_web_bg.wasm photocraft/
           cp ../photocraft/apps/photocraft-web/target/release/photocraft-web-boot-*.js photocraft/
           cp ../photocraft/apps/photocraft-web/target/release/photocraft_web_bg.wasm.br photocraft/ 2>/dev/null || true
           
-          # Commit and push
           git add .
           git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})"
           git push
