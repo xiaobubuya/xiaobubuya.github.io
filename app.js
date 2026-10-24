@@ -14,7 +14,10 @@
    ================================================================ */
 
 /* ---------------- 配置 ---------------- */
-const PROD_API = 'https://api.muyaya.world';
+// Use Cloudflare Tunnel URL for HTTPS API access
+// This avoids mixed content blocking on GitHub Pages (HTTPS)
+// TODO: Replace with 'https://muyaya.world' after ICP filing is complete
+const PROD_API = 'https://shops-voip-storage-click.trycloudflare.com';
 
 const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(location.hostname);
 // 本地开发时 API 必须跟页面同 host（仅端口不同）——
