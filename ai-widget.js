@@ -156,7 +156,7 @@
     #ai-widget-input .upload-btn{background:#333;padding:8px 10px}
     #ai-widget-input .upload-btn:hover{background:#444}
 
-    #ai-widget-hint{padding:4px 14px;font-size:10px;color:#666;text-align:center;flex-shrink:0}
+    #ai-upload-hint{padding:4px 14px;font-size:10px;color:#666;text-align:center;flex-shrink:0}
   `;
 
   // ── Inject CSS ──
@@ -192,7 +192,7 @@
       <input type="text" id="ai-msg-input" placeholder="输入修图指令..." disabled>
       <button id="ai-send-btn" disabled>发送</button>
     </div>
-    <div id="ai-widget-hint" id="ai-upload-hint"></div>
+    <div id="ai-upload-hint"></div>
   `;
   document.body.appendChild(panel);
 
