@@ -35,7 +35,6 @@ jobs:
       - name: Create AI Bridge patch file
         run: |
           echo "Creating patch file..."
-          # Use a heredoc with no leading spaces for the patch content
           cat > /tmp/ai-bridge.patch << 'PATCHEOF'
 diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
 --- a/apps/photocraft-web/src/web.rs
@@ -127,15 +126,15 @@ diff --git a/apps/photocraft-web/src/web.rs b/apps/photocraft-web/src/web.rs
                  let drag = listen_drag(&pen_target);
                  let mut app = PhotocraftApp::new(session, services(inbox.clone(), place_inbox.clone(), drag_pos_service(pen_target.clone(), drag)));
 @@ -115,6 +194,9 @@ pub fn start() {
-                 }
-                 listen_pen(&pen_target, app.stylus.feed.clone());
-                 app.set_theme(&cc.egui_ctx, ThemeKind::Pro);
-+                // Register repaint callback for execute_command()
-+                let ctx_clone = cc.egui_ctx.clone();
-+                store_repaint_callback(move || { ctx_clone.request_repaint(); });
-                 if let Some(rs) = cc.wgpu_render_state.clone()
-                     && !force_cpu
-                 {
+               		}
+               		listen_pen(&pen_target, app.stylus.feed.clone());
+               		app.set_theme(&cc.egui_ctx, ThemeKind::Pro);
++             	// Register repaint callback for execute_command()
++             	let ctx_clone = cc.egui_ctx.clone();
++             	store_repaint_callback(move || { ctx_clone.request_repaint(); });
+               		if let Some(rs) = cc.wgpu_render_state.clone()
+                 && !force_cpu
+               		{
 PATCHEOF
           echo "Patch file created successfully"
 
