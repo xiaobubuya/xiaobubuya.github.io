@@ -1,0 +1,160 @@
+name: Build PhotoCraft WASM with AI Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Commit SHA to build (optional, defaults to main)'
+        required: false
+        default: 'main'
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-24.04
+    
+    steps:
+      - name: Checkout PhotoCraft source
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/photocraft
+          ref: ${{ github.event.inputs.commit || 'main' }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Trunk
+        uses: actions-rs/cargo@master
+        with:
+          command: install
+          args: trunk --locked
+
+      - name: Apply AI Bridge patch
+        run: |
+          echo "Applying AI Bridge patch to web.rs..."
+          
+          # Read the original web.rs
+          WEB_RS="apps/photocraft-web/src/web.rs"
+          
+          # Add imports after existing use statements
+          sed -i '/use std::cell::Cell;/a use std::cell::RefCell;' $WEB_RS
+          sed -i '/use std::cell::Cell;/a use std::rc::Rc;' $WEB_RS
+          sed -i '/use std::collections::/,+1a use photocraft_engine::EngineError;' $WEB_RS
+          sed -i '/use std::collections::/,+1a use photocraft_engine::Session;' $WEB_RS
+          sed -i '/use std::collections::/,+1a use serde_json::Value;' $WEB_RS
+          
+          # Add global variables and helper functions after "type Served = ..."
+          cat >> $WEB_RS << 'RUSTEOF'
+
+// ============================================================
+// AI Command Bridge: Global Session reference for JS
+// ============================================================
+
+/// Global Session reference for #[wasm_bindgen] functions.
+/// wasm32 is single-threaded, Rc + RefCell is safe.
+static SESSION: Rc<RefCell<Option<Session>>> = Rc::new(RefCell::new(None));
+/// UI repaint callback (provided by eframe context)
+static REPAINT: Rc<Cell<Option<fn()>>> = Rc::new(Cell::new(None));
+
+/// Store Session globally for JS execute_command() calls.
+fn store_session(session: Session) {
+    *SESSION.borrow_mut() = Some(session);
+}
+
+/// Register UI repaint callback.
+fn store_repaint_callback(cb: fn()) {
+    REPAINT.replace(Some(cb));
+}
+
+/// Trigger UI repaint so eframe re-renders.
+fn trigger_repaint() {
+    if let Some(cb) = REPAINT.get() {
+        cb();
+    }
+}
+
+/// Execute command and trigger repaint.
+fn execute_and_repaint(id: &str, params: Value) -> photocraft_engine::Result<Value> {
+    let mut session = SESSION.borrow_mut();
+    let Some(ref mut s) = *session else {
+        return Err(EngineError::NoDocument);
+    };
+    let result = s.execute(id, params)?;
+    trigger_repaint();
+    Ok(result)
+}
+
+/// Check if there is an active Session.
+#[wasm_bindgen]
+pub fn has_session() -> bool {
+    SESSION.borrow().is_some()
+}
+
+/// Execute a PhotoCraft command.
+/// @param id - Command ID, e.g. "adjust.exposure"
+/// @param params_json - JSON string params, e.g. '{"amount":0.3}'
+/// @returns JSON string result
+#[wasm_bindgen]
+pub fn execute_command(id: &str, params_json: &str) -> Result<String, String> {
+    let params: Value = serde_json::from_str(params_json)
+        .map_err(|e| format!("Invalid JSON params: {e}"))?;
+    match execute_and_repaint(id, params) {
+        Ok(result) => Ok(result.to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Trigger UI repaint.
+#[wasm_bindgen]
+pub fn request_repaint() {
+    trigger_repaint();
+}
+RUSTEOF
+          
+          echo "Patch applied successfully!"
+          echo ""
+          echo "=== Verifying patch ==="
+          grep -n "execute_command\|has_session\|request_repaint\|SESSION\|REPAINT" $WEB_RS | head -20
+
+      - name: Build WASM with Trunk
+        working-directory: apps/photocraft-web
+        run: |
+          echo "Building PhotoCraft WASM..."
+          trunk build --release
+          echo ""
+          echo "=== Build artifacts ==="
+          ls -la target/release/*.wasm target/release/*.js 2>/dev/null
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: photocraft-wasm
+          path: |
+            apps/photocraft-web/target/release/photocraft_web_bg.wasm
+            apps/photocraft-web/target/release/photocraft-web-boot-*.js
+            apps/photocraft-web/target/release/photocraft_web_bg.wasm.br
+          if-no-files-found: error
+
+      - name: Copy to deploy repo
+        if: github.repository == 'xiaobubuya/photocraft'
+        run: |
+          echo "=== Copying artifacts to deploy repo ==="
+          
+          # Checkout deploy repo
+          git clone https://github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
+          cd ../deploy-repo
+          
+          # Copy WASM files
+          cp ../photocraft/apps/photocraft-web/target/release/photocraft_web_bg.wasm photocraft/
+          cp ../photocraft/apps/photocraft-web/target/release/photocraft-web-boot-*.js photocraft/
+          cp ../photocraft/apps/photocraft-web/target/release/photocraft_web_bg.wasm.br photocraft/ 2>/dev/null || true
+          
+          # Commit and push
+          git add .
+          git commit -m "chore: update PhotoCraft WASM with AI Bridge ($GITHUB_RUN_NUMBER)"
+          git push
+          
+          echo "=== Artifacts deployed! ==="

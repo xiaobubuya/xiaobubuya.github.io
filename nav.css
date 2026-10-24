@@ -1,4 +1,4 @@
-/* ================================================================
+﻿/* ================================================================
    nav.css —— 全局导航的样式（桌面顶栏 / 手机底部 tab）
    ----------------------------------------------------------------
    和 nav.js 配套。分两部分：
@@ -7,8 +7,8 @@
 
    配色：沿用 styles.css 的变量（--bg / --ink / --accent / --line），
    所以明暗主题只要在那套变量上覆盖，导航自动跟着走。
-   ⚠️ 修图页是**暗色**的，它的 theme 变量跟主站不是一套（见 studio.css）。
-   那里用 `.studio-page` 前缀覆盖几个关键变量即可，不要复制整段样式 ——
+   ⚠️ 修图页是**暗色**的，它的 theme 变量跟主站不是一套。
+   那里用 
    复制就意味着以后改一处要改两处。
 
    ⚠️ 底部 tab 与沉浸态：
@@ -172,9 +172,9 @@
    ----------------------------------------------------------------
    两套页面布局，两种让位方式，**都靠这一个类**（body.has-nav）：
      · 普通文档流（index 的照片流）：给 body 加上方内边距
-     · flex 柱状 + height:100dvh（studio / album 编辑器 / 阅读器）：
+     · flex 柱状 + height:100dvh（album 编辑器 / 阅读器）：
        dvh 本身就要减掉导航高度，所以覆盖那些页面的 height
-   ⚠️ 为什么写在这里而不是去改 studio.css / album.css：
+   ⚠️ 为什么写在这里而不是去改 album.css：
    那几个文件是**各页面自己的**样式，导航的让位规则属于导航层。
    写在这里以后加页面就不用再想"要给导航留多少"。
    ⚠️ padding 与 height 都要算上 env(safe-area-inset-*)，否则
@@ -198,13 +198,13 @@ body.has-nav > .app { padding-top: var(--nav-h); }
 
 /* flex 柱状布局：dvh 减掉导航高度，让内部 flex:1 自己收缩 */
 @media (min-width: 900px) {
-  body.has-nav.studio-page { height: calc(100dvh - var(--nav-h)); }
+  
   body.has-nav .edit-view { height: calc(100dvh - var(--nav-h)); }
   body.has-nav .read-view { height: calc(100dvh - var(--nav-h)); }
 }
 /* 手机上顶栏不显示，只有底部 tab：改减底部高度 */
 @media (max-width: 899px) {
-  body.has-nav.studio-page {
+  
     height: calc(100dvh - var(--nav-bottom-h) - env(safe-area-inset-bottom, 0px));
   }
   body.has-nav .edit-view,
@@ -319,16 +319,16 @@ body.nav-mode-brand .nav-top-inner { justify-content: flex-start; }
 .nav-sheet-item.danger { color: var(--danger, #c0563f); }
 
 /* ---------------- 修图页（暗色） ----------------
-   ⚠️ 只覆盖变量，不复制上面的规则。studio.css 里 --sbg/--sink 是那套
+   ⚠️ 只覆盖变量，不复制上面的规则。那套
    暗色变量名，这里把它们映射到 nav 用的通用名上。 */
-.studio-page {
+
   --surface: #1c1c20;
   --ink: #f0eeec;
   --ink-2: #a8a29c;
   --line: rgba(255, 255, 255, .10);
   --accent: #d8b48c;
 }
-.studio-page .nav-top {
+
   backdrop-filter: none;
   background: #17171a;
   border-bottom-color: rgba(255, 255, 255, .08);

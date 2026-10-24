@@ -1,12 +1,12 @@
 /**
- * AI Chat Widget — 悬浮聊天组件
- * 嵌入 PhotoCraft / LightCraft 编辑器页面
+ * AI Chat Widget — 悬浮聊天组件 (Plan B: Browser Execution)
+ * 嵌入 Studio / PhotoCraft / LightCraft 编辑器页面
+ *
+ * Plan B 核心思想：AI 只负责解析指令生成调整参数，
+ * 浏览器端直接通过 window.Studio.setValue() 执行，
+ * 不需要上传图片到服务器，不需要 CLI 处理。
  *
  * Usage: <script src="/ai-widget.js"></script>
- *
- * Integration:
- * - PhotoCraft: window.photocraft.getImage() / setImage()
- * - LightCraft: window.lightcraft.getImage() / setImage()
  */
 (function() {
   'use strict';
@@ -14,25 +14,30 @@
   // Use Cloudflare Tunnel URL for HTTPS WebSocket support
   // This avoids mixed content blocking on GitHub Pages (HTTPS)
   const TUNNEL_URL = 'https://shops-voip-storage-click.trycloudflare.com';
-  
+
   const API_BASE = TUNNEL_URL;
   const WS_URL = TUNNEL_URL.replace('https:', 'wss:') + '/ws?key=bubu';
   const API_KEY = 'bubu';
 
   // ── State ──
   let ws = null;
-  let currentImage = null;
   let currentTaskId = null;
   let isProcessing = false;
   let currentTool = 'photocraft';
   let panelOpen = false;
   let reconnectTimer = null;
   let reconnectAttempts = 0;
-  let editorType = null; // 'photocraft' | 'lightcraft' | null
+  let editorType = null; // 'studio' | 'photocraft' | 'lightcraft' | null
+  let activeCommands = []; // Currently active adjustment commands
   const MAX_RECONNECT = 10;
 
   // ── Editor Integration ──
   function detectEditor() {
+    if (window.Studio && window.Studio.setValue) {
+      editorType = 'studio';
+      currentTool = 'photocraft';
+      return 'Studio 修图';
+    }
     if (window.photocraft && window.photocraft.hasImage) {
       editorType = 'photocraft';
       currentTool = 'photocraft';
@@ -46,114 +51,290 @@
     return null;
   }
 
-  async function getEditorImage() {
-    if (editorType === 'photocraft' && window.photocraft.getImage) {
-      return window.photocraft.getImage();
-    }
-    if (editorType === 'lightcraft' && window.lightcraft.getImage) {
-      return window.lightcraft.getImage();
-    }
-    return null;
+  /**
+   * Check if PhotoCraft AI Bridge is available (new API after Rust patch).
+   * When available, window.execute_command() can drive the full PhotoCraft engine.
+   */
+  function hasPhotoCraftAIBridge() {
+    return typeof window.execute_command === 'function' && typeof window.has_session === 'function';
   }
 
-  async function sendResultToEditor(resultUrl) {
-    if (!editorType) return false;
-    
-    try {
-      // Download result image
-      const res = await fetch(resultUrl);
-      const blob = await res.blob();
-      const reader = new FileReader();
-      
-      return new Promise((resolve) => {
-        reader.onload = async () => {
-          const dataUrl = reader.result;
-          if (editorType === 'photocraft' && window.photocraft.setImage) {
-            try {
-              await window.photocraft.setImage(dataUrl);
-              resolve(true);
-            } catch (e) {
-              console.warn('[AI Widget] Failed to set image in PhotoCraft:', e);
-              resolve(false);
-            }
-          } else if (editorType === 'lightcraft' && window.lightcraft.setImage) {
-            try {
-              await window.lightcraft.setImage(dataUrl);
-              resolve(true);
-            } catch (e) {
-              console.warn('[AI Widget] Failed to set image in LightCraft:', e);
-              resolve(false);
-            }
-          } else {
-            resolve(false);
-          }
-        };
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      console.warn('[AI Widget] Failed to send result to editor:', e);
-      return false;
-    }
+  /**
+   * Map Studio-style adjustment keys to PhotoCraft command IDs.
+   * Translates the 60+ Studio params to PhotoCraft's command system.
+   */
+  function mapToPhotoCraftCommand(key, value) {
+    const map = {
+      'exposure': { commandId: 'adjust.exposure', params: { amount: value } },
+      'contrast': { commandId: 'adjust.contrast', params: { amount: value } },
+      'highlights': { commandId: 'adjust.highlights', params: { amount: value } },
+      'shadows': { commandId: 'adjust.shadows', params: { amount: value } },
+      'whites': { commandId: 'adjust.whites', params: { amount: value } },
+      'blacks': { commandId: 'adjust.blacks', params: { amount: value } },
+      'temperature': { commandId: 'adjust.colorTemperature', params: { amount: value } },
+      'tint': { commandId: 'adjust.colorTint', params: { amount: value } },
+      'vibrance': { commandId: 'adjust.vibrance', params: { amount: value } },
+      'saturation': { commandId: 'adjust.saturation', params: { amount: value } },
+      'hue': { commandId: 'adjust.hue', params: { amount: value } },
+      'redHue': { commandId: 'adjust.hueSaturation.red', params: { hue: value } },
+      'orangeHue': { commandId: 'adjust.hueSaturation.orange', params: { hue: value } },
+      'yellowHue': { commandId: 'adjust.hueSaturation.yellow', params: { hue: value } },
+      'greenHue': { commandId: 'adjust.hueSaturation.green', params: { hue: value } },
+      'blueHue': { commandId: 'adjust.hueSaturation.blue', params: { hue: value } },
+      'purpleHue': { commandId: 'adjust.hueSaturation.purple', params: { hue: value } },
+      'magentaHue': { commandId: 'adjust.hueSaturation.magenta', params: { hue: value } },
+      'redSaturation': { commandId: 'adjust.hueSaturation.red', params: { saturation: value } },
+      'orangeSaturation': { commandId: 'adjust.hueSaturation.orange', params: { saturation: value } },
+      'yellowSaturation': { commandId: 'adjust.hueSaturation.yellow', params: { saturation: value } },
+      'greenSaturation': { commandId: 'adjust.hueSaturation.green', params: { saturation: value } },
+      'blueSaturation': { commandId: 'adjust.hueSaturation.blue', params: { saturation: value } },
+      'purpleSaturation': { commandId: 'adjust.hueSaturation.purple', params: { saturation: value } },
+      'magentaSaturation': { commandId: 'adjust.hueSaturation.magenta', params: { saturation: value } },
+      'redLightness': { commandId: 'adjust.hueSaturation.red', params: { lightness: value } },
+      'orangeLightness': { commandId: 'adjust.hueSaturation.orange', params: { lightness: value } },
+      'yellowLightness': { commandId: 'adjust.hueSaturation.yellow', params: { lightness: value } },
+      'greenLightness': { commandId: 'adjust.hueSaturation.green', params: { lightness: value } },
+      'blueLightness': { commandId: 'adjust.hueSaturation.blue', params: { lightness: value } },
+      'purpleLightness': { commandId: 'adjust.hueSaturation.purple', params: { lightness: value } },
+      'magentaLightness': { commandId: 'adjust.hueSaturation.magenta', params: { lightness: value } },
+      'splitShadowsHue': { commandId: 'adjust.splitToning', params: { shadowsHue: value } },
+      'splitShadowsSaturation': { commandId: 'adjust.splitToning', params: { shadowsSaturation: value } },
+      'splitHighlightsHue': { commandId: 'adjust.splitToning', params: { highlightsHue: value } },
+      'splitHighlightsSaturation': { commandId: 'adjust.splitToning', params: { highlightsSaturation: value } },
+      'splitBalance': { commandId: 'adjust.splitToning', params: { balance: value } },
+      'clarity': { commandId: 'adjust.clarity', params: { amount: value } },
+      'dehaze': { commandId: 'adjust.dehaze', params: { amount: value } },
+      'vignetteAmount': { commandId: 'adjust.vignette', params: { amount: value } },
+      'vignetteFeather': { commandId: 'adjust.vignette', params: { feather: value } },
+      'vignetteMidpoint': { commandId: 'adjust.vignette', params: { midpoint: value } },
+      'grainAmount': { commandId: 'adjust.grain', params: { amount: value } },
+      'grainScale': { commandId: 'adjust.grain', params: { scale: value } },
+      'grainRoughness': { commandId: 'adjust.grain', params: { roughness: value } },
+      'sharpening': { commandId: 'adjust.sharpening', params: { amount: value } },
+      'sharpeningRadius': { commandId: 'adjust.sharpening', params: { radius: value } },
+      'sharpeningThreshold': { commandId: 'adjust.sharpening', params: { threshold: value } },
+    };
+    return map[key] || null;
   }
 
-  async function autoLoadEditorImage() {
-    if (!editorType) return;
-    
-    // 获取编辑器图片并压缩
-    const compressedImage = await compressEditorImage();
-    if (!compressedImage) {
-      addMsg('system', '⚠️ 无法从编辑器获取图片，请手动上传');
-      return;
+  /**
+   * Execute commands in PhotoCraft via AI Bridge (preferred after Rust patch).
+   */
+  async function executePhotoCraftCommands(commands) {
+    if (!hasPhotoCraftAIBridge() || !window.has_session()) return false;
+
+    let applied = 0;
+    for (const cmd of commands) {
+      if (!cmd.key || typeof cmd.value !== 'number') continue;
+      try {
+        const mapped = mapToPhotoCraftCommand(cmd.key, cmd.value);
+        if (mapped) {
+          await window.execute_command(mapped.commandId, JSON.stringify(mapped.params));
+          applied++;
+        }
+      } catch (e) {
+        console.warn('[AI Widget] PhotoCraft command failed:', cmd.key, ':', e.message);
+      }
     }
-    
-    const { blob, sizeKB } = compressedImage;
-    addMsg('system', `📷 已从 ${editorType} 获取图片 (${sizeKB}KB)，正在上传...`);
-    
-    // 创建文件并上传
-    const file = new File([blob], 'editor_image.jpg', { type: 'image/jpeg' });
-    await uploadFile(file);
+    return applied > 0;
   }
-  
-  // 压缩编辑器图片（JPEG 格式，限制最大尺寸 1920px，质量 85%）
-  async function compressEditorImage() {
-    const canvas = editorType === 'photocraft' 
+
+  /**
+   * Execute adjustment commands in the editor.
+   * Tries PhotoCraft AI Bridge first, then Studio (legacy), then Canvas 2D fallback.
+   */
+  async function executeEditorCommands(commands) {
+    // 1. Try PhotoCraft AI Bridge (new API)
+    if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
+      return await executePhotoCraftCommands(commands);
+    }
+
+    // 2. Try Studio (legacy, will be removed)
+    if (window.Studio && window.Studio.setValue) {
+      return executeStudioCommands(commands);
+    }
+
+    // 3. Fallback: Canvas 2D
+    return executeCanvasCommands(commands);
+  }
+
+  /**
+   * Execute adjustment commands directly in the Studio editor.
+   * This is the Plan B core: commands run in-browser, no server processing.
+   */
+  function executeStudioCommands(commands) {
+    if (!window.Studio || !window.Studio.setValue) return false;
+
+    let applied = 0;
+    for (const cmd of commands) {
+      if (!cmd.key || typeof cmd.value !== 'number') continue;
+      try {
+        window.Studio.setValue(cmd.key, cmd.value);
+        applied++;
+      } catch (e) {
+        console.warn('[AI Widget] Failed to apply', cmd.key, ':', e.message);
+      }
+    }
+    return applied > 0;
+  }
+
+  /**
+   * Fallback: execute commands via Canvas 2D for PhotoCraft/LightCraft.
+   * Limited but provides basic functionality when Studio is not available.
+   */
+  function executeCanvasCommands(commands) {
+    const canvas = editorType === 'photocraft'
       ? document.getElementById('photocraft_canvas')
       : document.getElementById('lightcraft_canvas');
-    
-    if (!canvas) return null;
-    
+
+    if (!canvas) return false;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    let imageData;
     try {
-      // 限制最大分辨率（AI 处理不需要超过 1920px）
-      const MAX_SIZE = 1920;
-      let width = canvas.width;
-      let height = canvas.height;
-      
-      if (width > MAX_SIZE || height > MAX_SIZE) {
-        const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-      
-      // 创建压缩用的 canvas
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      const ctx = tempCanvas.getContext('2d');
-      ctx.drawImage(canvas, 0, 0, width, height);
-      
-      // 使用 JPEG 格式，质量 85%（比 PNG 小很多）
-      const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.85);
-      const blob = await (await fetch(dataUrl)).blob();
-      
-      return {
-        blob: blob,
-        sizeKB: Math.round(blob.size / 1024)
-      };
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     } catch (e) {
-      console.warn('[AI Widget] Failed to compress image:', e);
-      // 如果压缩失败，返回原始图片
-      return { blob: null, sizeKB: 0 };
+      console.warn('[AI Widget] Canvas tainted, cannot process:', e.message);
+      return false;
     }
+
+    const data = imageData.data;
+    let applied = 0;
+
+    for (const cmd of commands) {
+      if (!cmd.key || typeof cmd.value !== 'number') continue;
+
+      const v = cmd.value;
+      const key = cmd.key;
+
+      if (key === 'uExposure') {
+        // Adjust brightness
+        const factor = Math.pow(2, v);
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = Math.min(255, Math.max(0, data[i] * factor));
+          data[i + 1] = Math.min(255, Math.max(0, data[i + 1] * factor));
+          data[i + 2] = Math.min(255, Math.max(0, data[i + 2] * factor));
+        }
+        applied++;
+      } else if (key === 'uContrast') {
+        const factor = (1 + v) * 255 / (255 - v * 255);
+        for (let i = 0; i < data.length; i += 4) {
+          for (let c = 0; c < 3; c++) {
+            data[i + c] = Math.min(255, Math.max(0, (data[i + c] - 128) * factor + 128));
+          }
+        }
+        applied++;
+      } else if (key === 'uSaturation') {
+        // v=0: normal, v=-1: grayscale, v=1: double saturation
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+          data[i] = Math.min(255, Math.max(0, gray + (r - gray) * (1 + v)));
+          data[i + 1] = Math.min(255, Math.max(0, gray + (g - gray) * (1 + v)));
+          data[i + 2] = Math.min(255, Math.max(0, gray + (b - gray) * (1 + v)));
+        }
+        applied++;
+      } else if (key === 'uTemp') {
+        // Color temperature: positive=warm, negative=cool
+        const w = Math.abs(v) * 50;
+        if (v > 0) {
+          for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.min(255, data[i] + w);           // R up
+            data[i + 2] = Math.max(0, data[i + 2] - w * 0.5); // B down
+          }
+        } else {
+          for (let i = 0; i < data.length; i += 4) {
+            data[i + 2] = Math.min(255, data[i + 2] + w);     // B up
+            data[i] = Math.max(0, data[i] - w * 0.5);           // R down
+          }
+        }
+        applied++;
+      } else if (key === 'uHighlights') {
+        const factor = v > 0 ? (1 + v * 0.5) : (1 - v * 0.3);
+        for (let i = 0; i < data.length; i += 4) {
+          for (let c = 0; c < 3; c++) {
+            if (data[i + c] > 150) {
+              data[i + c] = Math.min(255, Math.max(0, data[i + c] * factor));
+            }
+          }
+        }
+        applied++;
+      } else if (key === 'uShadows') {
+        const factor = v > 0 ? (1 + v * 0.5) : (1 - v * 0.3);
+        for (let i = 0; i < data.length; i += 4) {
+          for (let c = 0; c < 3; c++) {
+            if (data[i + c] < 100) {
+              data[i + c] = Math.min(255, Math.max(0, data[i + c] * factor));
+            }
+          }
+        }
+        applied++;
+      } else if (key === 'uTint') {
+        const w = v * 40;
+        for (let i = 0; i < data.length; i += 4) {
+          // Positive=toward magenta (less green), negative=toward green
+          data[i + 1] = Math.min(255, Math.max(0, data[i + 1] - w));
+        }
+        applied++;
+      } else if (key === 'uVignette') {
+        // Vignette effect
+        const cx = canvas.width / 2, cy = canvas.height / 2;
+        const maxDist = Math.sqrt(cx * cx + cy * cy);
+        const strength = Math.abs(v) * 0.5;
+        for (let y = 0; y < canvas.height; y++) {
+          for (let x = 0; x < canvas.width; x++) {
+            const idx = (y * canvas.width + x) * 4;
+            const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+            const factor = v > 0
+              ? 1 - strength * Math.pow(dist / maxDist, 2)
+              : 1 + Math.abs(v) * strength * Math.pow(dist / maxDist, 2) * 0.3;
+            data[idx] = Math.min(255, Math.max(0, data[idx] * factor));
+            data[idx + 1] = Math.min(255, Math.max(0, data[idx + 1] * factor));
+            data[idx + 2] = Math.min(255, Math.max(0, data[idx + 2] * factor));
+          }
+        }
+        applied++;
+      } else if (key === 'uGrain') {
+        // Add film grain
+        const amount = v * 30;
+        for (let i = 0; i < data.length; i += 4) {
+          const noise = (Math.random() - 0.5) * amount;
+          data[i] = Math.min(255, Math.max(0, data[i] + noise));
+          data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+          data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+        }
+        applied++;
+      }
+    }
+
+    if (applied > 0) {
+      ctx.putImageData(imageData, 0, 0);
+    }
+    return applied > 0;
+  }
+
+  /**
+   * Execute commands — routes to the appropriate execution method.
+   * Tries PhotoCraft AI Bridge first, then Studio (legacy), then Canvas 2D fallback.
+   */
+  async function executeCommands(commands) {
+    // 1. Try PhotoCraft AI Bridge (new API)
+    if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
+      return await executePhotoCraftCommands(commands);
+    }
+
+    // 2. Try Studio (legacy, will be removed)
+    if (editorType === 'studio') {
+      return executeStudioCommands(commands);
+    }
+
+    // 3. Fallback: Canvas 2D
+    if (editorType === 'photocraft' || editorType === 'lightcraft') {
+      return executeCanvasCommands(commands);
+    }
+    return false;
   }
 
   // ── CSS ──
@@ -175,29 +356,24 @@
     #ai-widget-close{background:none;border:none;color:#888;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px}
     #ai-widget-close:hover{color:#fff;background:#333}
 
-    #ai-widget-toolbar{display:flex;gap:4px;padding:8px 14px;border-bottom:1px solid #333;flex-shrink:0}
-    #ai-widget-tool{flex:1;border:1px solid #444;background:#16213e;color:#aaa;padding:5px 8px;font-size:11px;border-radius:6px;cursor:pointer;transition:all .2s;text-align:center}
-    #ai-widget-tool.active{background:#2d8cf0;color:#fff;border-color:#2d8cf0}
-    #ai-widget-tool:hover:not(.active){background:#222;color:#fff}
-    #ai-widget-tool:disabled{opacity:.5;cursor:not-allowed}
-
-    #ai-widget-messages{flex:1;overflow-y:auto;padding:12px;min-height:200px;max-height:300px}
+    #ai-widget-messages{flex:1;overflow-y:auto;padding:12px;min-height:200px;max-height:350px}
     #ai-widget-messages .msg{max-width:85%;margin-bottom:10px;padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;word-wrap:break-word}
     #ai-widget-messages .msg.user{margin-left:auto;background:#2d8cf0;color:#fff}
     #ai-widget-messages .msg.bot{background:#252540;color:#ddd}
     #ai-widget-messages .msg.system{background:transparent;color:#888;font-size:11px;text-align:center;max-width:100%}
     #ai-widget-messages .msg.error{background:#3d1515;color:#e74c3c}
-    #ai-widget-messages .msg img{max-width:100%;border-radius:6px;margin-top:6px;cursor:pointer}
+    #ai-widget-messages .msg .cmd-list{margin-top:6px;font-size:11px;color:#aaa;background:#1a1a2e;padding:6px 8px;border-radius:6px;max-height:80px;overflow-y:auto}
+    #ai-widget-messages .msg .cmd-item{margin-bottom:2px}
+    #ai-widget-messages .msg .cmd-item .key{color:#56b6c2;font-weight:600}
+    #ai-widget-messages .msg .cmd-item .val{color:#98c379}
 
     #ai-widget-input{display:flex;gap:6px;padding:10px 14px;border-top:1px solid #333;flex-shrink:0}
     #ai-widget-input input{flex:1;background:#16213e;border:1px solid #444;color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;outline:none}
     #ai-widget-input input:focus{border-color:#2d8cf0}
     #ai-widget-input button{background:#2d8cf0;color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
     #ai-widget-input button:disabled{opacity:.5;cursor:not-allowed}
-    #ai-widget-input .upload-btn{background:#333;padding:8px 10px}
-    #ai-widget-input .upload-btn:hover{background:#444}
-
-    #ai-upload-hint{padding:4px 14px;font-size:10px;color:#666;text-align:center;flex-shrink:0}
+    #ai-widget-input .clear-btn{background:#333;padding:8px 10px}
+    #ai-widget-input .clear-btn:hover{background:#444}
   `;
 
   // ── Inject CSS ──
@@ -220,20 +396,14 @@
       <span class="status"><span class="dot" id="ai-widget-dot"></span><span id="ai-widget-status-text">连接中</span></span>
       <button id="ai-widget-close" title="关闭">✕</button>
     </div>
-    <div id="ai-widget-toolbar">
-      <button class="tool active" data-tool="photocraft" id="ai-tool-photo">🎨 调色</button>
-      <button class="tool" data-tool="lightcraft" id="ai-tool-light">🖼️ 修图</button>
-    </div>
     <div id="ai-widget-messages">
-      <div class="msg system">上传图片，用自然语言描述你想要的效果</div>
+      <div class="msg system">直接描述你想要的效果，AI 会在编辑器中实时调整</div>
     </div>
     <div id="ai-widget-input">
-      <input type="file" id="ai-file-input" accept="image/*" style="display:none">
-      <button class="upload-btn" id="ai-upload-btn" title="上传图片">📷</button>
-      <input type="text" id="ai-msg-input" placeholder="输入修图指令..." disabled>
+      <input type="text" id="ai-msg-input" placeholder="描述修图需求..." disabled>
+      <button id="ai-clear-btn" class="clear-btn" title="重置调整" disabled>⟲</button>
       <button id="ai-send-btn" disabled>发送</button>
     </div>
-    <div id="ai-upload-hint"></div>
   `;
   document.body.appendChild(panel);
 
@@ -243,11 +413,7 @@
   const messagesEl = document.getElementById('ai-widget-messages');
   const msgInput = document.getElementById('ai-msg-input');
   const sendBtn = document.getElementById('ai-send-btn');
-  const fileInput = document.getElementById('ai-file-input');
-  const uploadBtn = document.getElementById('ai-upload-btn');
-  const uploadHint = document.getElementById('ai-upload-hint');
-  const toolPhoto = document.getElementById('ai-tool-photo');
-  const toolLight = document.getElementById('ai-tool-light');
+  const clearBtn = document.getElementById('ai-clear-btn');
 
   // ── WebSocket ──
   function connectWS() {
@@ -258,6 +424,9 @@
     ws.onopen = () => {
       setStatus('online', '已连接');
       reconnectAttempts = 0;
+      msgInput.disabled = false;
+      sendBtn.disabled = false;
+      clearBtn.disabled = false;
       console.log('[AI Widget] WebSocket connected');
     };
 
@@ -302,37 +471,30 @@
     el.innerHTML = html;
     messagesEl.appendChild(el);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+    return el;
+  }
+
+  function formatCommandsHtml(commands) {
+    if (!commands || !commands.length) return '';
+    let html = '<div class="cmd-list">';
+    for (const cmd of commands) {
+      html += '<div class="cmd-item"><span class="key">' + cmd.key + '</span> = <span class="val">' + cmd.value.toFixed(2) + '</span></div>';
+    }
+    html += '</div>';
+    return html;
   }
 
   function handleServerMsg(msg) {
     switch (msg.type) {
       case 'ack':
-        addMsg('system', '📨 任务已提交: ' + msg.taskId);
+        addMsg('system', '📨 任务已提交');
         break;
-
       case 'thinking':
         addMsg('bot', '🤔 ' + msg.thought);
         break;
-
       case 'command':
-        addMsg('bot', '🎯 <b>' + msg.explanation + '</b><br><code style="font-size:11px;color:#888">' + msg.command + '</code>');
+        addMsg('bot', '🎯 ' + msg.explanation + formatCommandsHtml(msg.commands));
         break;
-
-      case 'progress':
-        addMsg('system', '⏳ ' + msg.message);
-        break;
-
-      case 'log':
-        // Ignore logs for cleaner UI
-        break;
-
-      case 'done':
-        isProcessing = false;
-        sendBtn.disabled = false;
-        addMsg('bot', '✅ 处理完成!');
-        showResult(msg.resultUrl, msg.commands);
-        break;
-
       case 'error':
         isProcessing = false;
         sendBtn.disabled = false;
@@ -341,57 +503,9 @@
     }
   }
 
-  // ── Upload ──
-  uploadBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', (e) => {
-    if (e.target.files[0]) uploadFile(e.target.files[0]);
-    e.target.value = '';
-  });
-
-  // Drag & drop on panel
-  panel.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.borderColor = '#2d8cf0'; });
-  panel.addEventListener('dragleave', () => { panel.style.borderColor = '#333'; });
-  panel.addEventListener('drop', (e) => {
-    e.preventDefault();
-    panel.style.borderColor = '#333';
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) uploadFile(file);
-  });
-
-  async function uploadFile(file) {
-    addMsg('system', '📤 正在上传 ' + file.name + ' (' + (file.size / 1024).toFixed(1) + 'KB)...');
-    uploadBtn.disabled = true;
-
-    try {
-      const form = new FormData();
-      form.append('image', file);
-
-      const res = await fetch(API_BASE + '/api/upload', {
-        method: 'POST',
-        headers: { 'X-API-Key': API_KEY },
-        body: form,
-      });
-      const data = await res.json();
-
-      if (data.filename) {
-        currentImage = { filename: data.filename, originalName: file.name, size: data.size };
-        msgInput.disabled = false;
-        sendBtn.disabled = false;
-        uploadHint.textContent = '📷 ' + data.filename;
-        addMsg('system', '✅ 已上传: ' + data.filename);
-      } else {
-        addMsg('error', '❌ 上传失败: ' + (data.error || '未知错误'));
-      }
-    } catch (err) {
-      addMsg('error', '❌ 上传失败: ' + err.message);
-    } finally {
-      uploadBtn.disabled = false;
-    }
-  }
-
-  // ── Send ──
+  // ── Send (Plan B: parse only, no upload) ──
   async function send() {
-    if (!currentImage || isProcessing) return;
+    if (isProcessing) return;
     const text = msgInput.value.trim();
     if (!text) return;
 
@@ -400,33 +514,39 @@
     sendBtn.disabled = true;
     addMsg('user', text);
 
-    // WebSocket
-    if (ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({
-        type: 'chat',
-        message: text,
-        imageFilename: currentImage.filename,
-        tool: currentTool,
-      }));
-    }
-
-    // HTTP fallback
     try {
-      const res = await fetch(API_BASE + '/api/chat', {
+      // Plan B: call /api/parse, no image upload needed
+      addMsg('system', '🤖 AI 正在分析指令...');
+
+      const res = await fetch(API_BASE + '/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
-        body: JSON.stringify({
-          message: text,
-          imageFilename: currentImage.filename,
-          tool: currentTool,
-        }),
+        body: JSON.stringify({ message: text, tool: currentTool }),
       });
+
       const data = await res.json();
-      if (data.taskId) {
-        currentTaskId = data.taskId;
+
+      if (data.commands && data.commands.length > 0) {
+        activeCommands = data.commands;
+        addMsg('bot', '🎯 ' + (data.explanation || '已生成调整参数') + formatCommandsHtml(data.commands));
+
+        // Execute commands in browser
+        addMsg('system', '⚡ 正在应用到编辑器...');
+
+        const success = executeCommands(data.commands);
+        if (success) {
+          addMsg('system', '✅ 已应用到编辑器，可撤销');
+        } else {
+          addMsg('error', '⚠️ 无法应用到当前编辑器，请截图保存参数');
+        }
+      } else {
+        addMsg('error', '❌ ' + (data.explanation || '无法解析指令，请尝试更具体的描述'));
       }
     } catch (err) {
-      console.error('[AI Widget] HTTP chat failed:', err);
+      addMsg('error', '❌ 请求失败: ' + err.message);
+    } finally {
+      isProcessing = false;
+      sendBtn.disabled = false;
     }
   }
 
@@ -438,69 +558,54 @@
     }
   });
 
-  // ── Tool selector ──
-  document.querySelectorAll('#ai-widget-toolbar .tool').forEach(button => {
-    button.addEventListener('click', () => {
-      document.querySelectorAll('#ai-widget-toolbar .tool').forEach(b => b.classList.remove('active'));
-      button.classList.add('active');
-      currentTool = button.dataset.tool;
-      msgInput.placeholder = currentTool === 'lightcraft'
-        ? '输入修图指令，如：磨皮、提亮、去雾...'
-        : '输入调色指令，如：调亮一点，加暖色调...';
-    });
-  });
+  // ── Reset button ──
+  clearBtn.addEventListener('click', () => {
+    if (!activeCommands.length) return;
 
-  // ── Result preview ──
-  async function showResult(url, commands) {
-    let fullUrl = url;
-    if (url.startsWith('/')) fullUrl = API_BASE + url;
-    
-    let html = '<div>✅ 处理完成</div><img src="' + fullUrl + '" onclick="window.open(this.src)">';
-    if (commands && commands.length) {
-      html += '<div style="font-size:11px;color:#888;margin-top:4px">🎯 ' + commands.join(', ') + '</div>';
+    if (editorType === 'studio' && window.Studio.resetAll) {
+      window.Studio.resetAll();
+      addMsg('system', '⟲ 已重置所有调整');
+    } else {
+      // Restore original image if available
+      addMsg('system', '⟲ 请手动重置编辑器');
     }
-    
-    // Auto-apply to editor if in editor mode
-    if (editorType) {
-      html += '<div style="margin-top:8px;font-size:11px;color:#2ecc71">📥 正在自动应用到编辑器...</div>';
-    }
-    
-    html += '<div style="font-size:11px;color:#888;margin-top:4px">📥 右键图片可保存</div>';
-    addMsg('bot', html);
-    
-    // Auto-apply to editor
-    if (editorType) {
-      const success = await sendResultToEditor(fullUrl);
-      if (success) {
-        addMsg('system', '✅ 已自动应用到编辑器');
-      } else {
-        addMsg('error', '❌ 自动应用失败，请手动下载');
-      }
-    }
-  }
+    activeCommands = [];
+  });
 
   // ── Panel toggle ──
   btn.addEventListener('click', async () => {
     panelOpen = !panelOpen;
     panel.classList.toggle('open', panelOpen);
     btn.innerHTML = panelOpen ? '✕' : '✨<span class="badge">!</span>';
-    
+
     if (panelOpen) {
       connectWS();
-      
-      // Detect editor and auto-load image
+
+      // Detect editor
       const editorName = detectEditor();
       if (editorName) {
-        addMsg('system', '🔗 已连接 ' + editorName + ' 编辑器');
-        
-        // Disable tool switching when in editor (auto-detected)
-        toolPhoto.disabled = true;
-        toolLight.disabled = true;
-        
-        // Auto-load image from editor
-        await autoLoadEditorImage();
+        // Check for PhotoCraft AI Bridge (new API)
+        if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
+          addMsg('system', '🔗 已连接 PhotoCraft AI Bridge（新 API）');
+        } else if (editorType === 'photocraft') {
+          addMsg('system', '🔗 已连接 PhotoCraft（Canvas 降级模式）');
+        } else {
+          addMsg('system', '🔗 已连接 ' + editorName + ' 编辑器');
+        }
+
+        // Enable input
+        msgInput.disabled = false;
+        sendBtn.disabled = false;
+        clearBtn.disabled = false;
+
+        // Show appropriate placeholder
+        msgInput.placeholder = editorType === 'studio'
+          ? '描述修图需求，如：调亮一点、加暖色调...'
+          : '描述修图需求...';
+      } else {
+        addMsg('system', '⚠️ 未检测到编辑器，请先打开 PhotoCraft 或 LightCraft 页面');
       }
-      
+
       msgInput.focus();
     }
   });
@@ -511,6 +616,10 @@
     btn.innerHTML = '✨<span class="badge">!</span>';
   });
 
+  // ── Drag & drop ──
+  panel.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.borderColor = '#2d8cf0'; });
+  panel.addEventListener('dragleave', () => { panel.style.borderColor = '#333'; });
+
   // ── Init ──
   // Detect editor on load
   const detectedEditor = detectEditor();
@@ -519,6 +628,6 @@
     const badge = btn.querySelector('.badge');
     if (badge) badge.classList.add('show');
   }
-  
+
   connectWS();
 })();

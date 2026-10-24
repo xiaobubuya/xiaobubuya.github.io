@@ -1,8 +1,8 @@
-/* ================================================================
+﻿/* ================================================================
    nav.js —— 全局导航（桌面顶栏 / 手机底部 tab）
    ----------------------------------------------------------------
    为什么单独抽一个文件（而不是每个页面各写一遍）：
-   现在四个页面（index / album / studio / share）各自有一套顶栏，
+   现在三个页面（index / album / share）各自有一套顶栏，
    相册和修图还藏在 index 的「⋯」菜单里 —— 用户的原话是
    "现在相册和修图藏得太深了"。四个页面各写一遍导航，迟早不一致，
    而且新加一个页面就要记得再抄一遍。所以收敛成**一份**：
@@ -38,7 +38,7 @@
     { key: 'photo',    href: '/photocraft/',   label: '调色', icon: '🎨', desc: 'PhotoCraft 专业调色' },
     { key: 'light',    href: '/lightcraft/',   label: '修图', icon: '🖼', desc: 'LightCraft 照片管理' },
     { key: 'ai',       href: '/ai-agent.html', label: 'AI 修图', icon: '✨', desc: '自然语言 AI 修图' }
-    /* { key: 'studio', href: '/studio.html',   label: '修图', icon: '✦', desc: '精修单张照片' }  —— 隐藏：已用 PhotoCraft/LightCraft 替代 */
+    
   ];
 
   var SETTINGS_LABEL = '设置';
@@ -64,7 +64,7 @@
     var file = p.split('/').pop() || '';
     if (p === '/' || file === 'index.html') return 'photos';
     if (/^\/?album/.test(p) || file === 'album.html') return 'album';
-    if (/^\/?studio/.test(p) || file === 'studio.html') return null; /* studio 已隐藏 */
+    
     if (/^\/?photocraft/.test(p)) return 'photo';
     if (/^\/?lightcraft/.test(p)) return 'light';
     if (/^\/?ai-agent/.test(p) || file === 'ai-agent.html') return 'ai';
@@ -223,7 +223,7 @@
        过去只会被弹回来，体验很怪）。
        判据：页面有登录层（#login）且它当前是可见的 → 先藏起来，
        等 app.js 登录成功调 AlbumNav.show(true)。
-       没有登录层的页面（album/studio/share）直接显示。 */
+       没有登录层的页面（album/share）直接显示。 */
     var login = document.getElementById('login');
     var needLogin = !!(login && !login.hidden);
     show(!needLogin);
