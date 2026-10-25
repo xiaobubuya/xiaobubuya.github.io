@@ -55,16 +55,16 @@ jobs:
           trunk build --release
           echo ""
           echo "=== Build artifacts ==="
-          ls -la target/release/*.wasm target/release/*.js 2>/dev/null
+          ls -la dist/ 2>/dev/null || ls -la target/release/*.wasm target/release/*.js 2>/dev/null || true
 
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:
           name: photocraft-wasm
           path: |
-            apps/photocraft-web/target/release/photocraft_web_bg.wasm
-            apps/photocraft-web/target/release/photocraft-web-boot-*.js
-            apps/photocraft-web/target/release/photocraft_web_bg.wasm.br
+            apps/photocraft-web/dist/photocraft_web_bg.wasm
+            apps/photocraft-web/dist/photocraft-web-boot-*.js
+            apps/photocraft-web/dist/photocraft_web_bg.wasm.br
           if-no-files-found: error
 
       - name: Deploy to GitHub Pages
@@ -76,9 +76,9 @@ jobs:
           
           mkdir -p photocraft
           
-          cp ../photocraft/apps/photocraft-web/target/release/photocraft_web_bg.wasm photocraft/
-          cp ../photocraft/apps/photocraft-web/target/release/photocraft-web-boot-*.js photocraft/
-          cp ../photocraft/apps/photocraft-web/target/release/photocraft_web_bg.wasm.br photocraft/ 2>/dev/null || true
+          cp ../photocraft/apps/photocraft-web/dist/photocraft_web_bg.wasm photocraft/
+          cp ../photocraft/apps/photocraft-web/dist/photocraft-web-boot-*.js photocraft/
+          cp ../photocraft/apps/photocraft-web/dist/photocraft_web_bg.wasm.br photocraft/ 2>/dev/null || true
           
           git add .
           git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})"
