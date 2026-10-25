@@ -130,7 +130,7 @@ pub async fn execute_command(id: &str, params_json: &str) -> Result<String, Stri
     let done = Arc::new(AtomicBool::new(false));
     let result = Arc::new(Mutex::new(None));
 
-    COMMAND_QUEUE.lock().unwrap_or_else(|e| e.into()).push((
+    COMMAND_QUEUE.lock().unwrap_or_else(|e| e.into_inner()).push((
         id.to_string(),
         params,
         done.clone(),
@@ -142,7 +142,7 @@ pub async fn execute_command(id: &str, params_json: &str) -> Result<String, Stri
         if done.load(Ordering::Relaxed) {
             let r = result
                 .lock()
-                .unwrap_or_else(|e| e.into())
+                .unwrap_or_else(|e| e.into_inner())
                 .take()
                 .unwrap_or(Err("command produced no result".into()));
             Poll::Ready(r.map(|v| v.to_string()))
@@ -156,7 +156,7 @@ pub async fn execute_command(id: &str, params_json: &str) -> Result<String, Stri
 /// Trigger a UI repaint so eframe re-render the canvas.
 #[wasm_bindgen]
 pub fn request_repaint() {
-    if let Some(cb) = REPAINT.lock().unwrap_or_else(|e| e.into()).as_ref() {
+    if let Some(cb) = REPAINT.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
         cb();
     }
 }
@@ -174,7 +174,7 @@ const repaintRegistration = `
                     let ctx_clone = cc.egui_ctx.clone();
                     {
                         let cb: Box<dyn Fn()> = Box::new(move || ctx_clone.request_repaint());
-                        *REPAINT.lock().unwrap_or_else(|e| e.into()) = Some(cb);
+                        *REPAINT.lock().unwrap_or_else(|e| e.into_inner()) = Some(cb);
                     }
                     SESSION_READY.store(true, Ordering::Relaxed);`;
 code = anchorReplace(code, setThemeAnchor, repaintRegistration, 'repaint registration');
@@ -189,12 +189,12 @@ if (!code.includes(logicAnchor)) {
 const queueProcessing = `        // AI Bridge: process queued commands from JS
         {
             let commands = {
-                let mut queue = COMMAND_QUEUE.lock().unwrap_or_else(|e| e.into());
+                let mut queue = COMMAND_QUEUE.lock().unwrap_or_else(|e| e.into_inner());
                 std::mem::take(&mut *queue)
             };
             for (id, params, done, result) in commands {
                 let r = self.app.session.execute(&id, params).map_err(|e| e.to_string());
-                *result.lock().unwrap_or_else(|e| e.into()) = Some(r);
+                *result.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
                 done.store(true, Ordering::Relaxed);
             }
         }
