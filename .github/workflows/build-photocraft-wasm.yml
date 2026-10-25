@@ -112,7 +112,20 @@ jobs:
           
           mkdir -p photocraft
           
+          # Remove old built files to avoid stale hashed filenames
+          rm -f photocraft/index.html
+          rm -f photocraft/photocraft-web-boot-*.js
+          rm -f photocraft/photocraft-web-boot-*.wasm
+          rm -f photocraft/photocraft-web-boot-*.wasm.br
+          rm -f photocraft/photocraft-web-*.js
+          rm -f photocraft/photocraft-web-*.wasm
+          rm -f photocraft/photocraft-web-*.wasm.br
+          
+          # Copy new build output
           cp "$GITHUB_WORKSPACE/$WASM_PATH"/* photocraft/
+          
+          echo "=== Deployed files ==="
+          ls -la photocraft/
           
           git add .
           git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})" || exit 0
