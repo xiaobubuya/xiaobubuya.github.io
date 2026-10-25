@@ -145,7 +145,51 @@ jobs:
           find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm' -exec cp {} photocraft/ \;
           find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm.br' -exec cp {} photocraft/ \;
           find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.html' -exec cp {} photocraft/ \;
-          
+
+          # ── Inject AI floating ball into index.html ──
+          echo "=== Injecting AI floating ball ==="
+
+          # 1) Copy ai-widget.js from deploy repo to photocraft/
+          cp ../../deploy-repo/ai-widget.js photocraft/ai-widget.js
+          echo "  ✓ Copied ai-widget.js"
+
+          # 2) Inject <script src="ai-widget.js"> and API bridge into index.html
+          python3 <<'PYEOF'
+import re
+
+html_path = 'photocraft/index.html'
+with open(html_path, 'r') as f:
+    html = f.read()
+
+# 2a) Inject <script src="ai-widget.js"> before </body>
+if 'ai-widget.js' not in html:
+    html = html.replace('</body>',
+        '<script src="ai-widget.js"></script>\n</body>')
+    print('  ✓ Injected <script src="ai-widget.js">')
+
+# 2b) Add API bridge: expose wasmBindings exports on window
+# Trunk stores bindings as window.wasmBindings; ai-widget.js expects
+# window.execute_command / window.has_session / window.request_repaint directly.
+bridge_script = '''
+// AI Bridge API shim: expose Trunk bindings on window for ai-widget.js
+if (window.wasmBindings) {
+    const b = window.wasmBindings;
+    if (typeof b.execute_command === 'function') window.execute_command = b.execute_command;
+    if (typeof b.has_session === 'function') window.has_session = b.has_session;
+    if (typeof b.request_repaint === 'function') window.request_repaint = b.request_repaint;
+}
+'''
+if 'window.execute_command = b.execute_command' not in html:
+    html = html.replace(
+        'window.wasmBindings = bindings;',
+        'window.wasmBindings = bindings;' + bridge_script
+    )
+    print('  ✓ Injected API bridge (window.execute_command, etc.)')
+
+with open(html_path, 'w') as f:
+    f.write(html)
+PYEOF
+
           echo "=== Deployed files ==="
           ls -la photocraft/
           
