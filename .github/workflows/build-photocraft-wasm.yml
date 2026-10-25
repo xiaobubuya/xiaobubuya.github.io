@@ -46,7 +46,7 @@ jobs:
           node deploy-repo/apply-bridge.js
           echo ""
           echo "=== Verifying modifications ==="
-          grep -n "execute_command\|has_session\|request_repaint\|SESSION\|REPAINT\|store_session" apps/photocraft-web/src/web.rs
+          grep -n "execute_command\|has_session\|request_repaint\|COMMAND_QUEUE\|SESSION_READY\|self\.app\.session\.execute" apps/photocraft-web/src/web.rs
 
       - name: Build WASM with Trunk
         working-directory: apps/photocraft-web
