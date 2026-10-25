@@ -67,10 +67,16 @@ jobs:
           UPDATE_PC=false
           UPDATE_LC=false
 
-          # 版本号对不上 —— 或者产物根本不在（上次解包静默失败留下的坑）—— 都要重新部署。
-          if [ "$PC" != "none" ] && { [ "$LOCAL_PC" != "$PC" ] || [ ! -f photocraft/index.html ]; }; then
-            UPDATE_PC=true
-          fi
+          # PhotoCraft 不从上游 release 部署。上游包里没有 AI Bridge ——
+          # v0.16.0 的 wasm 只有 98KB，而打过 patch 的自建构建是 26.4MB，
+          # execute_command / has_session 这些导出只存在于自建构建里。
+          # 从上游解包要 rm -rf 整个 photocraft/，会顺带删掉 ai-widget.js
+          # 和 index.html 里的 AI Bridge shim，悬浮球就变成点了没反应的死按钮。
+          # d325301（run 40205503804，2026-10-25）就是这么把悬浮球删掉的。
+          # 升级 PhotoCraft 请跑 build-photocraft-wasm.yml（它从打过 patch 的
+          # 源码构建，并在构建后注入 ai-widget.js）。
+          echo "::notice::PhotoCraft 由 build-photocraft-wasm.yml 从打过 AI Bridge 的源码构建，本工作流不部署"
+          UPDATE_PC=false
           if [ "$LC" != "none" ] && { [ "$LOCAL_LC" != "$LC" ] || [ ! -f lightcraft/index.html ]; }; then
             UPDATE_LC=true
           fi
@@ -161,9 +167,50 @@ jobs:
           rm -rf "$EXTRACT"
 
           test -f lightcraft/index.html || { echo "::error::lightcraft/index.html 缺失，解包失败"; exit 1; }
+
+          # 上游包里没有 <script src="../ai-widget.js"> 标签，必须在部署后注入，
+          # 否则解包 = 悬浮球消失（d325301 删掉的 88 行里有它）。
+          # 标签指向仓库根的 ai-widget.js，该文件一直存在，从 /lightcraft/
+          # 用 ../ 解析正好命中；用同目录相对路径，任何静态主机上都成立。
+          # 先剥掉产物里可能残留的旧标签，保证这里是唯一注入点、只留一个标签。
+          sed -i 's|<script[^>]*src="[^"]*ai-widget\.js"[^>]*>[[:space:]]*<\/script>||g' lightcraft/index.html
+          sed -i 's#</body>#<script src="../ai-widget.js"></script>\n</body>#' lightcraft/index.html \
+            || { echo "::error::ai-widget.js script 标签注入失败"; exit 1; }
+          grep -q 'src="../ai-widget.js"' lightcraft/index.html \
+            || { echo "::error::ai-widget.js 没注入进 lightcraft/index.html"; exit 1; }
+          test -f ai-widget.js || { echo "::error::根目录 ai-widget.js 缺失"; exit 1; }
+          echo "  Injected <script src=\"../ai-widget.js\"></script>"
           echo "Deployed LightCraft $TAG → lightcraft/ ($(find lightcraft -type f | wc -l) files)"
 
-      # ─── 8. 更新版本追踪文件并提交 ─────────────────────────
+      # ─── 8. 上线前硬校验：悬浮球必须在位 ─────────────────────
+      # 解包上游包会 rm -rf 目录，ai-widget.js 和 AI Bridge 都是「默认删除项」，
+      # 而下面一步 git add -f 会把删除也提交上去，流水线照样绿。
+      # 所以提交之前必须逐项确认，缺一样就拦住。
+      - name: Verify AI widget present
+        if: steps.decide.outputs.needs_update == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f ai-widget.js || { echo "::error::根目录 ai-widget.js 缺失"; exit 1; }
+
+          grep -q 'src="ai-widget.js"' photocraft/index.html \
+            || { echo "::error::photocraft/index.html 缺 ai-widget.js script 标签"; exit 1; }
+
+          grep -q 'src="\.\./ai-widget.js"' lightcraft/index.html \
+            || { echo "::error::lightcraft/index.html 缺 ai-widget.js script 标签"; exit 1; }
+
+          # 标签在不等于能用：AI Bridge 导出只存在于打过 patch 的自建构建里。
+          # 上游 release 的 wasm 只有 98KB，没有 has_session，
+          # 届时 hasPhotoCraftAIBridge() 恒为 false，悬浮球是死按钮。
+          grep -q 'window\.photocraft' photocraft/index.html \
+            || { echo "::error::photocraft/index.html 缺 AI Bridge shim（window.photocraft）"; exit 1; }
+          grep -q 'has_session' photocraft/photocraft-web-*.js \
+            || { echo "::error::Photocraft 构建里没有 has_session，AI Bridge 不在，改用自建构建"; exit 1; }
+
+          echo "✅ AI widget + AI Bridge in place"
+
+      # ─── 9. 更新版本追踪文件并提交 ─────────────────────────
       - name: Commit changes
         if: steps.decide.outputs.needs_update == 'true'
         shell: bash
@@ -173,19 +220,22 @@ jobs:
           PC="${{ steps.versions.outputs.pc_tag }}"
           LC="${{ steps.versions.outputs.lc_tag }}"
 
-          # 记录本次部署的版本
+          # 记录当前实际在用的版本。
+          # PhotoCraft 不在此部署，保留它自己的版本号 —— 写成上游 tag 会谎报
+          # v0.16.0 已上线，而线上其实是打过 patch 的自建构建。
           # 格式: photocraft=<tag>,lightcraft=<tag>
-          echo "photocraft=$PC,lightcraft=$LC" > .web-versions.json
+          LOCAL_PC=$(grep -o 'photocraft=[^,]*' .web-versions.json 2>/dev/null | cut -d= -f2 || true)
+          echo "photocraft=$LOCAL_PC,lightcraft=$LC" > .web-versions.json
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f .web-versions.json photocraft/ lightcraft/
-          git commit -m "deploy: update web apps (photocraft=$PC lightcraft=$LC)" || echo "Nothing to commit"
+          git add -f .web-versions.json lightcraft/
+          git commit -m "deploy: update web apps (photocraft=$LOCAL_PC lightcraft=$LC)" || echo "Nothing to commit"
           git push
 
-          echo "✅ Deployed: PhotoCraft $PC, LightCraft $LC"
+          echo "✅ Deployed: LightCraft $LC (PhotoCraft untouched, still $LOCAL_PC)"
 
-      # ─── 9. 不需要更新时跳过 ───────────────────────────────
+      # ─── 10. 不需要更新时跳过 ──────────────────────────────
       - name: Already up to date
         if: steps.decide.outputs.needs_update == 'false'
         run: echo "✅ Already up to date (photocraft=${{ steps.versions.outputs.pc_tag }}, lightcraft=${{ steps.versions.outputs.lc_tag }})"
