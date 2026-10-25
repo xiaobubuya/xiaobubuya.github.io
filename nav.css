@@ -1,4 +1,4 @@
-﻿/* ================================================================
+/* ================================================================
    nav.css —— 全局导航的样式（桌面顶栏 / 手机底部 tab）
    ----------------------------------------------------------------
    和 nav.js 配套。分两部分：
@@ -204,9 +204,6 @@ body.has-nav > .app { padding-top: var(--nav-h); }
 }
 /* 手机上顶栏不显示，只有底部 tab：改减底部高度 */
 @media (max-width: 899px) {
-  
-    height: calc(100dvh - var(--nav-bottom-h) - env(safe-area-inset-bottom, 0px));
-  }
   body.has-nav .edit-view,
   body.has-nav .read-view {
     height: calc(100dvh - var(--nav-bottom-h) - env(safe-area-inset-bottom, 0px));
