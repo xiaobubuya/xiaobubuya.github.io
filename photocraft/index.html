@@ -6,98 +6,15 @@
   <title>PhotoCraft</title>
   
 <script type="module">
-import init, * as bindings from './photocraft-web-boot-26446d01b24367d7.js';
-const wasm = await init({ module_or_path: './photocraft-web-boot-26446d01b24367d7_bg.wasm' });
+import init, * as bindings from './photocraft-web-e693319804da66c3.js';
+const wasm = await init({ module_or_path: './photocraft-web-3074dac37f862afe_bg.wasm' });
 
-// Expose WASM bindings for external use
+
 window.wasmBindings = bindings;
-window.wasm = wasm;
 
-// PhotoCraft integration API for AI Widget
-window.photocraft = {
-  /**
-   * Check if there's an image loaded in the editor
-   */
-  hasImage: () => {
-    const canvas = document.getElementById('photocraft_canvas');
-    if (!canvas) return false;
-    try {
-      canvas.toDataURL();
-      return true;
-    } catch (e) {
-      return false;
-    }
-  },
-
-  /**
-   * Get the current image as Base64 data URL
-   */
-  getImage: () => {
-    const canvas = document.getElementById('photocraft_canvas');
-    if (!canvas) return null;
-    try {
-      return canvas.toDataURL('image/png');
-    } catch (e) {
-      console.warn('[PhotoCraft] Cannot get image (canvas may be tainted):', e);
-      return null;
-    }
-  },
-
-  /**
-   * Get the current image as Blob
-   */
-  getImageBlob: () => {
-    return new Promise((resolve) => {
-      const canvas = document.getElementById('photocraft_canvas');
-      if (!canvas) {
-        resolve(null);
-        return;
-      }
-      canvas.toBlob((blob) => {
-        resolve(blob);
-      }, 'image/png');
-    });
-  },
-
-  /**
-   * Set image from data URL
-   */
-  setImage: (dataUrl) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.getElementById('photocraft_canvas');
-        if (!canvas) {
-          reject(new Error('Canvas not found'));
-          return;
-        }
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        resolve(true);
-      };
-      img.onerror = (e) => reject(e);
-      img.src = dataUrl;
-    });
-  },
-
-  /**
-   * Get editor info
-   */
-  getInfo: () => ({
-    type: 'photocraft',
-    hasImage: window.photocraft.hasImage(),
-    canvasSize: {
-      width: document.getElementById('photocraft_canvas')?.width || 0,
-      height: document.getElementById('photocraft_canvas')?.height || 0
-    }
-  })
-};
-
-console.log('[PhotoCraft] Integration API loaded:', window.photocraft);
 
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
 </script>
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #262626; }
@@ -111,7 +28,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
     #photocraft_stalled { color: #8c8c8c; visibility: hidden; animation: photocraft-stalled 0s 20s forwards; }
     @keyframes photocraft-stalled { to { visibility: visible; } }
   </style>
-<link rel="modulepreload" href="./photocraft-web-boot-26446d01b24367d7.js" crossorigin="anonymous" integrity="sha384-bKNnM95MRur848JPCyB/pG9dfkBVcH3w1J1C+AW0Hy0Ygn7rngPZZAzEyEDKlqaC"><link rel="preload" href="./photocraft-web-boot-26446d01b24367d7_bg.wasm" crossorigin="anonymous" integrity="sha384-BxN71AMCpagQ2yPY2ZFYrsdGH1EUDfmpzDgMgG6Ph4MguQVL7wALe0AC7mRcHT7a" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./photocraft-web-e693319804da66c3.js" crossorigin="anonymous" integrity="sha384-+awyVf250+6SaAcMPDFc/wbX2eLtEnu+4P8RWXamVIXlFuUmR0hw+98B8QlTVzIR"><link rel="preload" href="./photocraft-web-3074dac37f862afe_bg.wasm" crossorigin="anonymous" integrity="sha384-oh+jKec7Ie6UAfvJQLwZTqppvWJjGsw3k9UBqfw9Zck71jYNk7y12Ja0+TtxFwMS" as="fetch" type="application/wasm"></head>
 <body>
   <canvas id="photocraft_canvas"></canvas>
   <div id="photocraft_loading">
@@ -120,6 +37,5 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
       download or come from a different version of this page. <a href="">Reload</a> to try again; the browser
       console lists what failed.</p>
   </div>
-  <script src="../ai-widget.js"></script>
 </body>
 </html>
