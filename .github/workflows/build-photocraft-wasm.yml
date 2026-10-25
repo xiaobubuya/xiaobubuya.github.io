@@ -92,6 +92,8 @@ jobs:
           if-no-files-found: error
 
       - name: Deploy to GitHub Pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== Deploying to xiaobubuya.github.io ==="
           
@@ -101,7 +103,8 @@ jobs:
           echo "WASM output at: $GITHUB_WORKSPACE/$WASM_PATH"
           ls -la "$GITHUB_WORKSPACE/$WASM_PATH/"
           
-          git clone https://github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
+          # Clone with authentication
+          git clone https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
           cd ../deploy-repo
           
           git config --global user.email "actions@github.com"
