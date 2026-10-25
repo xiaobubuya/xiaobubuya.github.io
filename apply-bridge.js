@@ -28,6 +28,7 @@ const path = require('path');
 
 const CARGO_TOML = 'apps/photocraft-web/Cargo.toml';
 const WEB_RS = 'apps/photocraft-web/src/web.rs';
+const INDEX_HTML = 'apps/photocraft-web/index.html';
 
 function fatal(msg) {
   console.error(`❌ ${msg}`);
@@ -206,10 +207,85 @@ console.log('  ↳ Added command queue processing in WebShell::logic()');
 fs.writeFileSync(webPath, code);
 console.log('✅ AI Bridge modifications applied successfully!');
 
-// ── 3. Verification ──────────────────────────────────────────────────────────
+// ── 3. Patch index.html (Trunk template) ────────────────────────────────────
+// Trunk overwrites index.html on every build, so manual edits to the deployed
+// output are futile. Instead, we inject the bridge shim and ai-widget.js into
+// the Trunk TEMPLATE — every build picks it up automatically.
+//
+// What we inject:
+//   A) A module script (after the Trunk-generated script) that exposes
+//      window.execute_command / has_session / request_repaint from
+//      window.wasmBindings, and sets up window.photocraft.hasImage()
+//      via has_session().
+//   B) <script src="../ai-widget.js"> before </body>.
+//
+// Timing: the bridge shim is a module script, so it runs after Trunk's
+// generated script (which sets window.wasmBindings). ai-widget.js is a
+// regular script that runs immediately — its init check may not see the
+// bridge yet (badge won't light up), but every panel open re-checks.
+
+const indexPath = INDEX_HTML;
+const htmlContent = fs.readFileSync(indexPath, 'utf8');
+
+// 3a) Inject bridge shim after the Trunk <link data-trunk> tag.
+//     The link is replaced by Trunk with a generated module script; our
+//     separate module script runs after it.
+const trunkLinkAnchor = 'data-trunk';
+if (!htmlContent.includes(trunkLinkAnchor)) {
+  fatal('index.html anchor "data-trunk" not found');
+}
+const bridgeShim = `
+<script type="module">
+// AI Bridge API shim: expose Trunk wasm-bindgen exports on window
+if (window.wasmBindings) {
+    const b = window.wasmBindings;
+    if (typeof b.execute_command === 'function') window.execute_command = b.execute_command;
+    if (typeof b.has_session === 'function') window.has_session = b.has_session;
+    if (typeof b.request_repaint === 'function') window.request_repaint = b.request_repaint;
+    // window.photocraft.hasImage() — ai-widget.js uses this to detect the editor.
+    // Use has_session() (bridge API) instead of the old canvas.toDataURL() hack.
+    window.photocraft = {
+        hasImage: () => { try { return b.has_session ? b.has_session() : false; } catch(e) { return false; } },
+        apiVersion: 'bridge'
+    };
+}
+</script>`;
+
+if (!htmlContent.includes('AI Bridge API shim')) {
+  // Insert after the line containing data-trunk
+  const trunkIdx = htmlContent.indexOf(trunkLinkAnchor);
+  const lineEnd = htmlContent.indexOf('\n', trunkIdx);
+  if (lineEnd === -1) {
+    fatal('index.html: could not find end of data-trunk line');
+  }
+  const patchedHtml = htmlContent.slice(0, lineEnd + 1) + bridgeShim + '\n' + htmlContent.slice(lineEnd + 1);
+  fs.writeFileSync(indexPath, patchedHtml);
+  console.log('  ↳ Injected AI Bridge API shim into index.html');
+} else {
+  console.log('  ↳ index.html already has AI Bridge API shim');
+}
+
+// 3b) Inject <script src="../ai-widget.js"> before </body>
+const reloadedHtml = fs.readFileSync(indexPath, 'utf8');
+if (!reloadedHtml.includes('ai-widget.js')) {
+  const bodyClose = '</body>';
+  if (!reloadedHtml.includes(bodyClose)) {
+    fatal('index.html anchor "</body>" not found');
+  }
+  const widgetScript = '<script defer src="../ai-widget.js"></script>\n';
+  const patchedHtml2 = reloadedHtml.replace(bodyClose, widgetScript + bodyClose);
+  fs.writeFileSync(indexPath, patchedHtml2);
+  console.log('  ↳ Injected <script src="../ai-widget.js"> into index.html');
+} else {
+  console.log('  ↳ index.html already has ai-widget.js reference');
+}
+
+// ── 4. Verification ──────────────────────────────────────────────────────────
 
 const finalCode = fs.readFileSync(webPath, 'utf8');
+const finalHtml = fs.readFileSync(indexPath, 'utf8');
 const checks = [
+  // web.rs checks
   ['serde_json::Value', 'serde_json import'],
   ['futures_util::future::poll_fn', 'poll_fn import'],
   ['COMMAND_QUEUE', 'command queue global'],
@@ -218,11 +294,20 @@ const checks = [
   ['execute_command', 'execute_command() binding'],
   ['request_repaint', 'request_repaint() binding'],
   ['self.app.session.execute', 'queue processing in logic()'],
+  // index.html checks
+  ['AI Bridge API shim', 'bridge shim script in index.html'],
+  ['ai-widget.js', 'ai-widget.js script tag in index.html'],
 ];
 
 let allOk = true;
 for (const [pattern, label] of checks) {
-  if (!finalCode.includes(pattern)) {
+  // web.rs checks
+  if (!finalCode.includes(pattern) && label !== 'bridge shim script in index.html' && label !== 'ai-widget.js script tag in index.html') {
+    console.error(`  ❌ MISSING: ${label} ("${pattern}")`);
+    allOk = false;
+  }
+  // index.html checks
+  if (!finalHtml.includes(pattern) && (label === 'bridge shim script in index.html' || label === 'ai-widget.js script tag in index.html')) {
     console.error(`  ❌ MISSING: ${label} ("${pattern}")`);
     allOk = false;
   }
