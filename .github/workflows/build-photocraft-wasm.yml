@@ -57,30 +57,56 @@ jobs:
           trunk build --release
           echo ""
           echo "=== Build artifacts ==="
-          ls -la ../../dist/web/ 2>/dev/null || ls -la dist/ 2>/dev/null || true
+          find . -name '*.wasm' -o -name '*.wasm.br' -o -name '*boot*' -o -name '*.js.br' 2>/dev/null
+          echo ""
+          echo "=== Checking dist/web ==="
+          ls -la ../../dist/web/ 2>/dev/null || echo "dist/web not found at ../../"
+          ls -la dist/ 2>/dev/null || echo "dist/ not found at apps/photocraft-web/"
+
+      - name: Find output directory
+        id: find_output
+        run: |
+          echo "=== Locating build output ==="
+          WASM_DIR=$(find . -path '*/dist/web' -type d | head -1)
+          if [ -z "$WASM_DIR" ]; then
+            WASM_DIR=$(find . -name '*.wasm' -exec dirname {} \; | head -1)
+          fi
+          if [ -z "$WASM_DIR" ]; then
+            echo "ERROR: Could not find WASM output directory"
+            find . -name '*.wasm' -o -name '*.wasm.br' 2>/dev/null
+            exit 1
+          fi
+          echo "WASM_DIR=$WASM_DIR" >> $GITHUB_OUTPUT
+          echo "Found output at: $WASM_DIR"
+          ls -la "$WASM_DIR"
+          echo ""
+          echo "=== All output files ==="
+          find . -name '*.wasm' -o -name '*.wasm.br' -o -name '*boot*' -o -name '*.js.br' 2>/dev/null
 
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:
           name: photocraft-wasm
           path: |
-            dist/web/photocraft_web_bg.wasm
-            dist/web/photocraft-web-boot-*.js
-            dist/web/photocraft_web_bg.wasm.br
+            ${{ steps.find_output.outputs.WASM_DIR }}/*
           if-no-files-found: error
 
       - name: Deploy to GitHub Pages
         run: |
           echo "=== Deploying to xiaobubuya.github.io ==="
           
+          WASM_DIR="${{ steps.find_output.outputs.WASM_DIR }}"
+          # WASM_DIR is relative (e.g. ./dist/web), strip leading ./
+          WASM_PATH="${WASM_DIR#./}"
+          echo "WASM output at: $GITHUB_WORKSPACE/$WASM_PATH"
+          ls -la "$GITHUB_WORKSPACE/$WASM_PATH/"
+          
           git clone https://github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
           cd ../deploy-repo
           
           mkdir -p photocraft
           
-          cp ../dist/web/photocraft_web_bg.wasm photocraft/
-          cp ../dist/web/photocraft-web-boot-*.js photocraft/
-          cp ../dist/web/photocraft_web_bg.wasm.br photocraft/ 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE/$WASM_PATH"/* photocraft/
           
           git add .
           git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})"
