@@ -254,40 +254,30 @@ window.addEventListener('TrunkApplicationStarted', () => {
 </script>`;
 
 // Check if the NEW shim (with TrunkApplicationStarted listener) is present.
-// If only the OLD shim (synchronous check) is present, replace it.
+// If not, inject it (removing any old shim first).
 const hasNewShim = htmlContent.includes('TrunkApplicationStarted');
-const hasOldShim = htmlContent.includes('AI Bridge API shim') && !hasNewShim;
 
 if (!hasNewShim) {
-  if (hasOldShim) {
-    // Remove the old shim first
-    const oldShimStart = htmlContent.indexOf('<script type="module">\n// AI Bridge API shim');
-    if (oldShimStart !== -1) {
-      const oldShimEnd = htmlContent.indexOf('</script>', oldShimStart) + '</script>'.length;
-      if (oldShimEnd !== -1) {
-        const cleanedHtml = htmlContent.slice(0, oldShimStart) + htmlContent.slice(oldShimEnd);
-        // Now inject the new shim
-        const trunkIdx = cleanedHtml.indexOf(trunkLinkAnchor);
-        const lineEnd = cleanedHtml.indexOf('\n', trunkIdx);
-        if (lineEnd === -1) {
-          fatal('index.html: could not find end of data-trunk line');
-        }
-        const patchedHtml = cleanedHtml.slice(0, lineEnd + 1) + bridgeShim + '\n' + cleanedHtml.slice(lineEnd + 1);
-        fs.writeFileSync(indexPath, patchedHtml);
-        console.log('  ↳ Replaced old AI Bridge API shim with new event-listener version');
-      }
+  // Remove old shim if present (check for the exact script tag start)
+  let workingHtml = htmlContent;
+  const oldShimStart = workingHtml.indexOf('<script type="module">\n// AI Bridge API shim');
+  if (oldShimStart !== -1) {
+    const oldShimEnd = workingHtml.indexOf('</script>', oldShimStart) + '</script>'.length;
+    if (oldShimEnd !== -1) {
+      workingHtml = workingHtml.slice(0, oldShimStart) + workingHtml.slice(oldShimEnd);
+      console.log('  ↳ Removed old AI Bridge API shim');
     }
-  } else {
-    // No shim present, inject new one
-    const trunkIdx = htmlContent.indexOf(trunkLinkAnchor);
-    const lineEnd = htmlContent.indexOf('\n', trunkIdx);
-    if (lineEnd === -1) {
-      fatal('index.html: could not find end of data-trunk line');
-    }
-    const patchedHtml = htmlContent.slice(0, lineEnd + 1) + bridgeShim + '\n' + htmlContent.slice(lineEnd + 1);
-    fs.writeFileSync(indexPath, patchedHtml);
-    console.log('  ↳ Injected AI Bridge API shim into index.html');
   }
+  
+  // Inject the new shim after the data-trunk link
+  const trunkIdx = workingHtml.indexOf(trunkLinkAnchor);
+  const lineEnd = workingHtml.indexOf('\n', trunkIdx);
+  if (lineEnd === -1) {
+    fatal('index.html: could not find end of data-trunk line');
+  }
+  const patchedHtml = workingHtml.slice(0, lineEnd + 1) + bridgeShim + '\n' + workingHtml.slice(lineEnd + 1);
+  fs.writeFileSync(indexPath, patchedHtml);
+  console.log('  ↳ Injected new AI Bridge API shim (TrunkApplicationStarted listener)');
 } else {
   console.log('  ↳ index.html already has new AI Bridge API shim (TrunkApplicationStarted)');
 }
