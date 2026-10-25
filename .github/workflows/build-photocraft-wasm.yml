@@ -146,6 +146,20 @@ jobs:
           find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm.br' -exec cp {} photocraft/ \;
           find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.html' -exec cp {} photocraft/ \;
 
+          # ── Inject ai-widget.js (post-build) ──
+          # Trunk 会静默丢弃引用不到文件的 <script src>：模板里写 ../ai-widget.js
+          # （相对模板即 apps/ai-widget.js，不存在），所以构建产物里那个标签不见了。
+          # 因此必须在构建之后注入，并且用同目录相对路径。
+          # 用 sed 而不是 python heredoc —— heredoc 体若缩进为 0 会终止 YAML 的 run: | block，
+          # 整个 workflow 解析失败（run #28 就是那样挂的）。
+          cp ai-widget.js photocraft/ai-widget.js || { echo "::error::ai-widget.js 复制失败"; exit 1; }
+          if ! grep -q 'ai-widget\.js' photocraft/index.html; then
+            sed -i 's#</body>#<script src="ai-widget.js"></script>\n</body>#' photocraft/index.html \
+              || { echo "::error::ai-widget.js script 标签注入失败"; exit 1; }
+          fi
+          grep -q 'ai-widget\.js' photocraft/index.html || { echo "::error::ai-widget.js 没注入进 index.html"; exit 1; }
+          echo "  Copied ai-widget.js + injected <script> tag"
+
           echo "=== Deployed files ==="
           ls -la photocraft/
           
