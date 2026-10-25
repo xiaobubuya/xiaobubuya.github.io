@@ -149,8 +149,25 @@ jobs:
           echo "=== Deployed files ==="
           ls -la photocraft/
           
-          git add .
-          git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})" || exit 0
+          # photocraft/ 在 .gitignore 里，普通 git add . 会静默丢掉新产物
+          git add -f photocraft/
+          
+          # 没有变更 = 部署失败，不许静默成功
+          if git diff --cached --quiet; then
+            echo "::error::nothing staged — 新产物没进 index，检查 .gitignore 是否忽略 photocraft/"
+            git status --short --ignored -- photocraft/
+            exit 1
+          fi
+          
+          # 上线前硬校验：index.html 引用的每个本地文件都必须已被 git 跟踪
+          missing=0
+          for f in $(grep -oE "\./[A-Za-z0-9_.-]+\.(js|wasm)" photocraft/index.html | sed 's#^\./##' | sort -u); do
+            git ls-files --error-unmatch "photocraft/$f" >/dev/null 2>&1 \
+              || { echo "::error::index.html 引用了未提交的文件: $f"; missing=1; }
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          
+          git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})"
           git push
           
           echo "=== Artifacts deployed successfully! ==="
