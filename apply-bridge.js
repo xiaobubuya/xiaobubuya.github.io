@@ -111,7 +111,7 @@ const globalsBlock = `
 type PendingCommand = (String, Value, Arc<AtomicBool>, Arc<Mutex<Option<Result<Value, String>>>>);
 
 static COMMAND_QUEUE: Mutex<Vec<PendingCommand>> = Mutex::new(Vec::new());
-static REPAINT: Mutex<Option<Box<dyn Fn()>>> = Mutex::new(None);
+static REPAINT: Mutex<Option<Box<dyn Fn() + Send>>> = Mutex::new(None);
 static SESSION_READY: AtomicBool = AtomicBool::new(false);
 
 /// Check if the PhotoCraft session is ready for command execution.
@@ -174,7 +174,7 @@ const repaintRegistration = `
                     // AI Bridge: register repaint callback + mark session ready
                     let ctx_clone = cc.egui_ctx.clone();
                     {
-                        let cb: Box<dyn Fn()> = Box::new(move || ctx_clone.request_repaint());
+                        let cb: Box<dyn Fn() + Send> = Box::new(move || ctx_clone.request_repaint());
                         *REPAINT.lock().unwrap_or_else(|e| e.into_inner()) = Some(cb);
                     }
                     SESSION_READY.store(true, Ordering::Relaxed);`;
