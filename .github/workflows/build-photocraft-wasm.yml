@@ -97,11 +97,30 @@ jobs:
         run: |
           echo "=== Deploying to xiaobubuya.github.io ==="
           
-          WASM_DIR="${{ steps.find_output.outputs.WASM_DIR }}"
-          # WASM_DIR is relative (e.g. ./dist/web), strip leading ./
-          WASM_PATH="${WASM_DIR#./}"
-          echo "WASM output at: $GITHUB_WORKSPACE/$WASM_PATH"
-          ls -la "$GITHUB_WORKSPACE/$WASM_PATH/"
+          # Locate build output - Trunk outputs to apps/photocraft-web/dist/web/
+          WASM_DIR=""
+          if [ -d "apps/photocraft-web/dist/web" ]; then
+            WASM_DIR="apps/photocraft-web/dist/web"
+          elif [ -d "dist/web" ]; then
+            WASM_DIR="dist/web"
+          else
+            # Try to find any dist/web directory
+            WASM_DIR=$(find . -path '*/dist/web' -type d | head -1)
+            if [ -n "$WASM_DIR" ]; then
+              WASM_DIR="${WASM_DIR#./}"
+            fi
+          fi
+          
+          if [ -z "$WASM_DIR" ]; then
+            echo "ERROR: Could not find WASM output directory"
+            find . -name '*.wasm' -o -name '*.wasm.br' 2>/dev/null
+            exit 1
+          fi
+          
+          echo "WASM output at: $GITHUB_WORKSPACE/$WASM_DIR"
+          ls -la "$GITHUB_WORKSPACE/$WASM_DIR/"
+          echo "Files to copy:"
+          ls -la "$GITHUB_WORKSPACE/$WASM_DIR/"*.js "$GITHUB_WORKSPACE/$WASM_DIR/"*.wasm "$GITHUB_WORKSPACE/$WASM_DIR/"*.html 2>/dev/null || echo "No matching files found"
           
           # Clone with authentication
           git clone https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
@@ -122,7 +141,10 @@ jobs:
           rm -f photocraft/photocraft-web-*.wasm.br
           
           # Copy new build output
-          cp "$GITHUB_WORKSPACE/$WASM_PATH"/* photocraft/
+          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.js photocraft/ 2>/dev/null || echo "No JS files to copy"
+          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.wasm photocraft/ 2>/dev/null || echo "No WASM files to copy"
+          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.wasm.br photocraft/ 2>/dev/null || echo "No WASM.br files to copy"
+          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.html photocraft/ 2>/dev/null || echo "No HTML files to copy"
           
           echo "=== Deployed files ==="
           ls -la photocraft/
