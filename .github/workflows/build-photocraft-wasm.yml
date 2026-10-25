@@ -97,30 +97,30 @@ jobs:
         run: |
           echo "=== Deploying to xiaobubuya.github.io ==="
           
-          # Locate build output - Trunk outputs to apps/photocraft-web/dist/web/
-          WASM_DIR=""
-          if [ -d "apps/photocraft-web/dist/web" ]; then
-            WASM_DIR="apps/photocraft-web/dist/web"
-          elif [ -d "dist/web" ]; then
-            WASM_DIR="dist/web"
-          else
-            # Try to find any dist/web directory
-            WASM_DIR=$(find . -path '*/dist/web' -type d | head -1)
-            if [ -n "$WASM_DIR" ]; then
-              WASM_DIR="${WASM_DIR#./}"
-            fi
-          fi
+          # Use step output from find_output step
+          WASM_DIR="${{ steps.find_output.outputs.WASM_DIR }}"
+          WASM_DIR="${WASM_DIR#./}"  # Strip leading ./
           
           if [ -z "$WASM_DIR" ]; then
-            echo "ERROR: Could not find WASM output directory"
+            echo "ERROR: find_output step did not produce WASM_DIR"
             find . -name '*.wasm' -o -name '*.wasm.br' 2>/dev/null
             exit 1
           fi
           
           echo "WASM output at: $GITHUB_WORKSPACE/$WASM_DIR"
           ls -la "$GITHUB_WORKSPACE/$WASM_DIR/"
-          echo "Files to copy:"
-          ls -la "$GITHUB_WORKSPACE/$WASM_DIR/"*.js "$GITHUB_WORKSPACE/$WASM_DIR/"*.wasm "$GITHUB_WORKSPACE/$WASM_DIR/"*.html 2>/dev/null || echo "No matching files found"
+          
+          # Count files to verify before copying
+          JS_COUNT=$(find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.js' | wc -l)
+          WASM_COUNT=$(find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm' | wc -l)
+          HTML_COUNT=$(find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.html' | wc -l)
+          echo "Files found: $JS_COUNT JS, $WASM_COUNT WASM, $HTML_COUNT HTML"
+          
+          if [ "$JS_COUNT" -eq 0 ] && [ "$WASM_COUNT" -eq 0 ]; then
+            echo "ERROR: No JS or WASM files found to deploy"
+            find "$GITHUB_WORKSPACE/$WASM_DIR/" -type f
+            exit 1
+          fi
           
           # Clone with authentication
           git clone https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
@@ -140,11 +140,11 @@ jobs:
           rm -f photocraft/photocraft-web-*.wasm
           rm -f photocraft/photocraft-web-*.wasm.br
           
-          # Copy new build output
-          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.js photocraft/ 2>/dev/null || echo "No JS files to copy"
-          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.wasm photocraft/ 2>/dev/null || echo "No WASM files to copy"
-          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.wasm.br photocraft/ 2>/dev/null || echo "No WASM.br files to copy"
-          cp "$GITHUB_WORKSPACE/$WASM_DIR/"*.html photocraft/ 2>/dev/null || echo "No HTML files to copy"
+          # Copy new build output using find -exec for robustness
+          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.js' -exec cp {} photocraft/ \;
+          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm' -exec cp {} photocraft/ \;
+          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm.br' -exec cp {} photocraft/ \;
+          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.html' -exec cp {} photocraft/ \;
           
           echo "=== Deployed files ==="
           ls -la photocraft/
