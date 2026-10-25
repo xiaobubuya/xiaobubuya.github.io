@@ -153,11 +153,11 @@ jobs:
           # 用 sed 而不是 python heredoc —— heredoc 体若缩进为 0 会终止 YAML 的 run: | block，
           # 整个 workflow 解析失败（run #28 就是那样挂的）。
           cp ai-widget.js photocraft/ai-widget.js || { echo "::error::ai-widget.js 复制失败"; exit 1; }
-          if ! grep -q 'ai-widget\.js' photocraft/index.html; then
+          if ! grep -q 'src="ai-widget.js"' photocraft/index.html; then
             sed -i 's#</body>#<script src="ai-widget.js"></script>\n</body>#' photocraft/index.html \
               || { echo "::error::ai-widget.js script 标签注入失败"; exit 1; }
           fi
-          grep -q 'ai-widget\.js' photocraft/index.html || { echo "::error::ai-widget.js 没注入进 index.html"; exit 1; }
+          grep -q 'src="ai-widget.js"' photocraft/index.html || { echo "::error::ai-widget.js 没注入进 index.html"; exit 1; }
           echo "  Copied ai-widget.js + injected <script> tag"
 
           echo "=== Deployed files ==="
