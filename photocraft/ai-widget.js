@@ -11,12 +11,16 @@
 (function() {
   'use strict';
 
-  // Use Cloudflare Tunnel URL for HTTPS WebSocket support
+  // Use Cloudflare Tunnel URLs for HTTPS WebSocket support
   // This avoids mixed content blocking on GitHub Pages (HTTPS)
-  const TUNNEL_URL = 'https://shops-voip-storage-click.trycloudflare.com';
+  // API server (muyaya-api) is on port 3001
+  const API_TUNNEL_URL = 'https://main-lawsuit-sewing-pregnancy.trycloudflare.com';
+  // AI Agent server is on port 3000
+  const AI_TUNNEL_URL = 'https://cancelled-heater-supporters-tier.trycloudflare.com';
 
-  const API_BASE = TUNNEL_URL;
-  const WS_URL = TUNNEL_URL.replace('https:', 'wss:') + '/ws?key=bubu';
+  const API_BASE = API_TUNNEL_URL;
+  // WebSocket connects to AI Agent server (port 3000)
+  const WS_URL = AI_TUNNEL_URL.replace('https:', 'wss:') + '/ws?key=bubu';
   const API_KEY = 'bubu';
 
   // ── State ──
