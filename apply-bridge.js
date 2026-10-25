@@ -266,8 +266,10 @@ if (!htmlContent.includes('AI Bridge API shim')) {
 }
 
 // 3b) Inject <script src="../ai-widget.js"> before </body>
+// NOTE: check for the actual script src attribute, NOT the bare string
+// 'ai-widget.js', because the bridge shim comment above also mentions it.
 const reloadedHtml = fs.readFileSync(indexPath, 'utf8');
-if (!reloadedHtml.includes('ai-widget.js')) {
+if (!reloadedHtml.includes('src="../ai-widget.js"')) {
   const bodyClose = '</body>';
   if (!reloadedHtml.includes(bodyClose)) {
     fatal('index.html anchor "</body>" not found');
@@ -296,7 +298,7 @@ const checks = [
   ['self.app.session.execute', 'queue processing in logic()'],
   // index.html checks
   ['AI Bridge API shim', 'bridge shim script in index.html'],
-  ['ai-widget.js', 'ai-widget.js script tag in index.html'],
+  ['src="../ai-widget.js"', 'ai-widget.js script tag in index.html'],
 ];
 
 let allOk = true;
