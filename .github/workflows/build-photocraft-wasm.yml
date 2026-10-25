@@ -104,12 +104,15 @@ jobs:
           git clone https://github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
           cd ../deploy-repo
           
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
           mkdir -p photocraft
           
           cp "$GITHUB_WORKSPACE/$WASM_PATH"/* photocraft/
           
           git add .
-          git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})"
+          git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})" || exit 0
           git push
           
           echo "=== Artifacts deployed successfully! ==="
