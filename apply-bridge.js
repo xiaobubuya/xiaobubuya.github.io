@@ -237,7 +237,7 @@ if (!htmlContent.includes(trunkLinkAnchor)) {
 const bridgeShim = `
 <script type="module">
 // AI Bridge API shim: expose Trunk wasm-bindgen exports on window.
-// The Trunk-generated script uses `await init()`, so wasmBindings is set
+// The Trunk-generated script uses await init(), so wasmBindings is set
 // asynchronously. Listen for TrunkApplicationStarted to guarantee order.
 window.addEventListener('TrunkApplicationStarted', () => {
     const b = window.wasmBindings;
