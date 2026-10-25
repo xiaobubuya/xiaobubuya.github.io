@@ -92,7 +92,8 @@ if (!code.includes(importAnchor)) {
 }
 const newImports = `use std::task::{Context, Poll};
 use futures_util::future::poll_fn;
-use serde_json::Value;`;
+use serde_json::Value;
+use wasm_bindgen::prelude::wasm_bindgen;`;
 code = anchorReplace(code, importAnchor, `\n${newImports}`, 'imports');
 console.log('  ↳ Added imports');
 
