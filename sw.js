@@ -18,7 +18,7 @@
 // 注：studio.html/studio.css/studio.js 已删除，2026-10 从 ASSETS 移除
 // （它们留在缓存列表里会让 SW 去请求三个必然 404 的资源）。
 // 现在 test/sw-version.test.mjs 会守住它。
-const SHELL = 'shell-v65';
+const SHELL = 'shell-v66';
 const ASSETS = [
   '/',
   '/index.html',
