@@ -253,18 +253,43 @@ window.addEventListener('TrunkApplicationStarted', () => {
 });
 </script>`;
 
-if (!htmlContent.includes('AI Bridge API shim')) {
-  // Insert after the line containing data-trunk
-  const trunkIdx = htmlContent.indexOf(trunkLinkAnchor);
-  const lineEnd = htmlContent.indexOf('\n', trunkIdx);
-  if (lineEnd === -1) {
-    fatal('index.html: could not find end of data-trunk line');
+// Check if the NEW shim (with TrunkApplicationStarted listener) is present.
+// If only the OLD shim (synchronous check) is present, replace it.
+const hasNewShim = htmlContent.includes('TrunkApplicationStarted');
+const hasOldShim = htmlContent.includes('AI Bridge API shim') && !hasNewShim;
+
+if (!hasNewShim) {
+  if (hasOldShim) {
+    // Remove the old shim first
+    const oldShimStart = htmlContent.indexOf('<script type="module">\n// AI Bridge API shim');
+    if (oldShimStart !== -1) {
+      const oldShimEnd = htmlContent.indexOf('</script>', oldShimStart) + '</script>'.length;
+      if (oldShimEnd !== -1) {
+        const cleanedHtml = htmlContent.slice(0, oldShimStart) + htmlContent.slice(oldShimEnd);
+        // Now inject the new shim
+        const trunkIdx = cleanedHtml.indexOf(trunkLinkAnchor);
+        const lineEnd = cleanedHtml.indexOf('\n', trunkIdx);
+        if (lineEnd === -1) {
+          fatal('index.html: could not find end of data-trunk line');
+        }
+        const patchedHtml = cleanedHtml.slice(0, lineEnd + 1) + bridgeShim + '\n' + cleanedHtml.slice(lineEnd + 1);
+        fs.writeFileSync(indexPath, patchedHtml);
+        console.log('  ↳ Replaced old AI Bridge API shim with new event-listener version');
+      }
+    }
+  } else {
+    // No shim present, inject new one
+    const trunkIdx = htmlContent.indexOf(trunkLinkAnchor);
+    const lineEnd = htmlContent.indexOf('\n', trunkIdx);
+    if (lineEnd === -1) {
+      fatal('index.html: could not find end of data-trunk line');
+    }
+    const patchedHtml = htmlContent.slice(0, lineEnd + 1) + bridgeShim + '\n' + htmlContent.slice(lineEnd + 1);
+    fs.writeFileSync(indexPath, patchedHtml);
+    console.log('  ↳ Injected AI Bridge API shim into index.html');
   }
-  const patchedHtml = htmlContent.slice(0, lineEnd + 1) + bridgeShim + '\n' + htmlContent.slice(lineEnd + 1);
-  fs.writeFileSync(indexPath, patchedHtml);
-  console.log('  ↳ Injected AI Bridge API shim into index.html');
 } else {
-  console.log('  ↳ index.html already has AI Bridge API shim');
+  console.log('  ↳ index.html already has new AI Bridge API shim (TrunkApplicationStarted)');
 }
 
 // 3b) Inject <script src="../ai-widget.js"> before </body>
