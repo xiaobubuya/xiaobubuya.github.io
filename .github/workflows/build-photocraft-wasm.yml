@@ -147,16 +147,18 @@ jobs:
           find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.html' -exec cp {} photocraft/ \;
 
           # ── Inject ai-widget.js (post-build) ──
-          # Trunk 会静默丢弃引用不到文件的 <script src>：模板里写 ../ai-widget.js
-          # （相对模板即 apps/ai-widget.js，不存在），所以构建产物里那个标签不见了。
-          # 因此必须在构建之后注入，并且用同目录相对路径。
+          # 模板里写的 ../ai-widget.js 相对 apps/photocraft-web/ 指向 apps/ai-widget.js，
+          # 构建后随产物搬到 photocraft/ 就指到 ../ai-widget.js，从 / 的根目录解析才凑巧
+          # 能命中根目录那份 —— 路径解析依赖部署位置，所以必须在构建之后注入，
+          # 用同目录相对路径，任何静态主机上都能解析。
+          # 先剥掉产物里可能残留的任何 ai-widget script 标签（比如模板侧又被加了回去），
+          # 保证这里是唯一注入点、只会留一个标签。
           # 用 sed 而不是 python heredoc —— heredoc 体若缩进为 0 会终止 YAML 的 run: | block，
           # 整个 workflow 解析失败（run #28 就是那样挂的）。
           cp ai-widget.js photocraft/ai-widget.js || { echo "::error::ai-widget.js 复制失败"; exit 1; }
-          if ! grep -q 'src="ai-widget.js"' photocraft/index.html; then
-            sed -i 's#</body>#<script src="ai-widget.js"></script>\n</body>#' photocraft/index.html \
-              || { echo "::error::ai-widget.js script 标签注入失败"; exit 1; }
-          fi
+          sed -i 's|<script[^>]*src="[^"]*ai-widget\.js"[^>]*>[[:space:]]*<\/script>||g' photocraft/index.html
+          sed -i 's#</body>#<script src="ai-widget.js"></script>\n</body>#' photocraft/index.html \
+            || { echo "::error::ai-widget.js script 标签注入失败"; exit 1; }
           grep -q 'src="ai-widget.js"' photocraft/index.html || { echo "::error::ai-widget.js 没注入进 index.html"; exit 1; }
           echo "  Copied ai-widget.js + injected <script> tag"
 
@@ -166,11 +168,16 @@ jobs:
           # photocraft/ 在 .gitignore 里，普通 git add . 会静默丢掉新产物
           git add -f photocraft/
           
-          # 没有变更 = 部署失败，不许静默成功
+          # 没有变更 = 本次构建产物与 origin/main 逐字节相同，没有东西可发。
+          # 必须 exit 0：否则任何只改 CI 脚本本身、产物不变的提交都会把流水线染红。
+          # run #34 / #35 就是这样挂的 —— wasm 按内容哈希命名，字节相同即文件名相同。
+          # 真正的「产物没落盘」由下面那道引用校验兜底：index.html 引用了未被跟踪的
+          # 文件会 exit 1。
           if git diff --cached --quiet; then
-            echo "::error::nothing staged — 新产物没进 index，检查 .gitignore 是否忽略 photocraft/"
+            echo "nothing staged — 产物与 origin/main 相同，跳过部署"
             git status --short --ignored -- photocraft/
-            exit 1
+            echo "=== No changes to deploy (identical artifacts) ==="
+            exit 0
           fi
           
           # 上线前硬校验：index.html 引用的每个本地文件都必须已被 git 跟踪

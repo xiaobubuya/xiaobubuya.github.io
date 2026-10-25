@@ -217,12 +217,15 @@ console.log('✅ AI Bridge modifications applied successfully!');
 //      window.execute_command / has_session / request_repaint from
 //      window.wasmBindings, and sets up window.photocraft.hasImage()
 //      via has_session().
-//   B) <script src="../ai-widget.js"> before </body>.
 //
-// Timing: the bridge shim is a module script, so it runs after Trunk's
-// generated script (which sets window.wasmBindings). ai-widget.js is a
-// regular script that runs immediately — its init check may not see the
-// bridge yet (badge won't light up), but every panel open re-checks.
+// Timing: the Trunk-generated module script uses top-level `await init()`, so
+// window.wasmBindings is set asynchronously — a plain `if (window.wasmBindings)`
+// check in our shim would always miss it (that is what the old version did,
+// leaving every export undefined). The shim therefore waits for the
+// TrunkApplicationStarted event that the generated script dispatches once wasm
+// is ready.
+//
+// ai-widget.js is NOT injected here; the deploy step does that (see 3b).
 
 const indexPath = INDEX_HTML;
 const htmlContent = fs.readFileSync(indexPath, 'utf8');
@@ -282,22 +285,18 @@ if (!hasNewShim) {
   console.log('  ↳ index.html already has new AI Bridge API shim (TrunkApplicationStarted)');
 }
 
-// 3b) Inject <script src="../ai-widget.js"> before </body>
-// NOTE: check for the actual script src attribute, NOT the bare string
-// 'ai-widget.js', because the bridge shim comment above also mentions it.
-const reloadedHtml = fs.readFileSync(indexPath, 'utf8');
-if (!reloadedHtml.includes('src="../ai-widget.js"')) {
-  const bodyClose = '</body>';
-  if (!reloadedHtml.includes(bodyClose)) {
-    fatal('index.html anchor "</body>" not found');
-  }
-  const widgetScript = '<script defer src="../ai-widget.js"></script>\n';
-  const patchedHtml2 = reloadedHtml.replace(bodyClose, widgetScript + bodyClose);
-  fs.writeFileSync(indexPath, patchedHtml2);
-  console.log('  ↳ Injected <script src="../ai-widget.js"> into index.html');
-} else {
-  console.log('  ↳ index.html already has ai-widget.js reference');
-}
+// 3b) ai-widget.js is deliberately NOT injected here.
+//
+// The widget script is injected by the deploy step into the BUILT index.html
+// (.github/workflows/build-photocraft-wasm.yml) using a same-directory path:
+//   <script src="ai-widget.js">
+//
+// Injecting it from the template as well produced a DUPLICATE tag: Trunk keeps
+// an unresolvable <script src> as-is rather than dropping it, and the deploy
+// step injected its own on top. ai-widget.js is a bare IIFE with no
+// idempotency guard, so it ran twice — two floating balls stacked at the same
+// coordinates, two WebSocket connections. One injector only.
+console.log('  ↳ ai-widget.js: skipped (injected by the deploy step)');
 
 // ── 4. Verification ──────────────────────────────────────────────────────────
 
@@ -315,18 +314,17 @@ const checks = [
   ['self.app.session.execute', 'queue processing in logic()'],
   // index.html checks
   ['AI Bridge API shim', 'bridge shim script in index.html'],
-  ['src="../ai-widget.js"', 'ai-widget.js script tag in index.html'],
 ];
 
 let allOk = true;
 for (const [pattern, label] of checks) {
   // web.rs checks
-  if (!finalCode.includes(pattern) && label !== 'bridge shim script in index.html' && label !== 'ai-widget.js script tag in index.html') {
+  if (!finalCode.includes(pattern) && label !== 'bridge shim script in index.html') {
     console.error(`  ❌ MISSING: ${label} ("${pattern}")`);
     allOk = false;
   }
   // index.html checks
-  if (!finalHtml.includes(pattern) && (label === 'bridge shim script in index.html' || label === 'ai-widget.js script tag in index.html')) {
+  if (!finalHtml.includes(pattern) && label === 'bridge shim script in index.html') {
     console.error(`  ❌ MISSING: ${label} ("${pattern}")`);
     allOk = false;
   }
