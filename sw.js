@@ -13,10 +13,12 @@
 //
 // ⚠️ 这条规则很容易漏：裁剪/旋转那两轮改了 studio.js/css/html
 // 但**忘了升这里**（4335d06、82f2597），线上会一直在跑旧外壳。
-// 所以「改了 ASSETS 里任何一个文件就得升」应当当成提交前的固定检查项
-// （studio.* 和 mask.js 都算）
+// 所以「改了 ASSETS 里任何一个文件就得升」应当当成提交前的固定检查项。
+//
+// 注：studio.html/studio.css/studio.js 已删除，2026-10 从 ASSETS 移除
+// （它们留在缓存列表里会让 SW 去请求三个必然 404 的资源）。
 // 现在 test/sw-version.test.mjs 会守住它。
-const SHELL = 'shell-v61';
+const SHELL = 'shell-v63';
 const ASSETS = [
   '/',
   '/index.html',

@@ -17,7 +17,7 @@
 // Use Cloudflare Tunnel URL for HTTPS API access
 // This avoids mixed content blocking on GitHub Pages (HTTPS)
 // TODO: Replace with 'https://muyaya.world' after ICP filing is complete
-const PROD_API = 'https://shops-voip-storage-click.trycloudflare.com';
+const PROD_API = 'https://main-lawsuit-sewing-pregnancy.trycloudflare.com';
 
 const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(location.hostname);
 // 本地开发时 API 必须跟页面同 host（仅端口不同）——
@@ -445,11 +445,16 @@ el.viewerClose.addEventListener('click', closeViewer);
 el.viewerPrev.addEventListener('click', () => step(-1));
 el.viewerNext.addEventListener('click', () => step(1));
 
-/* 「修这张」：带 ?photo=<key> 跳到修图页 */
+/* 「修这张」：跳转 PhotoCraft。
+   ⚠️ 旧的 studio.html?photo=<key> 深链已不可用：
+     · studio.html/studio.js 已删除
+     · /photocraft/ 不解析 ?photo= 参数，也不暴露程序化载入图片的接口
+   所以这里不带 key，用户需要在 PhotoCraft 里手动打开对应照片。
+   照片标识只用于留痕，不参与跳转。 */
 el.viewerEdit.addEventListener('click', () => {
   const p = state.photos[state.viewerIndex];
   if (!p) return;
-  location.href = 'studio.html?photo=' + p.k;
+  location.href = '/photocraft/';
 });
 
 /* 「加入相册」：打开选择相册的面板 */

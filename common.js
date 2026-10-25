@@ -9,7 +9,7 @@ window.ALBUM = (function () {
 
   // Use Cloudflare Tunnel URL for HTTPS API access
   // TODO: Replace with 'https://muyaya.world' after ICP filing is complete
-  const PROD_API = 'https://shops-voip-storage-click.trycloudflare.com';
+  const PROD_API = 'https://main-lawsuit-sewing-pregnancy.trycloudflare.com';
   const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(location.hostname);
   // 本地开发时 API 必须与页面同 host（仅端口不同）——
   // localhost 与 127.0.0.1 属于不同 host，会被浏览器当作跨站，Cookie 不发送。
