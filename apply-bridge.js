@@ -236,19 +236,21 @@ if (!htmlContent.includes(trunkLinkAnchor)) {
 }
 const bridgeShim = `
 <script type="module">
-// AI Bridge API shim: expose Trunk wasm-bindgen exports on window
-if (window.wasmBindings) {
+// AI Bridge API shim: expose Trunk wasm-bindgen exports on window.
+// The Trunk-generated script uses `await init()`, so wasmBindings is set
+// asynchronously. Listen for TrunkApplicationStarted to guarantee order.
+window.addEventListener('TrunkApplicationStarted', () => {
     const b = window.wasmBindings;
-    if (typeof b.execute_command === 'function') window.execute_command = b.execute_command;
-    if (typeof b.has_session === 'function') window.has_session = b.has_session;
-    if (typeof b.request_repaint === 'function') window.request_repaint = b.request_repaint;
+    if (b && typeof b.execute_command === 'function') window.execute_command = b.execute_command;
+    if (b && typeof b.has_session === 'function') window.has_session = b.has_session;
+    if (b && typeof b.request_repaint === 'function') window.request_repaint = b.request_repaint;
     // window.photocraft.hasImage() — ai-widget.js uses this to detect the editor.
     // Use has_session() (bridge API) instead of the old canvas.toDataURL() hack.
     window.photocraft = {
         hasImage: () => { try { return b.has_session ? b.has_session() : false; } catch(e) { return false; } },
         apiVersion: 'bridge'
     };
-}
+});
 </script>`;
 
 if (!htmlContent.includes('AI Bridge API shim')) {
