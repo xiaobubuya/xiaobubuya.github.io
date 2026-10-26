@@ -1,268 +1,240 @@
-# AI 悬浮球 & PhotoCraft AI Bridge — 部署铁律
+# AI 悬浮球 / PhotoCraft AI Bridge / 后端连线
 
-> 写于 2026-10-26。起因是 `d325301` 把 AI 悬浮球从两个编辑器里删掉了，
-> 而流水线是绿的。这份文档记录「为什么会坏」和「为什么不能再坏」，
-> 以后任何要动 `photocraft/`、`lightcraft/`、这两个 workflow 的人先看这一份。
-
----
-
-## 一、一句话铁律
-
-**`photocraft/` 里的 wasm 只能由 `build-photocraft-wasm.yml` 从打过 patch 的源码构建，
-任何工作流都不得用上游 release 压缩包覆盖它。**
-
-原因：AI Bridge 是改 Rust 源码编进 wasm 的。上游 release 包里没有它。
-拿上游包覆盖 = 悬浮球变成一个点了没反应的死按钮。
-
-> 上游 v0.16.0 的 wasm 是 **98,880 字节**；打过 patch 的自建构建是 **26,445,909 字节**。
-> 差 270 倍。看到 `photocraft/photocraft-web-boot-*.wasm` 这种文件名和这个小体积，
-> 就是被上游包覆盖了。
+> 2026-10-27 重写。这份文档是 AI 悬浮球相关事实的唯一权威来源。
+> 读完应该能独立排查「悬浮球不见了」「显示已断开」「说应用了但没变」这三类问题。
 
 ---
 
-## 二、谁归谁管（所有权表）
+## 一、三条铁律
 
-| 路径 | 唯一写入者 | 来源 | 含 AI Bridge |
-|---|---|---|---|
-| `photocraft/*` | `build-photocraft-wasm.yml` | `apply-bridge.js` 改源码 → `trunk build --release` | ✅ 是 |
-| `lightcraft/*` | `auto-deploy-web.yml` | `storytold/lightcraft` 上游 release zip | ❌ 从来就没有 |
-| `ai-widget.js`（仓库根） | 手工提交 | —— | —— 就是悬浮球本身 |
-
-`auto-deploy-web.yml` 曾经也写 `photocraft/`，这就是事故的根因。
-现在它强制 `UPDATE_PC=false`，只负责 LightCraft。
+1. **`photocraft/` 的 wasm 只能由 `build-photocraft-wasm.yml` 从打过 patch 的源码构建。**
+   上游 release 包没有 AI Bridge，覆盖过去悬浮球就是死按钮。
+2. **后端地址只能是 `https://ai.muyaya.world`。**
+   不要用 trycloudflare 匿名地址——它每次重启就换域名。
+3. **服务器 `/opt/ai-agent-server` 不是 git 仓库。**
+   它靠文件同步 + `tsc` 构建，所以仓库和线上可能漂移。改动必须双向记录。
 
 ---
 
-## 三、AI Bridge 到底是什么
+## 二、所有权：谁写哪个目录
 
-### 3.1 构建时的注入链路
+| 路径 | 唯一写入者 | 含 AI Bridge |
+|---|---|---|
+| `photocraft/` | `build-photocraft-wasm.yml` | ✅ 是 |
+| `lightcraft/` | `auto-deploy-web.yml` | ❌ 从来没有 |
+| `ai-widget.js`（根） | 手工提交 | —— 悬浮球本体 |
+| `photocraft-build.lock` | `verify-photocraft-build.sh --update` | —— 指纹锁 |
 
-`build-photocraft-wasm.yml`：
+`auto-deploy-web.yml` 曾经也写 `photocraft/`，这是 2026-10-25 事故的根因。
+现在它硬编码 `UPDATE_PC=false`，只负责 LightCraft。
+
+---
+
+## 三、AI Bridge 是怎么进 wasm 的
 
 ```
 clone 上游 storytold/photocraft
-  → node deploy-repo/apply-bridge.js     # 第 48 行：锚点式改源码
-  → trunk build --release                # 第 57 行：编译出 wasm
-  → cp 产物到 ../deploy-repo/photocraft/
-  → sed 注入 <script src="ai-widget.js">  # 第 149-163 行
-  → git add -f photocraft/ && commit && push
+  → node deploy-repo/apply-bridge.js      # 锚点式改源码，锚点缺失就 fatal
+  → trunk build --release                 # 编译
+  → 注入 <script src="ai-widget.js">
+  → 更新 photocraft-build.lock
 ```
 
-**AI Bridge shim 不是 sed 注的，是 `apply-bridge.js` 烤进 `apps/photocraft-web/index.html`
-模板里的**，随 Trunk 构建一起进产物。所以 `build-photocraft-wasm.yml` 的 sed 只负责
-`ai-widget.js` 那个 script 标签。
-
-### 3.2 `apply-bridge.js` 改了什么
-
-锚点式插入（anchor-based），锚点缺失就直接 `fatal()` 退出，不静默跳过。三处：
+`apply-bridge.js` 改三处：
 
 | 文件 | 改动 |
 |---|---|
 | `apps/photocraft-web/Cargo.toml` | 加 `serde_json` + `futures-util` |
-| `apps/photocraft-web/src/web.rs` | 加全局 `COMMAND_QUEUE` / `REPAINT` / `SESSION_READY`，加 `#[wasm_bindgen]` 的 `execute_command` / `has_session` / `request_repaint`，在 `start()` 里注册 repaint 回调并置位 `SESSION_READY`，在 `WebShell::logic()` 里处理命令队列 |
-| `apps/photocraft-web/index.html` | 注入 AI Bridge shim（把 wasm-bindgen 导出挂到 `window`） |
+| `apps/photocraft-web/src/web.rs` | 全局 `COMMAND_QUEUE`/`REPAINT`/`SESSION_READY`，导出 `execute_command`/`has_session`/`request_repaint` |
+| `apps/photocraft-web/index.html` | 注入 shim，把 wasm-bindgen 导出挂到 `window` |
 
-`ai-bridge.patch` 是 `web.rs` 改动的 diff 存档（3842 字节），仅供参考，
-**实际注入靠 `apply-bridge.js`**（`fix(ci): move AI bridge injection into Trunk template
-via apply-bridge.js`，commit `fe9b3b4`）。
+**shim 是烤进 Trunk 模板随构建进产物的，不是 sed 注的。** sed 只负责 `ai-widget.js`
+那个 script 标签。
 
-### 3.3 为什么用命令队列而不是 `Rc<RefCell<Session>>`
+为什么用命令队列：`Session` 是 `!Send`、`Rc<RefCell<Session>>` 是 `!Sync`，
+都不能进 `static`。队列里是 `(String, Value, Arc<AtomicBool>, Arc<Mutex<Option<Result>>>)`，
+全部 `Send + Sync`，在 wasm32 上合法。
 
-（`apply-bridge.js` 头部的原始注释，保留以免重蹈覆辙）
+体积对照：上游 v0.16.0 wasm **98,880 字节**，自建构建 **26,445,909 字节**。
 
-- `Session` 是 `!Send`，所以 `Mutex<Session>` 是 `!Sync`，不能放进 `static`。
-- `Rc<RefCell<Session>>` 也是 `!Sync`，同样不能进 `static`。
-- 队列里放的是 `(String, Value, Arc<AtomicBool>, Arc<Mutex<Option<Result>>>)`，
-  全部 `Send + Sync`，在 wasm32 上放进 `static` 合法。
-- `execute_command()` 是 async：把请求压进队列然后 yield；eframe 循环在下一帧
-  处理队列并 resolve 这个 Promise。
+---
 
-### 3.4 运行时：JS 侧怎么接
+## 四、保证机制（指纹锁 + 绊线）
 
-`ai-widget.js` 的判定（**这就是「tag 在不等于能用」的地方**）：
+| 文件 | 作用 |
+|---|---|
+| `photocraft-build.lock` | 唯一真相来源：wasm/js 文件名 + sha256、`ai-widget.js` sha256、必须存在的 bridge 符号、wasm 体积下限 |
+| `scripts/verify-photocraft-build.sh` | 七项校验，任一不符 `exit 1` |
+| `.github/workflows/protect-photocraft-wasm.yml` | 独立绊线：任何 push 触及这些文件就校验 |
+
+七项校验：产物文件名 → 校验和 → 体积下限 → bridge 符号 → shim + 标签 →
+两份 `ai-widget.js` 一致 → 不得出现上游 `photocraft-web-boot-*`。
+
+`--update` 写锁前先确认产物里有 `bridge_symbols`，没有就拒绝写并 `exit 1`。
+
+**负面测试结果**（7 种破坏方式全部拦住）：上游包整体覆盖、wasm 内容被换、
+去掉 shim、去掉标签、bridge 符号被抹、lightcraft 标签被删、混入上游产物。
+
+⚠️ 绊线红了只是红，不会阻止合并。要真阻止需把 `Protect PhotoCraft Build`
+设成 main 的 required status check —— **注意这也会挡掉 bot 自己的推送**
+（`auto-deploy-web.yml` 和 `build-photocraft-wasm.yml` 都直接 push 到 main），
+必须先配 bypass 名单。
+
+---
+
+## 五、后端连线（已改成命名隧道）
+
+### 5.1 现状
+
+```
+ai.muyaya.world  →  Cloudflare 边缘  →  cloudflared 隧道  →  localhost:3000
+wss://ai.muyaya.world/ws?key=bubu   →  同样走这条路（WebSocket 可用）
+```
+
+| 项 | 值 |
+|---|---|
+| 隧道名 / id | `muyaya-ai` / `89c07fac-0db4-463e-8e01-dddee0f2cc94` |
+| 配置 | `/etc/cloudflared/config.yml` |
+| 凭据 | `/root/.cloudflared/cert.pem`、`/root/.cloudflared/89c07fac-....json` |
+| 服务 | `cloudflared.service`（systemd，`enabled`，开机自启） |
+| ingress | `ai.muyaya.world → http://localhost:3000`，其余 `http_status:404` |
+
+验证过的两条：
+
+```
+GET  https://ai.muyaya.world/api/health   → 200 {"status":"ok"}
+WSS  wss://ai.muyaya.world/ws?key=bubu    → 101 Switching Protocols
+```
+
+为什么这样能绕开备案问题：`muyaya.world` 的 NS 在 Cloudflare，橙云代理后
+流量终点是 CF 边缘，隧道是服务器**主动外连**，没有入站连接到百度云 IP。
+而 `api.muyaya.world` 是 DNS 直指 `120.48.86.101`，会被百度云以「未备案」403。
+
+### 5.2 待清理
+
+服务器上还跑着两个**旧的匿名 trycloudflare** 隧道：
+
+| pid | 目标 | 日志 |
+|---|---|---|
+| 24723 | `--url http://localhost:3000` | `/tmp/cloudflared-ai.log` |
+| 30222 | `--url http://localhost:3001` | `/tmp/cloudflared-api.log` |
+
+它们只在 `ai.muyaya.world` 上线前是唯一通路，现在可以退役。
+退役前注意：`muyaya-api`（:3001）目前**没有**命名隧道，
+如果前端还有地方依赖 :3001 的隧道地址，先确认再停。
+
+---
+
+## 六、事故记录：`d325301`（2026-10-25）
+
+`auto-deploy-web.yml` 的 6 小时 cron 检出上游 PhotoCraft v0.16.0 后：
+
+```bash
+rm -rf photocraft/                          # 连 ai-widget.js 一起删
+unzip 上游包 → cp -a 到 photocraft/          # 本来就没有悬浮球
+git add -f .web-versions.json photocraft/ lightcraft/   # 把删除也 stage 了
+```
+
+流水线全绿，因为**没有任何一步检查悬浮球在不在**。删掉的东西：
+`photocraft/ai-widget.js`（637 行）、`photocraft/index.html` 的 shim 与标签、
+`lightcraft/index.html` 的标签（88 行）。
+
+修复：`dabb051` 回退 `photocraft/` 到 `ccbf345`、重新注入 LightCraft 标签、
+`auto-deploy-web.yml` 不再部署 PhotoCraft。
+
+---
+
+## 七、已知 bug（2026-10-27 记录，未修）
+
+用户在 PhotoCraft 里输入「变成黑白的」，面板显示
+「✅ 已应用到编辑器，可撤销」，但**图片没有任何变化**。两个独立原因：
+
+### bug 1：`send()` 漏了 `await`
 
 ```js
-function hasPhotoCraftAIBridge() {
-  return typeof window.execute_command === 'function'
-      && typeof window.has_session === 'function';
-}
+// ai-widget.js:540
+const success = executeCommands(data.commands);   // executeCommands 是 async
+if (success) { ... '✅ 已应用到编辑器' ... }
 ```
 
-`window.execute_command` / `window.has_session` 由 index.html 里的 shim 在
-`TrunkApplicationStarted` 事件后从 `window.wasmBindings` 上摘出来。
-上游构建的 wasm 导出只有 `initSync, __wbg_init`，所以 shim 摘不到，
-这两个 `typeof` 检查永远不成立。
+`executeCommands` 声明为 `async`（326 行），不 `await` 拿到的是 Promise，
+恒为真值。所以**无论实际应用成功与否都显示成功**。这解释了「说应用了但没变」。
 
-### 3.5 降级路径也是断的
+### bug 2：键名映射不匹配
 
-`ai-widget.js` 有三级降级（`executeEditorCommands`，146-159 行）：
-PhotoCraft AI Bridge → Studio（legacy）→ Canvas 2D。
+服务端 `STUDIO_ADJUSTMENTS` 发出的键带 `u` 前缀：
 
-Canvas 2D 兜底走的是 `document.getElementById('photocraft_canvas').getContext('2d')`。
-但 PhotoCraft 的画布是 WebGL 上下文，`getContext('2d')` 对同一 canvas 返回 `null`，
-兜底直接返回 false。
+```
+uExposure uContrast uHighlights uShadows uTemp uWhites uBlacks uClarity
+uTint uSaturation uCurveShadow uCurveMid uCurveHigh uHue uHslSat uHslLight
+uDenoiseLum uDenoiseColor uSharpenMask uSharpness uVignette uGrain uGrainSize
+uBndRedHue uBndRedSat uBndRedLum ...
+```
 
-**结论：没有 AI Bridge，悬浮球在 PhotoCraft 里就是死按钮。**
+而 `mapToPhotoCraftCommand` 的映射表用的是**无前缀**名字：
+`exposure`、`saturation`、`contrast`、`temperature`、`vignetteAmount`…
+
+`map[key] || null` 命中不了 → `mapped` 为 `null` → 跳过 → `applied` 为 0。
+而且命名还有额外错位：`uTemp` ≠ `temperature`、`uHslSat` ≠ `saturation`、
+`uVignette` ≠ `vignetteAmount`、`uSharpness` ≠ `sharpening`。
+
+所以即使修好 bug 1，**大部分参数仍然映射不上**。修 bug 2 需要一张
+`u*` → `adjust.*` 的真实对照表，而不是去掉前缀了事。
+
+### 修的时候注意
+
+- 修完必须实测：黑白、提亮、加对比度至少各一次，看图片真的变。
+- `executePhotoCraftCommands` 通过 `window.execute_command(commandId, JSON.stringify(params))`
+  调用，返回 `applied > 0`；失败时应该把「哪几个没应用」告诉用户，不要静默。
 
 ---
 
-## 四、事故记录：`d325301`（2026-10-25）
+## 八、部署路径与漂移风险
 
-### 4.1 时间线
+`/opt/ai-agent-server` **不是 git 仓库**。线上状态是：
 
-```
-ccbf345  chore: update PhotoCraft WASM with AI Bridge (run #36)   ← 悬浮球还在 ✅
-   ↓
-d325301  deploy: update web apps (photocraft=v0.16.0 lightcraft=v0.14.0)
-         github-actions[bot]  2026-10-25T15:08:24Z  ← 悬浮球没了 ❌
-```
-
-`d325301` 的作者是 `github-actions[bot]`，由 `auto-deploy-web.yml` 的
-`schedule` 触发（run `40205503804`，21 秒）。它检出上游 `storytold/photocraft`
-发布了 v0.16.0，就下载解包了。
-
-线上 `Last-Modified: Sun, 25 Oct 2026 15:09:16 GMT`，与提交时间吻合。
-
-### 4.2 被删了什么
-
-| 文件 | 删除内容 |
+| 项 | 状态 |
 |---|---|
-| `photocraft/ai-widget.js` | 637 行（整个文件） |
-| `photocraft/index.html` | AI Bridge shim 整块 + `<script src="ai-widget.js">` |
-| `lightcraft/index.html` | `<script src="../ai-widget.js">`（共 88 行 diff） |
+| 运行方式 | pm2 `ai-agent-server`（id 26），`node dist/index.js`，cwd `/opt/ai-agent-server` |
+| 构建 | `npm run build`（即 `tsc`）；devDependencies 原本被 `--omit=dev` 砍掉 |
+| 2026-10-27 改动 | 手工上传 `src/api/parse.ts`、`src/core/studio-prompts.ts`，在 `src/index.ts` 插了 2 行，装了 `typescript@5.8.3`，`npx tsc`，`pm2 restart` |
+| 回滚点 | `dist.bak-20261027-001238`、`src/index.ts.bak-20261027-001238`、`package.json.bak-20261027-001238` |
 
-### 4.3 为什么流水线是绿的
+**这次是手工部署，没走 CI。** 正规路径是推 `deploy-muyaya-node` 触发
+`deploy-ai-agent.yml`（它从仓库构建 `dist` 再同步），但那条分支一推会连带触发
+`deploy-muyaya-api-node.yml`（历史 2h20m 挂掉的生产部署）。
+所以仓库里的 `7ee651c070` 和线上是同一份内容，但**不是 CI 同步的**。
+接 CI 之前不要再手工改服务器代码。
 
-`auto-deploy-web.yml` 的部署步骤：
+`/api/parse` 已可用（实测）：
 
-```bash
-rm -rf photocraft/                                # 连 ai-widget.js 一起删
-unzip -q "/tmp/$ZIP" -d "$EXTRACT"                # 上游原始包，本来就没有悬浮球
-cp -a "$EXTRACT"/photocraft-web-*/. photocraft/
-test -f photocraft/index.html || exit 1           # 只验入口文件，不验悬浮球
+```
+POST /api/parse  -H 'X-API-Key: bubu'
+{"message":"变成黑白的","tool":"photocraft"}
+→ {"commands":[{"key":"uSaturation","value":-1}],"explanation":"...","tool":"photocraft"}
 ```
 
-提交步骤：
-
-```bash
-git add -f .web-versions.json photocraft/ lightcraft/   # -f 把「删除」也 stage 进去
-```
-
-每一步都成功了。工作流里压根没有「悬浮球必须存在」这个检查项，
-所以它不知道自己在删东西。**`build-photocraft-wasm.yml` 里那几行
-`exit 1` 守卫没起作用，是因为它们在另一条工作流里。**
-
-### 4.4 为什么下午还有
-
-当天 10:15 UTC 那次 cron 是 `Already up to date`（上游还没发新版）。
-15:08 UTC 那次才真的动了文件。
-
-### 4.5 修复：`dabb051`
-
-- `photocraft/` 整体回退到 `ccbf345`（run #36）的 patch 构建
-- `lightcraft/index.html` 重新注入 script 标签
-  （LightCraft 新旧构建都没有 Bridge，它丢的只有标签）
-- `auto-deploy-web.yml` 不再部署 PhotoCraft
-- `auto-deploy-web.yml` 部署 LightCraft 后注入并校验标签
-- 新增提交前硬校验（见第五节）
+不带 key → 401。LLM 三个键在服务器 `.env` 里都配好了。
 
 ---
 
-## 五、保证机制：指纹锁 + 绊线
-
-「不要在 `auto-deploy-web.yml` 里部署 PhotoCraft」只是**约定**，约定会被下一个人改回去。
-真正的保证是下面三层。
-
-### 5.1 `photocraft-build.lock` —— 唯一真相来源
-
-仓库根的锁文件钉死了 `photocraft/` 里应该是什么：
+## 九、运行时拓扑
 
 ```
-wasm_file=photocraft-web-3074dac37f862afe_bg.wasm
-wasm_sha256=5f5cc3aa9389ecc126f6934fa6c467c00ca226cdfddf065e53dbcf7207bd751e
-js_file=photocraft-web-e693319804da66c3.js
-js_sha256=70c15bd6784edc43bedc10af1f3ff0ca1983cbcb088a07d4af40f4bc3cf499c8
-widget_sha256=28e9ced6774dc8540c226183ebc7e97a93dd608670effb521b43f384b95d40ea
-bridge_symbols=execute_command has_session request_repaint
-min_wasm_bytes=1048576
-```
+muyaya.world          → GitHub Pages（185.199.10x.153），本仓库 main，push 后 30~60 秒生效
+ai.muyaya.world       → Cloudflare 边缘 → 隧道 muyaya-ai → 120.48.86.101:3000
+api.muyaya.world      → 直指 120.48.86.101，被百度云 403（未备案）
 
-### 5.2 `scripts/verify-photocraft-build.sh` —— 唯一的校验实现
-
-七项逐条比对，任一不符就 `exit 1`：
-
-| # | 检查 | 拦的是什么 |
-|---|---|---|
-| 1 | 产物文件名与锁一致 | 被换成别的构建 |
-| 2 | wasm / js 的 sha256 与锁一致 | 文件内容被改 |
-| 3 | wasm 体积 ≥ `min_wasm_bytes` | 上游 98KB 的桩 |
-| 4 | `bridge_symbols` 真的出现在构建 JS 里 | 没打 Bridge 的构建 |
-| 5 | `photocraft/index.html` 有 shim + 标签；`lightcraft/index.html` 有标签 | shim / 标签被删 |
-| 6 | 根目录与 `photocraft/` 的 `ai-widget.js` 一致，且校验和等于锁 | 悬浮球被换、或只更新了一份 |
-| 7 | `photocraft/` 里没有 `photocraft-web-boot-*` | 上游产物混进来 |
-
-```bash
-bash scripts/verify-photocraft-build.sh            # 校验，失败退出 1
-bash scripts/verify-photocraft-build.sh --update   # 构建成功后重建指纹
-```
-
-`--update` 写锁**之前**会先确认新产物里有 `bridge_symbols`，没有就拒绝写并 exit 1 ——
-所以「构建出没带 AI Bridge 的产物」在这一步就被挡住，坏产物锁不进锁文件。
-
-### 5.3 三个 workflow 共用同一份校验
-
-| workflow | 何时跑 | 作用 |
-|---|---|---|
-| `protect-photocraft-wasm.yml` | push 到 main 触及 `photocraft/**`、`lightcraft/**`、`ai-widget.js`、锁文件、脚本，以及 PR | **独立绊线**：不部署任何东西，只校验。任何写入者都会在这里红 |
-| `auto-deploy-web.yml` | 6 小时 cron / 手动 | 部署 LightCraft 之前校验 |
-| `build-photocraft-wasm.yml` | 手动 / 改 `apply-bridge.js` | 构建后 `--update` 写锁，push 前再 `verify` 一次 |
-
-**已做负面测试**：7 种破坏方式全部被拦住，包括 `d325301` 的原始场景
-（上游包整体覆盖 + 98KB 桩 wasm + 删 `ai-widget.js` + 去掉 shim）。
-
-### 5.4 绊线红了不等于合不进去
-
-要真正阻止合并，需把 `Protect PhotoCraft Build` 设成 main 的
-**required status check**（Settings → Branches），再给 `photocraft-build.lock`
-配 CODEOWNERS 审批。这两项是 GitHub 设置，不在仓库文件里。
-
----
-
-## 六、怎么正确升级 PhotoCraft
-
-**不要**去动 `auto-deploy-web.yml` 里 PhotoCraft 那一段。
-
-1. 上游发新版后，跑 Actions → `Build PhotoCraft WASM`（`build-photocraft-wasm.yml`）。
-   它会 `apply-bridge.js` 打 patch → 构建 → 注入 `ai-widget.js` → 更新
-   `photocraft-build.lock` → 校验 → 提交推送。**不要手工改锁文件。**
-2. 如果 `apply-bridge.js` 报 `Anchor not found`，说明上游改了锚点行，
-   需要按新代码更新 `apply-bridge.js` 里的锚点和插入块，再重跑。
-3. `.web-versions.json` 里的 `photocraft=` 保留自建构建对应的版本号，
-   **不要**写成上游 tag（会谎报版本）。
-
-LightCraft 反之：只走 `auto-deploy-web.yml`，上游发版自动跟上，
-它没有 Bridge，悬浮球在 LightCraft 里只提供聊天。
-
----
-
-## 七、运行时拓扑（排查用）
-
-```
-muyaya.world          → GitHub Pages（185.199.110.153）
-                        本仓库 main 分支，push 后约 30~60 秒生效
-api.muyaya.world      → 120.48.86.101，但百度云 403 拦截（域名未备案）
-
-120.48.86.101
-  nginx          :80      注意：它并不服务前端，/photocraft/ 返回 404
-  ai-agent-server :3000   PM2 id 26；/api/health → {"status":"ok"}
-  muyaya-api      :3001   PM2 id 19；/api/health → {"ok":true}
-  cloudflared    x2       都是**匿名 trycloudflare 隧道**，不是 cfargotunnel 命名隧道：
-                          pid 24723 --url http://localhost:3000 → /tmp/cloudflared-ai.log
-                          pid 30222 --url http://localhost:3001 → /tmp/cloudflared-api.log
-  系统 Node      20.18.0  ai-agent-server / muyaya-api 用它，不要动
-  /opt/harness-node  Node 24.17.0 独立前缀，只给 dsh 用
-  /opt/harness-cli   @deepseek-ai/dsh（从 npm 装）
-  /usr/local/bin/dsh  真实文件（不是 symlink），exec 上面的 Node 24
+120.48.86.101（Debian 10）
+  nginx            :80     不服务前端，/photocraft/ 是 404
+  ai-agent-server  :3000   pm2 id 26；/api/health → {"status":"ok"}；/api/parse、/ws
+  muyaya-api       :3001   pm2 id 19；/api/health → {"ok":true}
+  cloudflared      systemd  muyaya-ai 命名隧道
+  cloudflared      x2       旧匿名隧道（pid 24723 → :3000，30222 → :3001），待清理
+  系统 Node         20.18.0 ai-agent-server / muyaya-api 用它，不要动
+  /opt/harness-node 24.17.0 独立前缀，只给 dsh 用
+  /opt/harness-cli          @deepseek-ai/dsh
+  /usr/local/bin/dsh        真实文件，exec 上面的 Node 24
 ```
 
 `muyaya-api` 的 `.env`：
@@ -271,78 +243,30 @@ api.muyaya.world      → 120.48.86.101，但百度云 403 拦截（域名未备
 
 ---
 
-## 九、“已断开”——悬浮球连不上后端
+## 十、怎么正确升级 PhotoCraft
 
-面板上显示红色的「已断开」时，指的是**后端 API 连不上**，不是 AI Bridge 没连上。
-Bridge 状态是下面那行「已连接 PhotoCraft AI Bridge（新 API）」，两个是独立的。
+1. 上游发版后，跑 Actions → `Build PhotoCraft WASM`。
+   它会打 patch → 构建 → 注入 → 更新锁 → 校验 → 推送。**不要手改锁文件。**
+2. `apply-bridge.js` 报 `Anchor not found` = 上游改了锚点行，
+   要按新代码更新锚点，再重跑。
+3. `.web-versions.json` 里的 `photocraft=` 保留自建构建的版本号，
+   不要写成上游 tag（会谎报版本）。
 
-它有两个互不相关的原因，2026-10-26 逐个验证过：
-
-### 9.1 `ai-widget.js` 里写死了一个已死的隧道地址
-
-```js
-// ai-widget.js:16
-const TUNNEL_URL = 'https://shops-voip-storage-click.trycloudflare.com';
-// :18
-const API_BASE = TUNNEL_URL;
-```
-
-匿名 trycloudflare 隧道的域名**每次 cloudflared 重启都会变**。这个地址已经
-DNS 都不解析了（`Could not resolve host`）。
-
-服务器上现在活着的是另外两个（会变，只对当前进程有效）：
-
-```
-:3000 → https://cancelled-heater-supporters-tier.trycloudflare.com   (/api/health → 200)
-:3001 → https://advisory-otherwise-podcasts-gold.trycloudflare.com
-```
-
-**所以改一行 URL 只能撑到下次 cloudflared 重启。** 真正的修法见 9.3。
-
-### 9.2 `/api/parse` 根本没部署到服务器
-
-`ai-widget.js:521` 的发送按钮打的是 `API_BASE + '/api/parse'`。
-服务器 `/opt/ai-agent-server/src/api/` 里只有 `chat.ts` 和 `upload.ts`，
-**没有 `parse.ts`** —— 即使隧道地址是对的，也会 404 `{"error":"Not found"}`（已实测）。
-
-代码在 harness 仓库 `7ee651c070`（`apps/ai-agent-server/src/api/parse.ts` +
-`src/core/studio-prompts.ts`），但服务器跑的是 `/opt/ai-agent-server/dist`，
-需要重新构建部署才生效。
-
-### 9.3 正确的修法：命名隧道 + 稳定子域名
-
-`muyaya.world` 的 NS 在 Cloudflare（`teagan.ns.cloudflare.com` /
-`alan.ns.cloudflare.com`），所以可以建命名隧道拿到永久地址：
-
-```
-cloudflared tunnel login                       # 需要浏览器授权一次
-cloudflared tunnel create muyaya-ai
-cloudflared tunnel route dns muyaya-ai ai.muyaya.world
-cloudflared tunnel run --url http://localhost:3000 muyaya-ai
-```
-
-然后把 `ai-widget.js` 的 `TUNNEL_URL` 改成 `https://ai.muyaya.world`，就永久稳定了。
-
-关键点：域名走 Cloudflare 代理（橙云）后，流量终点是 Cloudflare 边缘，
-隧道是服务器**主动外连**，没有入站连接 —— 所以 `api.muyaya.world` 那种
-「DNS 直指 120.48.86.101 被百度云 403（未备案）」的问题不会再出现。
-
-服务器上**没有** `~/.cloudflared/cert.pem`，也没有 `CLOUDFLARE_API_TOKEN`，
-所以这一步需要人工授权，不能纯脚本完成。
+LightCraft 相反：只走 `auto-deploy-web.yml`，上游发版自动跟上。
 
 ---
 
-## 十、相关文件清单
+## 十一、文件清单
 
 | 文件 | 作用 |
 |---|---|
-| `ai-widget.js` | 悬浮球本身（按钮 + 面板 + 命令映射），全仓库唯一一份 |
+| `ai-widget.js` | 悬浮球本体（按钮 + 面板 + 命令映射），全仓库唯一一份 |
 | `apply-bridge.js` | 构建前改上游源码，注入 AI Bridge |
 | `ai-bridge.patch` | `web.rs` 改动的 diff 存档，仅供参考 |
-| **`photocraft-build.lock`** | **`photocraft/` 的指纹锁，唯一真相来源** |
-| **`scripts/verify-photocraft-build.sh`** | **唯一的校验实现，三处 workflow 共用** |
-| `.github/workflows/protect-photocraft-wasm.yml` | **独立绊线，任何写入者都会被校验** |
-| `.github/workflows/build-photocraft-wasm.yml` | 唯一有权写 `photocraft/`，构建后更新锁 |
-| `.github/workflows/auto-deploy-web.yml` | 只写 `lightcraft/`；部署前校验 |
-| `.web-versions.json` | `photocraft=<自建构建版本>,lightcraft=<上游 tag>` |
-| `docs/HANDOFF.md` | 项目整体交接文档 |
+| `photocraft-build.lock` | `photocraft/` 指纹锁 |
+| `scripts/verify-photocraft-build.sh` | 唯一校验实现，三处 workflow 共用 |
+| `.github/workflows/protect-photocraft-wasm.yml` | 独立绊线 |
+| `.github/workflows/build-photocraft-wasm.yml` | 唯一有权写 `photocraft/` |
+| `.github/workflows/auto-deploy-web.yml` | 只写 `lightcraft/` |
+| `.web-versions.json` | `photocraft=<自建版本>,lightcraft=<上游 tag>` |
+| `docs/CONTEXT.md` | 项目当前状态速查（本文件是 AI 悬浮球专题） |

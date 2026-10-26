@@ -1,261 +1,135 @@
-# 上下文总结（给下一个 Agent / 未来的自己）
+# 上下文速查（给下一个 Agent / 未来的自己）
 
-> 这份是**压缩过的工作记忆**：不是给人读的教程，而是让一个没有历史上下文的
-> Agent 能在几分钟内接手的速查。想了解设计动机看 `HANDOFF.md`。
+> 2026-10-27 重写。这份是**当前真实状态**的速查，不是教程。
+> 动手之前先读这里 + `docs/AI_WIDGET.md`（AI 悬浮球专题）。
+> 以前那份讲 Electron / Cloudflare Worker / `studio.js` / `vault-*` 的版本已作废——
+> 那些文件在仓库里都不存在了。
 
 ---
 
 ## 一句话
 
-两人自用的婚纱照相册：GitHub Pages 前端 + Cloudflare Worker 后端 + Electron 修图 App。
-核心功能全部可用，测试见下文基线（**全绿**），
-密钥已迁进加密保险箱，三家云 AI 都已接上 UI。
-
----
-
-## 工作区结构
+两人自用的婚纱照相册。**GitHub Pages 前端 + 一台 VPS 上的两个 Node 服务**，
+没有任何 Electron 桌面端、没有 Cloudflare Worker 后端。
 
 ```
-album_code/
-├── xiaobubuya.github.io/    前端（公开仓库，GitHub Pages）
-├── album-api/               Worker 后端（私有）
-├── album-studio/            Electron App（私有）
-└── _refs/                   参考项目克隆（**不属于任何仓库**，别提交）
+muyaya.world      → GitHub Pages（本仓库 main，push 后 30~60 秒生效）
+ai.muyaya.world   → Cloudflare 命名隧道 → 120.48.86.101:3000（AI 后端）
+120.48.86.101     → Debian 10，跑 ai-agent-server(:3000) + muyaya-api(:3001)
 ```
 
-三个仓库必须放在同一父目录 —— `contract.test.mjs` 会跨目录读文件。
-（文档里旧路径写的是 `~/lobsterai/project/`，那是 macOS 上的位置；
-现在的实际布局是上面这个。）
-
 ---
 
-## 最重要的几条约束
-
-1. **前端仓库是公开的。** 任何写进去的东西都等于公开。密钥、内部地址、
-   个人信息都不能进。
-
-2. **改 js/css 必须升 `sw.js` 的 `SHELL` 版本号。** 否则 Service Worker
-   会给老客户端返回缓存版本，表现是「本地测好了，线上没反应」。
-
-3. **App 加载的是 `https://muyaya.world`，不是本地文件。**
-   因为会话 Cookie 是 `SameSite=Lax`，`file://` 打开会跨站，Cookie 发不出去。
-
-4. **`AUTH_SECRET` 不能随便改。** 它同时是会话签名密钥**和**
-   密钥库主密钥的派生源。改了 → 所有人被登出 **且** 所有密钥解不开。
-
-5. **浏览器测试用位置参数。** `node /tmp/dsh-browser.mjs eval <url> <code>`，
-   code 必须是单个表达式（包成 `async IIFE`），语句块会静默返回 `undefined`。
-
----
-
-## 三处 10 分钟缓存（改了密钥必查）
-
-| 层 | 位置 | 清理方式 |
-|---|---|---|
-| 页面 | `studio.js` 的 `vaultCache` | `Studio.invalidateKeys(p)` |
-| 主进程 | `vault-client.js` 的 `cache` | IPC `vault:invalidate` |
-| 服务端 | `vault-api.js` 的 Cache API | PUT 时自动清 |
-
-症状：改了密钥发现"没生效" → 先怀疑缓存，不用怀疑代码。
-
----
-
-## 坐标系（最容易错的地方）
+## 工作区
 
 ```
-鼠标屏幕 y↓ --toImageCoord--> 图片坐标 y↑ --mask.js--> 位图 y↓ --maskStats--> bbox y↑
+C:\Users\42410\album_code\
+├── frontend-repo\        前端（公开仓库 xiaobubuya/xiaobubuya.github.io）
+├── harness-repo\         DeepSeek Harness（含 apps/ai-agent-server 源码、DEPLOY.md）
+├── ssh_*.py              用 paramiko 连服务器的脚本（sshpass 不在 PATH）
+└── _refs\                参考项目克隆，不属于任何仓库，别提交
 ```
 
-**每一步都必须翻，翻错/漏翻的表现是「AI 改了完全不相干的地方」。**
-验证方法：真机涂一笔在画面上方，打印 `maskStats().bbox`，`y0` 应该 > 0.5。
-
-另外：`UNPACK_FLIP_Y_WEBGL` 对 **ImageBitmap** 无效，Y 翻转放在顶点着色器里。
+服务器：`120.48.86.101`，root / 密码在本地脚本里。
 
 ---
 
-## AI 接口速查
+## 约束（违反会出事）
 
-全部从**主进程**发（国内厂商不给 CORS 头，网页 fetch 会被拦）。
-
-| 厂商 | 用途 | 关键点 |
-|---|---|---|
-| 百度 | 人像分割 | `type=labelmap`（**裸 base64**，要补 `data:` 前缀）；token 缓存 30 天 |
-| 旷视 | 美颜 | **`v2/beautify`** 不是 v3；apiKey/apiSecret 直接进 form-data，不换 token；**并发只有 1** |
-| 火山 | 去物 | `image_urls` 要**公网 URL**；`jimeng_t2i_v40`；异步任务要轮询 |
-
-**旷视的坑（两条，都直接决定实现方式）**：
-
-1. **参数默认值是 50 不是 0。** 传 0 不等于"关掉这一项"，
-   **不传**才是。所以客户端只发用户调过的（> 0 的）项 ——
-   否则只想磨皮会被顺带美白 50 + 瘦脸 50，脸就不是本人了。
-2. **并发只有 1**，间隔要 ≥3 秒，否则 403 `CONCURRENCY_LIMIT_EXCEEDED`。
-   这个码容易被误读成"功能没开通"。所以没做拖滑块实时预览，
-   改成显式点「看一下效果」；主进程还有单通道队列兜底。
-
-> `filter_type` 的格式**没实测**：官方文档说字符串，旷视自家 Dart SDK 说整数。
-> 按字符串实现了。滤镜不生效就先查这里（`ai-megvii.js` 的 `FILTERS`）。
-
-**火山的坑**：对不认识的字段**不报错、直接忽略**。
-`binary_data_base64` 等字段名会"返回成功"但图根本没进去。
-→ 必须验输入输出的因果关系（输出尺寸/比例是否跟随输入）。
-
-**去物的完整链路**：
-蒙版 → bbox → 上传换公网 URL（`/api/tmp`，10 分钟）→ 主进程 → 火山 → 只取选区那块合成回来。
-最后一步很重要：火山会重画整张图（顺手"美化"人脸），只取选区才对。
+1. **前端仓库是公开的。** 密钥、内部地址、个人信息都不能进。
+2. **改 js/css 必须升 `sw.js` 的 `SHELL` 版本号**（现在是 `shell-v66`）。
+   不升的话 Service Worker 会给老客户端返回缓存版本，
+   症状是「本地好的，线上没反应」。
+3. **`photocraft/` 的 wasm 只能由 `build-photocraft-wasm.yml` 构建。**
+   有指纹锁 + 校验脚本兜底，详见 `docs/AI_WIDGET.md`。
+4. **AI 后端地址只能是 `https://ai.muyaya.world`。**
+   不要写 trycloudflare 匿名地址，它每次重启换域名。
+5. **Windows 上不要用 PowerShell 5.1 拼复杂命令。**
+   `curl` 是 `Invoke-WebRequest` 的别名、`-replace` 只吃两个参数、
+   中文和 JSON 会被改写。把命令写进 `.sh` / `.py` / `.js` 再执行。
 
 ---
 
-## 测试基线
+## 前端实际文件
 
 ```
-autolayout  62   前端几何
-upload      20   上传流程
-mask        21   蒙版引擎
-contract     9   跨仓库契约 ← 改任何接口后必跑
-crop-geometry 19 裁剪采样区间的**源码级等式**（抠公式求值，快且精确）
-sw-version   4   sw.js 外壳版本：改了 studio.* 必须升（借 git 判断）
-line-endings 4   行尾一致性（CRLF 会让多行变异假红，实测踩过）
-shader-guard 3   shader 模板字符串护栏（反引号会提前闭合模板）
-adjustments 22   调整项 ↔ shader uniform 一致性（静态）
-curve       20   色调曲线 LUT 数值（单调性/过冲/串扰）
-adjustments-negative 16  上面那些断言是不是装饰品（变异测试，含浏览器）
-adjust-browser    26   读像素验方向/幅度/边界
-template-browser   6   模板按钮（Chrome 侧测不了的）/ 分屏对比 / 进度条
-crop-browser      16   裁剪几何 + 行编码图量**实际采到的源行**
-inpaint（桌面）    20   提示词 + 坐标
-beautify（桌面）   49   参数裁剪 + 密钥形状 + 串行限流 + 模板表校验（会真等 3 秒）
-smoke（后端）    212   全接口
-                                       前端小计 284（静态 231 + 浏览器 53）
+页面    index.html album.html share.html ai-agent.html
+脚本    album.js app.js share.js upload.js nav.js reader.js orient.js
+        autolayout.js common.js mask.js sw.js
+AI      ai-widget.js（悬浮球本体）  apply-bridge.js（构建时改上游源码）
 ```
 
-前端和桌面都有统一入口：`node test/run-all.mjs`（前端，`--fast` 跳过浏览器）
-和 `npm test`（桌面）。后端 `npm test`。另有**两组 Electron 实测**
-（`electron-schema` 6 项 + `electron-ai-resolution` 7 项，
-要 `ALBUM_URL`，用法见 `HANDOFF.md` 第八节）。
+> `batch.html`、`studio.html`、`editor.html`、`nav.html`、`vault-*`、`ai-megvii.js`
+> 这些在旧文档里出现过，**现在都不存在**。看到相关描述直接忽略。
 
-⚠️ **`run-all.mjs` 区分"已知问题"和"新失败"**（`KNOWN_ISSUES` 表）：
-已登记的失败以 🟡 单独报、不计入退出码，否则整套测试永远退 1，
-以后真踩坏了也分不出来。**但它不是绿**，总账会提示别交付对应功能。
-目前这张表是**空的**（裁剪那个已真修好）。
-另外它会把"跑不起来"当失败 —— 崩溃的文件没有汇总行，第一版显示成
-「通过 0 失败 0 ✅」，整批测试静默消失而总账是绿的（实际踩过）。
+### 修图能力从哪来
 
-**写测试的重点是测「接缝」不是测「函数」。**
-有过一次教训：三层测试全绿，功能完全不能用 ——
-因为三层都在测「我以为的接口」，没有一层在测两边约定是否一致
-（`window.AlbumStudio` 大写 vs `window.albumStudio` 小写）。
-
-⚠️ **判据的"粗细"也很致命。** 裁剪那个 bug 查了很久，
-一半时间浪费在判据太粗上：
-「预览 == 应用后」两条路走同一套 uniform，**永远一致**，抓不到朝向错；
-「是红或绿就行」这种颜色判据，对"偏了半个框"完全无感。
-最后管用的是**源码级区间等式** + **位置编码图量源行**。
-详见 ROADMAP §5.1.1。
-
-### 五层分工（本地修图 + AI 这两轮验证出来的）
-
-| 类型 | 手段 | 能抓什么 |
-|---|---|---|
-| 接线 | `adjustments.test.mjs` 静态比对 | uniform 名、顺序、有没有赋值 |
-| 数值 | `curve.test.mjs` 纯数学 | 单调性、过冲、串扰、恒等性 |
-| **算得对不对（几何）** | `crop-geometry.test.mjs` 抠源码公式求值 | **采样区间精确等于期望** —— 颜色判据抓不到的"偏半个框" |
-| 断言有效性 | `adjustments-negative.test.mjs` 变异测试 | 断言是不是装饰品 |
-| **算得对不对（像素）** | `adjust-browser.test.mjs` 读真实像素 | **方向、幅度、边界** |
-| **位置对不对** | `crop-browser.test.mjs` 位置编码图 | **实际采到了源图的哪一行**（比颜色细得多） |
-| **送出去的到底是什么** | `electron-ai-resolution.test.js`（Electron + 拦 HTTP） | **真正上线那串字节的尺寸** —— Chrome 里进不了分支 |
-
-八条硬教训，都要记住：
-
-1. **方向类错误静态一律验不出来。** 把暗角符号取反（正值变提亮），
-   静态测试 22 项仍然全绿，只有读像素那条红了。
-2. **断言写太松等于没写。** 褪色那条本来写 `lut[255] < 255` 又加 `> 200`，
-   把"压白位"整个删掉它照样通过。每加一条断言都该问：
-   把对应逻辑删掉，测试会红吗？
-3. **变异测试要跑对文件。** 曲线的问题归 `curve.test.mjs`，
-   只跑 `adjustments.test.mjs` 会"永远抓不到" —— 不是断言太松，
-   是跑错了文件。
-4. **变异可能本身无效。** 「把明度改写成给 Y 加常数」在中灰上
-   输出和正确写法**完全一样**（都是 217/39），所以那条变异测不出东西。
-   遇到"抓不到"要先确认变异真的改变了行为，再怀疑断言。
-5. **别用 RGB 通道差当"饱和度"的指标。** OKLab 的 chroma 是感知色度，
-   RGB 三通道极差受色相影响极大（纯红天生就大）。第一版用通道差定
-   阈值，把"去色不够"误判成通过；换成直接算 OKLab chroma 才准。
-6. **⚠️ 别拿"两处一致"当判据。** 裁剪原来有一条断言是
-   "预览 == 应用后"，但两者走**同一套 uniform**，永远一致 ——
-   抓不到朝向错。判据必须是**已知的正确答案**。
-7. **⚠️ 判据太粗等于没写（颜色版）。** 把 `offY` 换成错的符号，
-   `crop-browser` 16 项**全绿** —— 它读的那几个点两种公式颜色碰巧一样。
-   要量"位置"（位置编码图）而不是"颜色"。
-   而且**取景框要挑不居中的**：居中时错符号那项被消掉，测试还是瞎的。
-8. **⚠️ `contextBridge` 暴露的对象是冻结的，替换不了。**
-   `window.AlbumStudio.megviiBeautify = 桩` 是**静默失败** ——
-   不报错、不生效、真请求照样打出去。要么往下一层（拦 HTTP），
-   要么别在这个边界上做测试。踩过，症状是"密钥被拒 401"，
-   根因完全指不到桩上。
-
-## 参考项目
-
-`docs/REFERENCES.md` 记了三个外部参考项目的评估结论，以及
-**哪些代码是独立写的**（现有全部本地工具都是独立实现，
-用的是公开的通用算法）。要点：
-
-- `pixel-cake`（Python，MIT 但缺 LICENSE 文件）—— 它的
-  径向/渐变蒙版思路值得参考；`_detect_skin` 的 HSV 范围法可直接用
-- `JixelLight`（C++，**无许可证，不要复制代码**）—— 它的 OKLab
-  感知颜色层已经**借鉴思路实现**到我们的 HSL 里了；
-  它的 5 控制点曲线和我们独立选的一致
-- `ai-image-edit`（Next.js，MIT）—— 评估过，**没有可借的东西**：
-  没有模板表、没有对比滑块、没有套索。已记录，别再评估一遍
+`photocraft/` 和 `lightcraft/` 是**构建产物目录，在 `.gitignore` 里**，
+靠 workflow 从上游项目编译/解包后强制 `git add -f` 提交。
+`photocraft/` 是我们打过 AI Bridge 补丁的自建构建（26 MB wasm），
+`lightcraft/` 是上游原包。
 
 ---
 
-## 代码风格约定
+## 测试
 
-- 注释写**为什么**，不写「这行在干什么」。
-- 踩过的坑必须在代码注释里留痕，否则会再踩。
-- 提交信息写清楚动机和验证方式，中文。
-- 改完直接推，不等 review。
+入口 `node test/run-all.mjs`：
 
----
+```bash
+npm test            # 全跑（含浏览器用例，需要 Chrome）
+npm run test:fast   # 跳过浏览器用例
+npm run test:browser
+```
 
-## 用户的偏好
-
-- 说话简洁，要进度不要客套。
-- 改完直接 commit + push。
-- 文档跟着代码走，不要单独的 spec 流程。
-- 评估方案时要说清楚**取舍和代价**，不要只报喜。
-- 会追问"这个方案防住了什么、没防住什么" —— 要如实回答。
+`test/` 里 25 个用例文件，和页面/脚本一一对应（`autolayout`、`mask`、
+`upload`、`contract`、`crop-geometry`、`sw-version`、`line-endings`、
+`shader-guard`、`adjustments`、`curve`、`nav-browser`、`panel-entry`…）。
+**改接口先跑 `contract`。**
 
 ---
 
-## 下一步建议（按性价比）
+## 部署
 
-1. **继续做本地修图工具** —— 已完成锐化/暗角/颗粒/曲线/HSL/**裁剪旋转**，
-   还剩**液化 / 透视校正**（高，需要网格变形或独立 shader pass；
-   现在的 shader 是单趟的，液化要多趟，成本主要在这里）。
-   这些是**零成本、实时、照片不出设备**的，比云 AI 更值得日常用。
-2. 局部调整增强（渐变蒙版、径向蒙版）—— 复用现有蒙版引擎，只是换个填法
-   （思路见 `docs/REFERENCES.md` 里 pixel-cake 的椭圆距离场做法）
-3. 修图结果回存相册（内容寻址天然支持非破坏性）
-4. 火山任务持久化（现在关掉 App 任务就丢）
-5. **密钥轮换** —— 之前在对话里贴过明文密钥，建议去控制台换一遍，
-   再用 `tools/vault-import.mjs` 重新导入
+| 东西 | 怎么部署 |
+|---|---|
+| 前端 | push 到 `main`，Pages 自动 redeploy（30~60 秒） |
+| PhotoCraft wasm | Actions → `Build PhotoCraft WASM`（手动点） |
+| LightCraft | `auto-deploy-web.yml` 6 小时 cron 跟上游 |
+| ai-agent-server | **手工**：服务器 `/opt/ai-agent-server` 不是 git 仓库，靠 `tsc` 构建 + `pm2 restart` |
+| muyaya-api | 同上，`/opt/muyaya-api` |
+| Harness CLI | `harness-repo` 的 `Deploy Harness CLI` workflow |
 
-> ✅ 裁剪的纵向朝向**已解决**（原第 1 项）。排查过程和方法论教训
-> 记在 `ROADMAP.md` §5.1.1 —— 核心是"别再推理，造位置编码图做实测对照表"，
-> 以及"判据不能是两处一致、也不能是粗颜色"。
+服务器部署细节、踩过的坑（Node 24 独立前缀、pm2、nginx 不服务前端等）
+记在 `harness-repo/DEPLOY.md`，那边是部署相关的权威文档。
 
 ---
 
-## 已知未验证项
+## 已知 bug（2026-10-27，未修）
 
-- **Windows 安装包**从没被真人验证过（CI 能出包，但 repo 私有，
-  Agent 读不到 Actions 产物，需要用户手动下载试）。
-- 旷视美颜的**实际出图效果**没评估过（接口通了，但不是"效果好看"）。
-  另外 `filter_type` 到底是字符串还是整数**没实测**（见上文 AI 接口速查）。
-- **一键模板出来的效果好不好看**没人看过 —— 8 个模板参数真调过一遍
-  （`tools/template-probe.mjs` 8/8 成功），但"好看"是主观的，得真人看。
-- **美颜面板在真实 App 里的表现**没跑过 —— 逻辑有单元测试和契约测试兜底，
-  但「滑块布局好不好用、撤销顺不顺手」得真人试。
-- 火山去物在**真实婚纱照**上的效果只有一次验证（合成测试图上的黑块），
-  复杂场景（去掉背景路人、电线杆）没试过。
+AI 悬浮球在 PhotoCraft 里**显示「已应用到编辑器」但图片不变**。两个原因：
+
+1. `ai-widget.js:540` 漏了 `await`（`executeCommands` 是 async），
+   Promise 恒真 → 永远报成功。
+2. 服务端返回的键是 `uExposure`/`uSaturation`/`uTemp`/`uHslSat`，
+   widget 映射表用的是 `exposure`/`saturation`/`temperature`，命中不了 → 全部静默跳过。
+
+细节和修法在 `docs/AI_WIDGET.md` 第七节。
+
+---
+
+## 文档地图
+
+| 文档 | 状态 |
+|---|---|
+| `docs/AI_WIDGET.md` | ✅ 权威，AI 悬浮球 + 隧道 + 部署漂移 |
+| `docs/CONTEXT.md` | ✅ 本文件，当前状态速查 |
+| `docs/HANDOFF.md` | ⚠️ 部分过期（Electron/vault/studio 章节已作废），开头有声明 |
+| `docs/PRD.md` | ✅ 相册功能需求（上传/相册）仍有效 |
+| `docs/PRD-NAV.md` | ✅ 导航改版，`nav.js` 已在用 |
+| `docs/ROADMAP.md` | ⚠️ 混合，完成项与计划项混在一起，以本文档为准 |
+| `docs/REFERENCES.md` | ✅ 代码来源声明，长期有效 |
+| ~~`docs/BATCH-EDIT-PRD.md`~~ | 🗑 已删：`batch.html` 不存在，功能没有实现 |
+| ~~`docs/PRD-UI.md`~~ | 🗑 已删：描述的是已移除的 `studio.html` 修图页 |
+| ~~`ALBUM-PLAN.md`~~ | 🗑 已删：Worker + R2 + D1 方案，实际后端改成了 VPS Node |
+
+删除的只是在 git 历史里（`git log --all -- <path>` 能找回），不是真的丢了。
