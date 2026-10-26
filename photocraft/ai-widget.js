@@ -11,9 +11,13 @@
 (function() {
   'use strict';
 
-  // Use Cloudflare Tunnel URL for HTTPS WebSocket support
-  // This avoids mixed content blocking on GitHub Pages (HTTPS)
-  const TUNNEL_URL = 'https://shops-voip-storage-click.trycloudflare.com';
+  // 后端地址：Cloudflare 命名隧道，永久稳定。
+  // 2026-10-26 之前这里是匿名 trycloudflare 地址，每次 cloudflared 重启就换域名，
+  // 而代码里写死一个 —— 一旦那个进程重启，悬浮球就永远显示「已断开」。
+  // 现在由服务器上的 cloudflared.service（muyaya-ai 隧道）提供：
+  //   ai.muyaya.world → http://localhost:3000
+  // HTTPS + WSS 都能用，绕开 GitHub Pages 的 mixed content 限制。
+  const TUNNEL_URL = 'https://ai.muyaya.world';
 
   const API_BASE = TUNNEL_URL;
   const WS_URL = TUNNEL_URL.replace('https:', 'wss:') + '/ws?key=bubu';
