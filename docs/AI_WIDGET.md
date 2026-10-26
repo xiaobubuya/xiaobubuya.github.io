@@ -256,7 +256,9 @@ api.muyaya.world      → 120.48.86.101，但百度云 403 拦截（域名未备
   nginx          :80      注意：它并不服务前端，/photocraft/ 返回 404
   ai-agent-server :3000   PM2 id 26；/api/health → {"status":"ok"}
   muyaya-api      :3001   PM2 id 19；/api/health → {"ok":true}
-  cloudflared    x2       --url http://localhost:3000 和 :3001，各自一个 cfargotunnel 地址
+  cloudflared    x2       都是**匿名 trycloudflare 隧道**，不是 cfargotunnel 命名隧道：
+                          pid 24723 --url http://localhost:3000 → /tmp/cloudflared-ai.log
+                          pid 30222 --url http://localhost:3001 → /tmp/cloudflared-api.log
   系统 Node      20.18.0  ai-agent-server / muyaya-api 用它，不要动
   /opt/harness-node  Node 24.17.0 独立前缀，只给 dsh 用
   /opt/harness-cli   @deepseek-ai/dsh（从 npm 装）
@@ -269,7 +271,68 @@ api.muyaya.world      → 120.48.86.101，但百度云 403 拦截（域名未备
 
 ---
 
-## 八、相关文件清单
+## 九、“已断开”——悬浮球连不上后端
+
+面板上显示红色的「已断开」时，指的是**后端 API 连不上**，不是 AI Bridge 没连上。
+Bridge 状态是下面那行「已连接 PhotoCraft AI Bridge（新 API）」，两个是独立的。
+
+它有两个互不相关的原因，2026-10-26 逐个验证过：
+
+### 9.1 `ai-widget.js` 里写死了一个已死的隧道地址
+
+```js
+// ai-widget.js:16
+const TUNNEL_URL = 'https://shops-voip-storage-click.trycloudflare.com';
+// :18
+const API_BASE = TUNNEL_URL;
+```
+
+匿名 trycloudflare 隧道的域名**每次 cloudflared 重启都会变**。这个地址已经
+DNS 都不解析了（`Could not resolve host`）。
+
+服务器上现在活着的是另外两个（会变，只对当前进程有效）：
+
+```
+:3000 → https://cancelled-heater-supporters-tier.trycloudflare.com   (/api/health → 200)
+:3001 → https://advisory-otherwise-podcasts-gold.trycloudflare.com
+```
+
+**所以改一行 URL 只能撑到下次 cloudflared 重启。** 真正的修法见 9.3。
+
+### 9.2 `/api/parse` 根本没部署到服务器
+
+`ai-widget.js:521` 的发送按钮打的是 `API_BASE + '/api/parse'`。
+服务器 `/opt/ai-agent-server/src/api/` 里只有 `chat.ts` 和 `upload.ts`，
+**没有 `parse.ts`** —— 即使隧道地址是对的，也会 404 `{"error":"Not found"}`（已实测）。
+
+代码在 harness 仓库 `7ee651c070`（`apps/ai-agent-server/src/api/parse.ts` +
+`src/core/studio-prompts.ts`），但服务器跑的是 `/opt/ai-agent-server/dist`，
+需要重新构建部署才生效。
+
+### 9.3 正确的修法：命名隧道 + 稳定子域名
+
+`muyaya.world` 的 NS 在 Cloudflare（`teagan.ns.cloudflare.com` /
+`alan.ns.cloudflare.com`），所以可以建命名隧道拿到永久地址：
+
+```
+cloudflared tunnel login                       # 需要浏览器授权一次
+cloudflared tunnel create muyaya-ai
+cloudflared tunnel route dns muyaya-ai ai.muyaya.world
+cloudflared tunnel run --url http://localhost:3000 muyaya-ai
+```
+
+然后把 `ai-widget.js` 的 `TUNNEL_URL` 改成 `https://ai.muyaya.world`，就永久稳定了。
+
+关键点：域名走 Cloudflare 代理（橙云）后，流量终点是 Cloudflare 边缘，
+隧道是服务器**主动外连**，没有入站连接 —— 所以 `api.muyaya.world` 那种
+「DNS 直指 120.48.86.101 被百度云 403（未备案）」的问题不会再出现。
+
+服务器上**没有** `~/.cloudflared/cert.pem`，也没有 `CLOUDFLARE_API_TOKEN`，
+所以这一步需要人工授权，不能纯脚本完成。
+
+---
+
+## 十、相关文件清单
 
 | 文件 | 作用 |
 |---|---|
