@@ -168,31 +168,63 @@ git add -f .web-versions.json photocraft/ lightcraft/   # -f 把「删除」也 
 
 ---
 
-## 五、上线前硬校验（已在 `auto-deploy-web.yml` 第 8 步）
+## 五、保证机制：指纹锁 + 绊线
 
-解包上游包是 `rm -rf`，`ai-widget.js` 和 AI Bridge 都是「默认删除项」，
-而 `git add -f` 会把删除也提交上去。所以提交前必须逐项确认，缺一样就拦住：
+「不要在 `auto-deploy-web.yml` 里部署 PhotoCraft」只是**约定**，约定会被下一个人改回去。
+真正的保证是下面三层。
 
-```bash
-test -f ai-widget.js                                    # 根目录悬浮球源码
-grep -q 'src="ai-widget.js"'        photocraft/index.html
-grep -q 'src="\.\./ai-widget.js"'   lightcraft/index.html
-grep -q 'window\.photocraft'        photocraft/index.html   # Bridge shim 在
-grep -q 'has_session' photocraft/photocraft-web-*.js        # Bridge 导出在
+### 5.1 `photocraft-build.lock` —— 唯一真相来源
+
+仓库根的锁文件钉死了 `photocraft/` 里应该是什么：
+
+```
+wasm_file=photocraft-web-3074dac37f862afe_bg.wasm
+wasm_sha256=5f5cc3aa9389ecc126f6934fa6c467c00ca226cdfddf065e53dbcf7207bd751e
+js_file=photocraft-web-e693319804da66c3.js
+js_sha256=70c15bd6784edc43bedc10af1f3ff0ca1983cbcb088a07d4af40f4bc3cf499c8
+widget_sha256=28e9ced6774dc8540c226183ebc7e97a93dd608670effb521b43f384b95d40ea
+bridge_symbols=execute_command has_session request_repaint
+min_wasm_bytes=1048576
 ```
 
-最后一条是关键：它能在上游包混进来时就失败，而不是等到用户发现按钮点了没反应。
+### 5.2 `scripts/verify-photocraft-build.sh` —— 唯一的校验实现
 
-本地可以用下面的命令复现这道校验（在仓库根目录）：
+七项逐条比对，任一不符就 `exit 1`：
+
+| # | 检查 | 拦的是什么 |
+|---|---|---|
+| 1 | 产物文件名与锁一致 | 被换成别的构建 |
+| 2 | wasm / js 的 sha256 与锁一致 | 文件内容被改 |
+| 3 | wasm 体积 ≥ `min_wasm_bytes` | 上游 98KB 的桩 |
+| 4 | `bridge_symbols` 真的出现在构建 JS 里 | 没打 Bridge 的构建 |
+| 5 | `photocraft/index.html` 有 shim + 标签；`lightcraft/index.html` 有标签 | shim / 标签被删 |
+| 6 | 根目录与 `photocraft/` 的 `ai-widget.js` 一致，且校验和等于锁 | 悬浮球被换、或只更新了一份 |
+| 7 | `photocraft/` 里没有 `photocraft-web-boot-*` | 上游产物混进来 |
 
 ```bash
-test -f ai-widget.js
-grep -q 'src="ai-widget.js"'        photocraft/index.html && echo ok
-grep -q 'src="\.\./ai-widget.js"'   lightcraft/index.html && echo ok
-grep -q 'window\.photocraft'        photocraft/index.html && echo ok
-grep -q 'has_session' photocraft/photocraft-web-*.js && echo ok
-ls -l photocraft/*_bg.wasm          # 应该是 ~26MB，不是 ~98KB
+bash scripts/verify-photocraft-build.sh            # 校验，失败退出 1
+bash scripts/verify-photocraft-build.sh --update   # 构建成功后重建指纹
 ```
+
+`--update` 写锁**之前**会先确认新产物里有 `bridge_symbols`，没有就拒绝写并 exit 1 ——
+所以「构建出没带 AI Bridge 的产物」在这一步就被挡住，坏产物锁不进锁文件。
+
+### 5.3 三个 workflow 共用同一份校验
+
+| workflow | 何时跑 | 作用 |
+|---|---|---|
+| `protect-photocraft-wasm.yml` | push 到 main 触及 `photocraft/**`、`lightcraft/**`、`ai-widget.js`、锁文件、脚本，以及 PR | **独立绊线**：不部署任何东西，只校验。任何写入者都会在这里红 |
+| `auto-deploy-web.yml` | 6 小时 cron / 手动 | 部署 LightCraft 之前校验 |
+| `build-photocraft-wasm.yml` | 手动 / 改 `apply-bridge.js` | 构建后 `--update` 写锁，push 前再 `verify` 一次 |
+
+**已做负面测试**：7 种破坏方式全部被拦住，包括 `d325301` 的原始场景
+（上游包整体覆盖 + 98KB 桩 wasm + 删 `ai-widget.js` + 去掉 shim）。
+
+### 5.4 绊线红了不等于合不进去
+
+要真正阻止合并，需把 `Protect PhotoCraft Build` 设成 main 的
+**required status check**（Settings → Branches），再给 `photocraft-build.lock`
+配 CODEOWNERS 审批。这两项是 GitHub 设置，不在仓库文件里。
 
 ---
 
@@ -201,7 +233,8 @@ ls -l photocraft/*_bg.wasm          # 应该是 ~26MB，不是 ~98KB
 **不要**去动 `auto-deploy-web.yml` 里 PhotoCraft 那一段。
 
 1. 上游发新版后，跑 Actions → `Build PhotoCraft WASM`（`build-photocraft-wasm.yml`）。
-   它会 `apply-bridge.js` 打 patch → 构建 → 注入 `ai-widget.js` → 提交推送。
+   它会 `apply-bridge.js` 打 patch → 构建 → 注入 `ai-widget.js` → 更新
+   `photocraft-build.lock` → 校验 → 提交推送。**不要手工改锁文件。**
 2. 如果 `apply-bridge.js` 报 `Anchor not found`，说明上游改了锚点行，
    需要按新代码更新 `apply-bridge.js` 里的锚点和插入块，再重跑。
 3. `.web-versions.json` 里的 `photocraft=` 保留自建构建对应的版本号，
@@ -243,7 +276,10 @@ api.muyaya.world      → 120.48.86.101，但百度云 403 拦截（域名未备
 | `ai-widget.js` | 悬浮球本身（按钮 + 面板 + 命令映射），全仓库唯一一份 |
 | `apply-bridge.js` | 构建前改上游源码，注入 AI Bridge |
 | `ai-bridge.patch` | `web.rs` 改动的 diff 存档，仅供参考 |
-| `.github/workflows/build-photocraft-wasm.yml` | 唯一有权写 `photocraft/` |
-| `.github/workflows/auto-deploy-web.yml` | 只写 `lightcraft/`；第 8 步是硬校验 |
+| **`photocraft-build.lock`** | **`photocraft/` 的指纹锁，唯一真相来源** |
+| **`scripts/verify-photocraft-build.sh`** | **唯一的校验实现，三处 workflow 共用** |
+| `.github/workflows/protect-photocraft-wasm.yml` | **独立绊线，任何写入者都会被校验** |
+| `.github/workflows/build-photocraft-wasm.yml` | 唯一有权写 `photocraft/`，构建后更新锁 |
+| `.github/workflows/auto-deploy-web.yml` | 只写 `lightcraft/`；部署前校验 |
 | `.web-versions.json` | `photocraft=<自建构建版本>,lightcraft=<上游 tag>` |
 | `docs/HANDOFF.md` | 项目整体交接文档 |

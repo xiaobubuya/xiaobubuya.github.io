@@ -1,0 +1,87 @@
+name: Protect PhotoCraft Build
+
+# photocraft/ 里必须是带 AI Bridge 的自建构建。
+#
+# 上游 release 包（storytold/photocraft）没有 AI Bridge —— v0.16.0 的 wasm 只有
+# 98,880 字节，自建构建是 26,445,909 字节。拿上游包覆盖 photocraft/ 会删掉
+# ai-widget.js 和 index.html 的 shim，悬浮球变成点了没反应的死按钮。
+# 2026-10-25 的 d325301 就是自动部署工作流这么干的，而且流水线还是绿的。
+#
+# 这个工作流是**独立的绊线**：它不部署任何东西，只校验。
+# 任何写入 photocraft/ 的路径（自动部署、构建、手动提交、别的 workflow）
+# 只要产物对不上 photocraft-build.lock，这里就红。
+#
+# 真相来源：photocraft-build.lock
+# 校验逻辑：scripts/verify-photocraft-build.sh
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'photocraft/**'
+      - 'lightcraft/**'
+      - 'ai-widget.js'
+      - 'photocraft-build.lock'
+      - 'scripts/verify-photocraft-build.sh'
+      - '.github/workflows/protect-photocraft-wasm.yml'
+  pull_request:
+    paths:
+      - 'photocraft/**'
+      - 'lightcraft/**'
+      - 'ai-widget.js'
+      - 'photocraft-build.lock'
+      - 'scripts/verify-photocraft-build.sh'
+      - '.github/workflows/protect-photocraft-wasm.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: protect-photocraft-wasm
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      # 需要 LFS 吗？不需要 —— wasm 是普通 blob。
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify photocraft holds OUR AI Bridge build
+        shell: bash
+        run: |
+          set -uo pipefail
+          bash scripts/verify-photocraft-build.sh
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## PhotoCraft build guard"
+            echo ""
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "✅ \`photocraft/\` 与 \`photocraft-build.lock\` 一致 —— 带 AI Bridge 的自建构建。"
+            else
+              echo "❌ \`photocraft/\` 与 \`photocraft-build.lock\` 不一致。"
+              echo ""
+              echo "**如果是有意的升级**：跑 \`Build PhotoCraft WASM\`，"
+              echo "它会从打过 patch 的源码构建并更新锁文件。"
+              echo ""
+              echo "**不要**用上游 release 包覆盖 —— 那里面没有 AI Bridge。"
+            fi
+            echo ""
+            echo "### 锁定的指纹"
+            echo '```'
+            grep -E '^(wasm|js|widget)_|^min_wasm|^bridge' photocraft-build.lock || true
+            echo '```'
+            echo ""
+            echo "### 当前实际"
+            echo '```'
+            ls -l photocraft/photocraft-web-*_bg.wasm photocraft/photocraft-web-[0-9a-f]*.js 2>/dev/null || echo "(产物缺失)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

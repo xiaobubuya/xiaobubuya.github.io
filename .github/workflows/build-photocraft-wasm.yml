@@ -164,10 +164,18 @@ jobs:
 
           echo "=== Deployed files ==="
           ls -la photocraft/
-          
+
+          # ── 钉死指纹 ──
+          # photocraft-build.lock 是 photocraft/ 的唯一真相来源。
+          # --update 会先确认新产物里真的有 bridge_symbols，没有就拒绝写锁并 exit 1，
+          # 所以这条命令本身就是「构建出没带 AI Bridge 的产物」的第一道拦截。
+          echo "=== Regenerating photocraft-build.lock ==="
+          bash scripts/verify-photocraft-build.sh --update \
+            || { echo "::error::产物没有 AI Bridge 符号，拒绝更新指纹"; exit 1; }
+
           # photocraft/ 在 .gitignore 里，普通 git add . 会静默丢掉新产物
-          git add -f photocraft/
-          
+          git add -f photocraft/ photocraft-build.lock
+
           # 没有变更 = 本次构建产物与 origin/main 逐字节相同，没有东西可发。
           # 必须 exit 0：否则任何只改 CI 脚本本身、产物不变的提交都会把流水线染红。
           # run #34 / #35 就是这样挂的 —— wasm 按内容哈希命名，字节相同即文件名相同。
@@ -179,8 +187,13 @@ jobs:
             echo "=== No changes to deploy (identical artifacts) ==="
             exit 0
           fi
-          
-          # 上线前硬校验：index.html 引用的每个本地文件都必须已被 git 跟踪
+
+          # 上线前硬校验 1：指纹必须自洽（文件名、校验和、体积、bridge 符号、shim、标签）
+          echo "=== Verifying photocraft-build.lock ==="
+          bash scripts/verify-photocraft-build.sh \
+            || { echo "::error::photocraft 指纹校验失败"; exit 1; }
+
+          # 上线前硬校验 2：index.html 引用的每个本地文件都必须已被 git 跟踪
           missing=0
           for f in $(grep -oE "\./[A-Za-z0-9_.-]+\.(js|wasm)" photocraft/index.html | sed 's#^\./##' | sort -u); do
             git ls-files --error-unmatch "photocraft/$f" >/dev/null 2>&1 \

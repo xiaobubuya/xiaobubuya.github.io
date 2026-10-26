@@ -186,29 +186,16 @@ jobs:
       # 解包上游包会 rm -rf 目录，ai-widget.js 和 AI Bridge 都是「默认删除项」，
       # 而下面一步 git add -f 会把删除也提交上去，流水线照样绿。
       # 所以提交之前必须逐项确认，缺一样就拦住。
+      #
+      # 校验逻辑统一放在 scripts/verify-photocraft-build.sh，
+      # 和 protect-photocraft-wasm.yml、build-photocraft-wasm.yml 共用同一份，
+      # 避免三处各写一遍、改了一处忘另一处。
       - name: Verify AI widget present
         if: steps.decide.outputs.needs_update == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-
-          test -f ai-widget.js || { echo "::error::根目录 ai-widget.js 缺失"; exit 1; }
-
-          grep -q 'src="ai-widget.js"' photocraft/index.html \
-            || { echo "::error::photocraft/index.html 缺 ai-widget.js script 标签"; exit 1; }
-
-          grep -q 'src="\.\./ai-widget.js"' lightcraft/index.html \
-            || { echo "::error::lightcraft/index.html 缺 ai-widget.js script 标签"; exit 1; }
-
-          # 标签在不等于能用：AI Bridge 导出只存在于打过 patch 的自建构建里。
-          # 上游 release 的 wasm 只有 98KB，没有 has_session，
-          # 届时 hasPhotoCraftAIBridge() 恒为 false，悬浮球是死按钮。
-          grep -q 'window\.photocraft' photocraft/index.html \
-            || { echo "::error::photocraft/index.html 缺 AI Bridge shim（window.photocraft）"; exit 1; }
-          grep -q 'has_session' photocraft/photocraft-web-*.js \
-            || { echo "::error::Photocraft 构建里没有 has_session，AI Bridge 不在，改用自建构建"; exit 1; }
-
-          echo "✅ AI widget + AI Bridge in place"
+          set -uo pipefail
+          bash scripts/verify-photocraft-build.sh
 
       # ─── 9. 更新版本追踪文件并提交 ─────────────────────────
       - name: Commit changes

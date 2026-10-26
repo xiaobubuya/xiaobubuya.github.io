@@ -1,0 +1,21 @@
+# photocraft/ 的构建指纹 —— 锁住带 AI Bridge 的自建构建。
+#
+# 这是 photocraft/ 的唯一真相来源。scripts/verify-photocraft-build.sh 逐项比对，
+# 任何一项对不上就失败，CI 变红。
+#
+# 为什么需要它：上游 release 包（storytold/photocraft）里没有 AI Bridge。
+# 拿上游包覆盖 photocraft/ 会删掉 ai-widget.js 和 index.html 里的 shim，
+# 悬浮球就成了点了没反应的死按钮。2026-10-25 的 d325301 就是这么坏的。
+#
+# 只有 build-photocraft-wasm.yml 在成功构建、且通过下面的 bridge_symbols 校验之后，
+# 才可以跑 `scripts/verify-photocraft-build.sh --update` 改这里。
+# 手改 = 把校验变成摆设。
+wasm_file=photocraft-web-3074dac37f862afe_bg.wasm
+wasm_sha256=5f5cc3aa9389ecc126f6934fa6c467c00ca226cdfddf065e53dbcf7207bd751e
+js_file=photocraft-web-e693319804da66c3.js
+js_sha256=70c15bd6784edc43bedc10af1f3ff0ca1983cbcb088a07d4af40f4bc3cf499c8
+widget_sha256=28e9ced6774dc8540c226183ebc7e97a93dd608670effb521b43f384b95d40ea
+bridge_symbols=execute_command has_session request_repaint
+# 上游 v0.16.0 的 wasm 只有 98,880 字节；自建构建 26,445,909 字节。
+# 低于这个下限就说明被上游包覆盖了。
+min_wasm_bytes=1048576
