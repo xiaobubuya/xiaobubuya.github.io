@@ -127,13 +127,24 @@
   async function executePhotoCraftCommands(commands) {
     if (!hasPhotoCraftAIBridge() || !window.has_session()) return false;
 
+    // The bridge queues a command and waits for the eframe loop to drain it.
+    // Its promise never settles (no waker), so fire it and force one repaint:
+    // without the repaint an idle editor never runs the frame that applies it.
+    function submit(commandId, params) {
+      const pending = window.execute_command(commandId, JSON.stringify(params));
+      if (pending && typeof pending.catch === 'function') {
+        pending.catch(function(e) { console.warn('[AI Widget] bridge rejected:', e && e.message); });
+      }
+      if (typeof window.request_repaint === 'function') window.request_repaint();
+    }
+
     let applied = 0;
     for (const cmd of commands) {
       try {
         // Native PhotoCraft command from /api/parse: { id, params }.
         if (cmd && typeof cmd.id === 'string' && cmd.id) {
           const params = cmd.params && typeof cmd.params === 'object' ? cmd.params : {};
-          await window.execute_command(cmd.id, JSON.stringify(params));
+          submit(cmd.id, params);
           applied++;
           continue;
         }
@@ -141,7 +152,7 @@
         if (cmd && cmd.key && typeof cmd.value === 'number') {
           const mapped = mapToPhotoCraftCommand(cmd.key, cmd.value);
           if (mapped) {
-            await window.execute_command(mapped.commandId, JSON.stringify(mapped.params));
+            submit(mapped.commandId, mapped.params);
             applied++;
           }
         }
