@@ -1,6 +1,10 @@
 name: Build PhotoCraft WASM
 
 on:
+  # 每 6 小时自动从上游 main（打过 AI Bridge 补丁）重建一次。
+  # 有产物变化才发 commit，上游没变则无变更即 exit 0，不会产生空提交。
+  schedule:
+    - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       commit:
@@ -187,6 +191,18 @@ jobs:
             echo "=== No changes to deploy (identical artifacts) ==="
             exit 0
           fi
+
+          # 产物确实有变化，才同步 .web-versions.json 的 photocraft 字段并暂存。
+          # 本 workflow 构建的是上游 main 的当前 commit（打过 AI Bridge 补丁），
+          # 把该 commit SHA 写进 .web-versions.json，避免「版本记录 = v0.15.1」
+          # 与「实际部署 = v0.16.0 + AI Bridge」脱节。
+          # 该文件只被 auto-deploy-web.yml（每 6 小时）读来比较 LightCraft，
+          # photocraft 字段记录的正是本 workflow 部署的来源 commit。
+          LOCAL_LC=$(sed -n 's/^.*lightcraft=\([^,]*\).*$/\1/p' .web-versions.json 2>/dev/null || true)
+          PC_COMMIT=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD 2>/dev/null || echo "main")
+          printf 'photocraft=%s,lightcraft=%s\n' "$PC_COMMIT" "${LOCAL_LC:-main}" > .web-versions.json
+          echo "  .web-versions.json 已同步: photocraft=$PC_COMMIT"
+          git add -f .web-versions.json
 
           # 上线前硬校验 1：指纹必须自洽（文件名、校验和、体积、bridge 符号、shim、标签）
           echo "=== Verifying photocraft-build.lock ==="
