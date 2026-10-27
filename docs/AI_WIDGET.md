@@ -144,7 +144,7 @@ git add -f .web-versions.json photocraft/ lightcraft/   # 把删除也 stage 了
 
 ---
 
-## 七、已知 bug（2026-10-27 记录，未修）
+## 七、已知 bug（2026-10-27 记录；已修复并验，详见 `AI_WIDGET-FIX-RECORD.md`）
 
 用户在 PhotoCraft 里输入「变成黑白的」，面板显示
 「✅ 已应用到编辑器，可撤销」，但**图片没有任何变化**。两个独立原因：

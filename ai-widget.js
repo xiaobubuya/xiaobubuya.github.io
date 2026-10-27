@@ -537,7 +537,7 @@
         // Execute commands in browser
         addMsg('system', '⚡ 正在应用到编辑器...');
 
-        const success = executeCommands(data.commands);
+        const success = await executeCommands(data.commands);
         if (success) {
           addMsg('system', '✅ 已应用到编辑器，可撤销');
         } else {

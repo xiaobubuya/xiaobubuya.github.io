@@ -1,0 +1,12 @@
+diff --git a/ai-widget.js b/ai-widget.js
+--- a/ai-widget.js
++++ b/ai-widget.js
+@@ -537,7 +537,7 @@
+         addMsg('system', '⚡ 正在应用到编辑器...');
+ 
+-        const success = executeCommands(data.commands);
++        const success = await executeCommands(data.commands);
+         if (success) {
+           addMsg('system', '✅ 已应用到编辑器，可撤销');
+         } else {
+           addMsg('error', '⚠️ 无法应用到当前编辑器，请截图保存参数');
