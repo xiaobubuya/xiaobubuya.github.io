@@ -86,16 +86,21 @@ if (hasSerdeRuntime) {
 const webPath = WEB_RS;
 let code = fs.readFileSync(webPath, 'utf8');
 
-// 2a. Add imports after "use std::sync::{Arc, Mutex};"
-const importAnchor = 'use std::sync::{Arc, Mutex};';
-if (!code.includes(importAnchor)) {
-  fatal('web.rs import anchor "use std::sync::{Arc, Mutex};" not found');
+// 2a. Add imports after the `use std::sync::{Arc, Mutex, …};` line.
+//     Upstream once had exactly `{Arc, Mutex};` but later added members
+//     (e.g. `PoisonError`). Match the whole import line by prefix so the
+//     anchor stays drift-tolerant instead of failing the build.
+const importRe = /use std::sync::\{Arc, Mutex[^;]*;[\r\n]+/;
+if (!importRe.test(code)) {
+  fatal('web.rs import anchor "use std::sync::{Arc, Mutex...};" not found');
 }
 const newImports = `use std::task::{Context, Poll};
 use futures_util::future::poll_fn;
 use serde_json::Value;
 use wasm_bindgen::prelude::wasm_bindgen;`;
-code = anchorReplace(code, importAnchor, `\n${newImports}`, 'imports');
+const importIdx = code.search(importRe);
+const importEnd = importIdx + code.match(importRe)[0].length;
+code = code.slice(0, importEnd) + `\n${newImports}\n` + code.slice(importEnd);
 console.log('  ↳ Added imports');
 
 // 2b. Add globals after "type Served = Arc<Mutex<ServedFonts>>;"
