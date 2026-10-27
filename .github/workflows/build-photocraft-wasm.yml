@@ -135,7 +135,8 @@ jobs:
           
           mkdir -p photocraft
           
-          # Remove old built files to avoid stale hashed filenames
+          # Remove old built files to avoid stale hashed filenames.
+          # snippets/ 每次都会被新构建整体覆盖，先删掉避免旧哈希残留、混放。
           rm -f photocraft/index.html
           rm -f photocraft/photocraft-web-boot-*.js
           rm -f photocraft/photocraft-web-boot-*.wasm
@@ -143,12 +144,15 @@ jobs:
           rm -f photocraft/photocraft-web-*.js
           rm -f photocraft/photocraft-web-*.wasm
           rm -f photocraft/photocraft-web-*.wasm.br
+          rm -rf photocraft/snippets
           
-          # Copy new build output using find -exec for robustness
-          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.js' -exec cp {} photocraft/ \;
-          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm' -exec cp {} photocraft/ \;
-          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm.br' -exec cp {} photocraft/ \;
-          find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.html' -exec cp {} photocraft/ \;
+          # 整体复制整个构建产物目录（含子目录），不再用 `find -maxdepth 1` 只拷顶层文件。
+          # 事故根因：Trunk/wasm-bindgen 的产物除了顶层 .js/.wasm 外，还会在 snippets/ 下
+          # 生成被 glue JS import 的内联模块（如 snippets/eframe-<hash>/inline0.js）。
+          # `find -maxdepth 1` 把这些子目录漏掉 → 线上 404 → index.html 里 glue JS 的
+          # `import ... from './snippets/.../inline0.js'` 失败 → 页面卡死在 "Loading PhotoCraft…"。
+          # `cp -a "$WASM_DIR"/.` 连隐藏文件与子目录一并复制，子目录依赖不再丢。
+          cp -a "$GITHUB_WORKSPACE/$WASM_DIR"/. photocraft/
 
           # ── Inject ai-widget.js (post-build) ──
           # 模板里写的 ../ai-widget.js 相对 apps/photocraft-web/ 指向 apps/ai-widget.js，
@@ -209,11 +213,36 @@ jobs:
           bash scripts/verify-photocraft-build.sh \
             || { echo "::error::photocraft 指纹校验失败"; exit 1; }
 
-          # 上线前硬校验 2：index.html 引用的每个本地文件都必须已被 git 跟踪
+          # 上线前硬校验 2：index.html 与 glue JS 引用/import 的每个本地文件都必须真的被复制进
+          # photocraft/ 并且已被 git 跟踪，缺一个就拦下（防止再发生 snippets/ 漏拷仍绿线上线）。
+          # 旧正则 `\./[A-Za-z0-9_.-]+\.(js|wasm)` 不匹配嵌套路径（如 ./snippets/eframe-<hash>/inline0.js），
+          # 所以漏拷 snippets/ 时校验仍通过。下面的提取对路径深度不敏感，能抓到任意层的引用。
           missing=0
-          for f in $(grep -oE "\./[A-Za-z0-9_.-]+\.(js|wasm)" photocraft/index.html | sed 's#^\./##' | sort -u); do
-            git ls-files --error-unmatch "photocraft/$f" >/dev/null 2>&1 \
-              || { echo "::error::index.html 引用了未提交的文件: $f"; missing=1; }
+          rm -f /tmp/pc_refs.txt
+          # (a) index.html 里的相对引用：./<任意路径>.js|.wasm（路径中可含 / 和 -）
+          grep -oE "[.][/][^\"'<>[:space:]]+[.](js|wasm)" photocraft/index.html \
+            | sed -e 's#^[.]/##' -e 's#^[.]/##' \
+            | sort -u \
+            >> /tmp/pc_refs.txt
+          # (b) 各 glue JS 里对 snippets/ 的相对 import（wasm-bindgen 生成，可能不带 ./ 前缀）
+          for j in photocraft/photocraft-web-*.js; do
+            if [ -f "$j" ]; then
+              grep -oE "[.]?/snippets/[^\"'<>[:space:]]+[.](js|wasm)" "$j" \
+                | sed -e 's#^[.]/##' -e 's#^[.]##' \
+                | sort -u \
+                >> /tmp/pc_refs.txt || true
+            fi
+          done
+          for f in $(sed '/^$/d' /tmp/pc_refs.txt | sort -u); do
+            if [ ! -f "photocraft/$f" ]; then
+              echo "::error::$f 被引用但未复制到 photocraft/（构建产物不完整）"
+              missing=1
+              continue
+            fi
+            if ! git ls-files --error-unmatch "photocraft/$f" >/dev/null 2>&1; then
+              echo "::error::index.html/glue 引用了未提交的文件: $f"
+              missing=1
+            fi
           done
           [ "$missing" -eq 0 ] || exit 1
           
