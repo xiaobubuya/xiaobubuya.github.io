@@ -263,7 +263,8 @@ window.addEventListener('TrunkApplicationStarted', () => {
     // 只在 interface.language 仍为 "auto"（用户没手动选过）时设置；
     // prefs 持久化在 localStorage，成功后不会再改，用户之后手动改也不会被覆盖。
     function initUiLanguage() {
-        if (!/^zh(-|$)/i.test(navigator.language || '')) return;
+        // 本站面向中文用户：不再判断浏览器语言，一律默认简体中文
+        // （用户手动改成别的语言后不会被覆盖，见下面 cur !== 'auto' 的判断）。
         let tries = 40; // 无文档时 prefs.get 会失败，持续重试直到会话可用
         const attempt = async () => {
             if (!window.has_session || !window.has_session() || typeof window.execute_command !== 'function') {
