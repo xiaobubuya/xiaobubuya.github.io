@@ -264,10 +264,10 @@ window.addEventListener('TrunkApplicationStarted', () => {
     // prefs 持久化在 localStorage，成功后不会再改，用户之后手动改也不会被覆盖。
     function initUiLanguage() {
         if (!/^zh(-|$)/i.test(navigator.language || '')) return;
-        let tries = 24;
+        let tries = 40; // 无文档时 prefs.get 会失败，持续重试直到会话可用
         const attempt = async () => {
             if (!window.has_session || !window.has_session() || typeof window.execute_command !== 'function') {
-                if (--tries > 0) return setTimeout(attempt, 250);
+                if (--tries > 0) return setTimeout(attempt, 500);
                 return;
             }
             try {
@@ -275,12 +275,13 @@ window.addEventListener('TrunkApplicationStarted', () => {
                 let cur = raw;
                 try { cur = JSON.parse(raw); } catch (e) { /* 非 JSON 就按原样比较 */ }
                 cur = String(cur).replace(/^"(.*)"$/, '$1');
-                if (cur === 'auto') {
-                    await window.execute_command('prefs.set', '{"path":"interface.language","value":"zh-hans"}');
-                    if (window.request_repaint) window.request_repaint();
-                    console.log('[i18n] 界面语言已默认设为简体中文');
-                }
+                if (cur !== 'auto') return; // 用户已显式选过语言，尊重它
+                await window.execute_command('prefs.set', '{"path":"interface.language","value":"zh-hans"}');
+                if (window.request_repaint) window.request_repaint();
+                console.log('[i18n] 界面语言已默认设为简体中文');
             } catch (e) {
+                // 会话/文档还没就绪时读取会失败，继续等到超时
+                if (--tries > 0) return setTimeout(attempt, 500);
                 console.warn('[i18n] 默认语言设置失败:', e);
             }
         };
