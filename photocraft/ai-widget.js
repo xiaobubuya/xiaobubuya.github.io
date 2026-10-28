@@ -127,17 +127,37 @@
   async function executePhotoCraftCommands(commands) {
     if (!hasPhotoCraftAIBridge() || !window.has_session()) return false;
 
+    // The bridge queues a command and waits for the eframe loop to drain it.
+    // Its promise never settles (no waker), so fire it and force one repaint:
+    // without the repaint an idle editor never runs the frame that applies it.
+    function submit(commandId, params) {
+      const pending = window.execute_command(commandId, JSON.stringify(params));
+      if (pending && typeof pending.catch === 'function') {
+        pending.catch(function(e) { console.warn('[AI Widget] bridge rejected:', e && e.message); });
+      }
+      if (typeof window.request_repaint === 'function') window.request_repaint();
+    }
+
     let applied = 0;
     for (const cmd of commands) {
-      if (!cmd.key || typeof cmd.value !== 'number') continue;
       try {
-        const mapped = mapToPhotoCraftCommand(cmd.key, cmd.value);
-        if (mapped) {
-          await window.execute_command(mapped.commandId, JSON.stringify(mapped.params));
+        // Native PhotoCraft command from /api/parse: { id, params }.
+        if (cmd && typeof cmd.id === 'string' && cmd.id) {
+          const params = cmd.params && typeof cmd.params === 'object' ? cmd.params : {};
+          submit(cmd.id, params);
           applied++;
+          continue;
+        }
+        // Legacy Studio-style adjustment: { key, value }.
+        if (cmd && cmd.key && typeof cmd.value === 'number') {
+          const mapped = mapToPhotoCraftCommand(cmd.key, cmd.value);
+          if (mapped) {
+            submit(mapped.commandId, mapped.params);
+            applied++;
+          }
         }
       } catch (e) {
-        console.warn('[AI Widget] PhotoCraft command failed:', cmd.key, ':', e.message);
+        console.warn('[AI Widget] PhotoCraft command failed:', cmd && (cmd.id || cmd.key), ':', e.message);
       }
     }
     return applied > 0;
@@ -478,11 +498,24 @@
     return el;
   }
 
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
   function formatCommandsHtml(commands) {
     if (!commands || !commands.length) return '';
     let html = '<div class="cmd-list">';
     for (const cmd of commands) {
-      html += '<div class="cmd-item"><span class="key">' + cmd.key + '</span> = <span class="val">' + cmd.value.toFixed(2) + '</span></div>';
+      if (cmd && typeof cmd.id === 'string' && cmd.id) {
+        const params = cmd.params && typeof cmd.params === 'object' ? JSON.stringify(cmd.params) : '{}';
+        html += '<div class="cmd-item"><span class="key">' + escapeHtml(cmd.id) + '</span> <span class="val">' + escapeHtml(params) + '</span></div>';
+        continue;
+      }
+      if (cmd && typeof cmd.value === 'number') {
+        html += '<div class="cmd-item"><span class="key">' + escapeHtml(cmd.key) + '</span> = <span class="val">' + cmd.value.toFixed(2) + '</span></div>';
+      }
     }
     html += '</div>';
     return html;
