@@ -37,7 +37,7 @@
 
 ## 保留 v0.16 更新口子
 
-部署的 `photocraft/` wasm 已是 v0.16.0 + AI Bridge，由前端仓库 `build-photocraft-wasm.yml` CI 构建（非本机）。上游升级路径在仓库 CI，不在本机改。
+部署的 `photocraft/` wasm 已是 v0.16.0 + AI Bridge，由前端仓库 `deploy-apps.yml` CI 构建（非本机，原 `build-photocraft-wasm.yml` 已并入）。上游升级路径在仓库 CI，不在本机改。
 
 ## 待办
 

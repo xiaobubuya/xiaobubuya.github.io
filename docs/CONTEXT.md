@@ -40,7 +40,7 @@ C:\Users\42410\album_code\
 2. **改 js/css 必须升 `sw.js` 的 `SHELL` 版本号**（现在是 `shell-v66`）。
    不升的话 Service Worker 会给老客户端返回缓存版本，
    症状是「本地好的，线上没反应」。
-3. **`photocraft/` 的 wasm 只能由 `build-photocraft-wasm.yml` 构建。**
+3. **`photocraft/` 的 wasm 只能由 `deploy-apps.yml`（含 `build-wasm` job）构建。**
    有指纹锁 + 校验脚本兜底，详见 `docs/AI_WIDGET.md`。
 4. **AI 后端地址只能是 `https://ai.muyaya.world`。**
    不要写 trycloudflare 匿名地址，它每次重启换域名。
@@ -93,8 +93,8 @@ npm run test:browser
 | 东西 | 怎么部署 |
 |---|---|
 | 前端 | push 到 `main`，Pages 自动 redeploy（30~60 秒） |
-| PhotoCraft wasm | Actions → `Build PhotoCraft WASM`（手动点） |
-| LightCraft | `auto-deploy-web.yml` 6 小时 cron 跟上游 |
+| PhotoCraft wasm | Actions → `Deploy Apps`（手动点，或 6h 定时） |
+| LightCraft | 同上 `Deploy Apps` 工作流（job `deploy-web-apps`），6 小时 cron 跟上游 |
 | ai-agent-server | **手工**：服务器 `/opt/ai-agent-server` 不是 git 仓库，靠 `tsc` 构建 + `pm2 restart` |
 | muyaya-api | 同上，`/opt/muyaya-api` |
 | Harness CLI | `harness-repo` 的 `Deploy Harness CLI` workflow |

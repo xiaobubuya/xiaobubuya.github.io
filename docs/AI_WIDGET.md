@@ -7,7 +7,7 @@
 
 ## 一、三条铁律
 
-1. **`photocraft/` 的 wasm 只能由 `build-photocraft-wasm.yml` 从打过 patch 的源码构建。**
+1. **`photocraft/` 的 wasm 只能由 `deploy-apps.yml`（job `build-wasm`）从打过 patch 的源码构建。**
    上游 release 包没有 AI Bridge，覆盖过去悬浮球就是死按钮。
 2. **后端地址只能是 `https://ai.muyaya.world`。**
    不要用 trycloudflare 匿名地址——它每次重启就换域名。
@@ -20,13 +20,13 @@
 
 | 路径 | 唯一写入者 | 含 AI Bridge |
 |---|---|---|
-| `photocraft/` | `build-photocraft-wasm.yml` | ✅ 是 |
-| `lightcraft/` | `auto-deploy-web.yml` | ❌ 从来没有 |
+| `photocraft/` | `deploy-apps.yml`（job `build-wasm`） | ✅ 是 |
+| `lightcraft/` | `deploy-apps.yml`（job `deploy-web-apps`） | ❌ 从来没有 |
 | `ai-widget.js`（根） | 手工提交 | —— 悬浮球本体 |
 | `photocraft-build.lock` | `verify-photocraft-build.sh --update` | —— 指纹锁 |
 
-`auto-deploy-web.yml` 曾经也写 `photocraft/`，这是 2026-10-25 事故的根因。
-现在它硬编码 `UPDATE_PC=false`，只负责 LightCraft。
+原 `auto-deploy-web.yml` 曾经也写 `photocraft/`，这是 2026-10-25 事故的根因。
+现已合并进 `deploy-apps.yml`，`photocraft/` 只由 `build-wasm` job 构建（`UPDATE_PC` 恒 false）。
 
 ---
 
@@ -77,7 +77,7 @@ clone 上游 storytold/photocraft
 
 ⚠️ 绊线红了只是红，不会阻止合并。要真阻止需把 `Protect PhotoCraft Build`
 设成 main 的 required status check —— **注意这也会挡掉 bot 自己的推送**
-（`auto-deploy-web.yml` 和 `build-photocraft-wasm.yml` 都直接 push 到 main），
+（`deploy-apps.yml` 的 `build-wasm` 和 `deploy-web-apps` 两个 job 都直接 push 到 main），
 必须先配 bypass 名单。
 
 ---
@@ -139,8 +139,9 @@ git add -f .web-versions.json photocraft/ lightcraft/   # 把删除也 stage 了
 `photocraft/ai-widget.js`（637 行）、`photocraft/index.html` 的 shim 与标签、
 `lightcraft/index.html` 的标签（88 行）。
 
-修复：`dabb051` 回退 `photocraft/` 到 `ccbf345`、重新注入 LightCraft 标签、
-`auto-deploy-web.yml` 不再部署 PhotoCraft。
+修复：`dabb051` 回退 `photocraft/` 到 `ccbf345`、重新注入 LightCraft 标签。
+（当时在 `auto-deploy-web.yml` 里让 `UPDATE_PC=false` 不再部署 PhotoCraft；
+后该文件已并入 `deploy-apps.yml`，见 §二。）
 
 ---
 
@@ -252,7 +253,7 @@ api.muyaya.world      → 直指 120.48.86.101，被百度云 403（未备案）
 3. `.web-versions.json` 里的 `photocraft=` 保留自建构建的版本号，
    不要写成上游 tag（会谎报版本）。
 
-LightCraft 相反：只走 `auto-deploy-web.yml`，上游发版自动跟上。
+LightCraft 相反：只走 `deploy-apps.yml` 的 `deploy-web-apps` job，上游发版自动跟上。
 
 ---
 
@@ -266,7 +267,6 @@ LightCraft 相反：只走 `auto-deploy-web.yml`，上游发版自动跟上。
 | `photocraft-build.lock` | `photocraft/` 指纹锁 |
 | `scripts/verify-photocraft-build.sh` | 唯一校验实现，三处 workflow 共用 |
 | `.github/workflows/protect-photocraft-wasm.yml` | 独立绊线 |
-| `.github/workflows/build-photocraft-wasm.yml` | 唯一有权写 `photocraft/` |
-| `.github/workflows/auto-deploy-web.yml` | 只写 `lightcraft/` |
+| `.github/workflows/deploy-apps.yml` | 合并工作流：`build-wasm` 写 `photocraft/`，`deploy-web-apps` 写 `lightcraft/`（2026-10 合并，替代原 `build-photocraft-wasm.yml` + `auto-deploy-web.yml`） |
 | `.web-versions.json` | `photocraft=<自建版本>,lightcraft=<上游 tag>` |
 | `docs/CONTEXT.md` | 项目当前状态速查（本文件是 AI 悬浮球专题） |

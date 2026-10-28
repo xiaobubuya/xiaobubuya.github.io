@@ -1,25 +1,50 @@
-name: Build PhotoCraft WASM
+name: Deploy Apps (PhotoCraft build → LightCraft auto-deploy)
+
+# 由原 auto-deploy-web.yml 与 build-photocraft-wasm.yml 合并而来。
+#
+# 为什么合并：
+#   原来两个 workflow 共用同一个 `0 */6 * * *` 定时，在同一个分钟各自独立触发，
+#   两个都往 main push（build 推 photocraft/，auto-deploy 推 lightcraft/）。
+#   1) 没有顺序保证 —— 谁先谁后全看运气；慢的 build(~8min) 和快的 auto-deploy(16s)
+#      在同分钟并发 push，build 用 8 分钟前 checkout 的旧 base 再 push 会
+#      non-fast-forward 被拒，产物没落盘（历史 run #34/#35 就是这么挂的）。
+#   2) pages-build-deployment 按每次 push 触发，顺序不定时最终产物会抖动。
+#
+# 合并后：一个 workflow 内先 build-wasm job（提交 photocraft），
+# 再由 deploy-web-apps job（needs=build-wasm，强制在 build 之后）处理 LightCraft，
+# 消除同分支并发 push 的竞态，顺序始终是 先 PhotoCraft 后 LightCraft。
+#
+# protect-photocraft-wasm.yml 作为独立绊线保留，不部署、只校验。
 
 on:
-  # 每 6 小时自动从上游 main（打过 AI Bridge 补丁）重建一次。
-  # 有产物变化才发 commit，上游没变则无变更即 exit 0，不会产生空提交。
   schedule:
     - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       commit:
-        description: 'Commit SHA to build (optional, defaults to main)'
+        description: 'PhotoCraft source commit SHA to build (optional, defaults to upstream main)'
         required: false
         default: 'main'
   push:
     paths:
-      - '.github/workflows/build-photocraft-wasm.yml'
+      - '.github/workflows/deploy-apps.yml'
       - 'apply-bridge.js'
 
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-apps-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # ═════════════════════════════════════════════════════════════════════════
+  # Job 1：构建 PhotoCraft WASM（带 AI Bridge），提交 photocraft/
+  # 原 build-photocraft-wasm.yml 的 build-wasm job 原样保留（含 snippets 修复）。
+  # ═════════════════════════════════════════════════════════════════════════
   build-wasm:
     runs-on: ubuntu-24.04
-    
+
     steps:
       - name: Checkout PhotoCraft source
         uses: actions/checkout@v4
@@ -83,9 +108,6 @@ jobs:
           echo "WASM_DIR=$WASM_DIR" >> $GITHUB_OUTPUT
           echo "Found output at: $WASM_DIR"
           ls -la "$WASM_DIR"
-          echo ""
-          echo "=== All output files ==="
-          find . -name '*.wasm' -o -name '*.wasm.br' -o -name '*boot*' -o -name '*.js.br' 2>/dev/null
 
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
@@ -95,46 +117,41 @@ jobs:
             ${{ steps.find_output.outputs.WASM_DIR }}/*
           if-no-files-found: error
 
-      - name: Deploy to GitHub Pages
+      # ── 部署到 xiaobubuya.github.io ──
+      - name: Deploy PhotoCraft build to repo
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           echo "=== Deploying to xiaobubuya.github.io ==="
-          
-          # Use step output from find_output step
+
           WASM_DIR="${{ steps.find_output.outputs.WASM_DIR }}"
-          WASM_DIR="${WASM_DIR#./}"  # Strip leading ./
-          
+          WASM_DIR="${WASM_DIR#./}"
+
           if [ -z "$WASM_DIR" ]; then
             echo "ERROR: find_output step did not produce WASM_DIR"
             find . -name '*.wasm' -o -name '*.wasm.br' 2>/dev/null
             exit 1
           fi
-          
+
           echo "WASM output at: $GITHUB_WORKSPACE/$WASM_DIR"
           ls -la "$GITHUB_WORKSPACE/$WASM_DIR/"
-          
-          # Count files to verify before copying
-          JS_COUNT=$(find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.js' | wc -l)
-          WASM_COUNT=$(find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.wasm' | wc -l)
-          HTML_COUNT=$(find "$GITHUB_WORKSPACE/$WASM_DIR/" -maxdepth 1 -name '*.html' | wc -l)
-          echo "Files found: $JS_COUNT JS, $WASM_COUNT WASM, $HTML_COUNT HTML"
-          
-          if [ "$JS_COUNT" -eq 0 ] && [ "$WASM_COUNT" -eq 0 ]; then
-            echo "ERROR: No JS or WASM files found to deploy"
-            find "$GITHUB_WORKSPACE/$WASM_DIR/" -type f
-            exit 1
-          fi
-          
+
           # Clone with authentication
-          git clone https://${GITHUB_ACTOR}:${GITHUB_TOKEN}@github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
+          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/xiaobubuya/xiaobubuya.github.io.git ../deploy-repo
           cd ../deploy-repo
-          
+
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
-          
+
+          # 先同步到最新 main，避免 base 过期导致后面 push 被拒（non-fast-forward）
+          git pull --rebase --autostash origin main || {
+            echo "::error::pull --rebase 失败，main 已前进；重试自动会用最新 base"
+            git fetch origin main && git reset --hard origin/main
+          }
+
           mkdir -p photocraft
-          
+
           # Remove old built files to avoid stale hashed filenames.
           # snippets/ 每次都会被新构建整体覆盖，先删掉避免旧哈希残留、混放。
           rm -f photocraft/index.html
@@ -145,7 +162,7 @@ jobs:
           rm -f photocraft/photocraft-web-*.wasm
           rm -f photocraft/photocraft-web-*.wasm.br
           rm -rf photocraft/snippets
-          
+
           # 整体复制整个构建产物目录（含子目录），不再用 `find -maxdepth 1` 只拷顶层文件。
           # 事故根因：Trunk/wasm-bindgen 的产物除了顶层 .js/.wasm 外，还会在 snippets/ 下
           # 生成被 glue JS import 的内联模块（如 snippets/eframe-<hash>/inline0.js）。
@@ -155,12 +172,6 @@ jobs:
           cp -a "$GITHUB_WORKSPACE/$WASM_DIR"/. photocraft/
 
           # ── Inject ai-widget.js (post-build) ──
-          # 模板里写的 ../ai-widget.js 相对 apps/photocraft-web/ 指向 apps/ai-widget.js，
-          # 构建后随产物搬到 photocraft/ 就指到 ../ai-widget.js，从 / 的根目录解析才凑巧
-          # 能命中根目录那份 —— 路径解析依赖部署位置，所以必须在构建之后注入，
-          # 用同目录相对路径，任何静态主机上都能解析。
-          # 先剥掉产物里可能残留的任何 ai-widget script 标签（比如模板侧又被加了回去），
-          # 保证这里是唯一注入点、只会留一个标签。
           # 用 sed 而不是 python heredoc —— heredoc 体若缩进为 0 会终止 YAML 的 run: | block，
           # 整个 workflow 解析失败（run #28 就是那样挂的）。
           cp ai-widget.js photocraft/ai-widget.js || { echo "::error::ai-widget.js 复制失败"; exit 1; }
@@ -174,10 +185,7 @@ jobs:
           ls -la photocraft/
 
           # ── 钉死指纹 ──
-          # photocraft-build.lock 是 photocraft/ 的唯一真相来源。
-          # --update 会先确认新产物里真的有 bridge_symbols，没有就拒绝写锁并 exit 1，
-          # 所以这条命令本身就是「构建出没带 AI Bridge 的产物」的第一道拦截。
-          echo "=== Regenerating photocraft-build.lock ==="
+          # 先确认新产物里真的有 bridge_symbols，没有就拒绝写锁并 exit 1。
           bash scripts/verify-photocraft-build.sh --update \
             || { echo "::error::产物没有 AI Bridge 符号，拒绝更新指纹"; exit 1; }
 
@@ -185,10 +193,6 @@ jobs:
           git add -f photocraft/ photocraft-build.lock
 
           # 没有变更 = 本次构建产物与 origin/main 逐字节相同，没有东西可发。
-          # 必须 exit 0：否则任何只改 CI 脚本本身、产物不变的提交都会把流水线染红。
-          # run #34 / #35 就是这样挂的 —— wasm 按内容哈希命名，字节相同即文件名相同。
-          # 真正的「产物没落盘」由下面那道引用校验兜底：index.html 引用了未被跟踪的
-          # 文件会 exit 1。
           if git diff --cached --quiet; then
             echo "nothing staged — 产物与 origin/main 相同，跳过部署"
             git status --short --ignored -- photocraft/
@@ -197,29 +201,22 @@ jobs:
           fi
 
           # 产物确实有变化，才同步 .web-versions.json 的 photocraft 字段并暂存。
-          # 本 workflow 构建的是上游 main 的当前 commit（打过 AI Bridge 补丁），
-          # 把该 commit SHA 写进 .web-versions.json，避免「版本记录 = v0.15.1」
-          # 与「实际部署 = v0.16.0 + AI Bridge」脱节。
-          # 该文件只被 auto-deploy-web.yml（每 6 小时）读来比较 LightCraft，
-          # photocraft 字段记录的正是本 workflow 部署的来源 commit。
           LOCAL_LC=$(sed -n 's/^.*lightcraft=\([^,]*\).*$/\1/p' .web-versions.json 2>/dev/null || true)
           PC_COMMIT=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD 2>/dev/null || echo "main")
           printf 'photocraft=%s,lightcraft=%s\n' "$PC_COMMIT" "${LOCAL_LC:-main}" > .web-versions.json
           echo "  .web-versions.json 已同步: photocraft=$PC_COMMIT"
           git add -f .web-versions.json
 
-          # 上线前硬校验 1：指纹必须自洽（文件名、校验和、体积、bridge 符号、shim、标签）
+          # 上线前硬校验 1：指纹必须自洽
           echo "=== Verifying photocraft-build.lock ==="
           bash scripts/verify-photocraft-build.sh \
             || { echo "::error::photocraft 指纹校验失败"; exit 1; }
 
           # 上线前硬校验 2：index.html 与 glue JS 引用/import 的每个本地文件都必须真的被复制进
           # photocraft/ 并且已被 git 跟踪，缺一个就拦下（防止再发生 snippets/ 漏拷仍绿线上线）。
-          # 旧正则 `\./[A-Za-z0-9_.-]+\.(js|wasm)` 不匹配嵌套路径（如 ./snippets/eframe-<hash>/inline0.js），
-          # 所以漏拷 snippets/ 时校验仍通过。下面的提取对路径深度不敏感，能抓到任意层的引用。
           missing=0
           rm -f /tmp/pc_refs.txt
-          # (a) index.html 里的相对引用：./<任意路径>.js|.wasm（路径中可含 / 和 -）
+          # (a) index.html 里的相对引用：./<任意路径>.js|.wasm
           grep -oE "[.][/][^\"'<>[:space:]]+[.](js|wasm)" photocraft/index.html \
             | sed -e 's#^[.]/##' -e 's#^[.]/##' \
             | sort -u \
@@ -245,8 +242,130 @@ jobs:
             fi
           done
           [ "$missing" -eq 0 ] || exit 1
-          
+
           git commit -m "chore: update PhotoCraft WASM with AI Bridge (run #${GITHUB_RUN_NUMBER})"
           git push
-          
-          echo "=== Artifacts deployed successfully! ==="
+          echo "=== PhotoCraft build deployed ==="
+
+  # ═════════════════════════════════════════════════════════════════════════
+  # Job 2：LightCraft 自动部署（needs=build-wasm，强制在 PhotoCraft 之后跑）
+  # 原 auto-deploy-web.yml。PhotoCraft 永远不从上游 release 部署（UPDATE_PC=false）。
+  # pull --rebase 保证即使上一 job 或别处刚 push 过 main 也不会 non-fast-forward。
+  # ═════════════════════════════════════════════════════════════════════════
+  deploy-web-apps:
+    needs: build-wasm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check upstream versions
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f .web-versions.json ]; then
+            echo "local=$(cat .web-versions.json)" >> "$GITHUB_OUTPUT"
+          else
+            echo "local=none" >> "$GITHUB_OUTPUT"
+          fi
+
+          lc_api=$(curl -s "https://api.github.com/repos/storytold/lightcraft/releases/latest")
+          lc_tag=$(echo "$lc_api" | jq -r '.tag_name // empty')
+          if [ -z "$lc_tag" ]; then
+            echo "::warning::LightCraft latest release not found"
+            lc_tag="none"
+          fi
+          echo "lc_tag=$lc_tag" >> "$GITHUB_OUTPUT"
+          echo "Latest: LightCraft=$lc_tag"
+
+      - name: Decide if update needed
+        id: decide
+        shell: bash
+        run: |
+          # 只处理 LightCraft。PhotoCraft 由 build-wasm job 从打过 AI Bridge 的源码构建，
+          # 本 job 永不部署（上游包没有 AI Bridge —— 见 auto-deploy-web.yml 原注释）。
+          LOCAL_LC=$(grep -o 'lightcraft=[^,]*' .web-versions.json 2>/dev/null | cut -d= -f2 || true)
+          LC="${{ steps.versions.outputs.lc_tag }}"
+          UPDATE_LC=false
+          if [ "$LC" != "none" ] && { [ "$LOCAL_LC" != "$LC" ] || [ ! -f lightcraft/index.html ]; }; then
+            UPDATE_LC=true
+          fi
+          echo "update_lc=$UPDATE_LC" >> "$GITHUB_OUTPUT"
+          echo "Will update LightCraft=$UPDATE_LC"
+
+      - name: Download LightCraft web
+        if: steps.decide.outputs.update_lc == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LC="${{ steps.versions.outputs.lc_tag }}"
+          VER="${LC#v}"
+          ZIP="lightcraft-web-${VER}.zip"
+          URL="https://github.com/storytold/lightcraft/releases/download/${LC}/${ZIP}"
+          echo "Downloading $URL ..."
+          curl -L -o "/tmp/$ZIP" "$URL"
+          echo "Size: $(du -h "/tmp/$ZIP")"
+
+      - name: Deploy LightCraft web
+        if: steps.decide.outputs.update_lc == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LC="${{ steps.versions.outputs.lc_tag }}"
+          VER="${LC#v}"
+          ZIP="lightcraft-web-${VER}.zip"
+
+          rm -rf lightcraft/
+          mkdir -p lightcraft/
+
+          EXTRACT="$(mktemp -d)"
+          unzip -q "/tmp/$ZIP" -d "$EXTRACT"
+          cp -a "$EXTRACT"/lightcraft-web-*/. lightcraft/
+          rm -rf "$EXTRACT"
+
+          test -f lightcraft/index.html || { echo "::error::lightcraft/index.html 缺失，解包失败"; exit 1; }
+
+          # 上游包里没有 <script src="../ai-widget.js"> 标签，必须在部署后注入，
+          # 否则解包 = 悬浮球消失（d325301 删掉的 88 行里有它）。
+          sed -i 's|<script[^>]*src="[^"]*ai-widget\.js"[^>]*>[[:space:]]*<\/script>||g' lightcraft/index.html
+          sed -i 's#</body>#<script src="../ai-widget.js"></script>\n</body>#' lightcraft/index.html \
+            || { echo "::error::ai-widget.js script 标签注入失败"; exit 1; }
+          grep -q 'src="../ai-widget.js"' lightcraft/index.html \
+            || { echo "::error::ai-widget.js 没注入进 lightcraft/index.html"; exit 1; }
+          test -f ai-widget.js || { echo "::error::根目录 ai-widget.js 缺失"; exit 1; }
+          echo "  Injected <script src=\"../ai-widget.js\"></script>"
+          echo "Deployed LightCraft $LC → lightcraft/ ($(find lightcraft -type f | wc -l) files)"
+
+      - name: Verify AI widget present
+        if: steps.decide.outputs.update_lc == 'true'
+        shell: bash
+        run: |
+          set -uo pipefail
+          bash scripts/verify-photocraft-build.sh
+
+      - name: Commit changes
+        if: steps.decide.outputs.update_lc == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LC="${{ steps.versions.outputs.lc_tag }}"
+
+          LOCAL_PC=$(grep -o 'photocraft=[^,]*' .web-versions.json 2>/dev/null | cut -d= -f2 || true)
+          echo "photocraft=$LOCAL_PC,lightcraft=$LC" > .web-versions.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f .web-versions.json lightcraft/
+          git commit -m "deploy: update web apps (photocraft=$LOCAL_PC lightcraft=$LC)" || true
+          # 上一 job 或别处可能刚 push 过 main，rebase 后再 push 避免 non-fast-forward
+          git pull --rebase --autostash origin main || true
+          git push
+          echo "✅ Deployed: LightCraft $LC (PhotoCraft untouched, still $LOCAL_PC)"
+
+      - name: Already up to date
+        if: steps.decide.outputs.update_lc == 'false'
+        run: echo "✅ Already up to date (lightcraft=${{ steps.versions.outputs.lc_tag }})"
