@@ -58,6 +58,11 @@ spec 只描述**可观察行为**，不写内部类名/库选型/逐步实现。
    映射表必须与后端 `WIDGET_ADJUSTMENTS` 的 key 集合一致、不得静默跳过（该表在 VPS 的
    ai-agent-server 上，本地仓库看不到，48 个 key 是前端这一侧的实测数量）。
 6. **Windows 不要用 PowerShell 5.1 拼复杂命令**；写进 `.sh` / `.py` / `.js` 再执行。
+7. **`deploy-ai-agent.yml` 不得打包上传 harness。** 服务器 `/opt/ai-agent-server/harness`
+   已有 dsh，161MB 包经 scp 到国内服务器会半开挂死（曾跑 4 小时且 tar 损坏）。
+   改这个 workflow 后必须确认 `.env` 的 `LLM_API_KEY`/`API_KEY`/`PHOTOCRAFT_SERVE_TOKEN`
+   不被置空或覆盖（heredoc 单引号会让 secret 在远程展开为空），
+   且 `/usr/local/bin/dsh` 仍指向全局完好版本。详见 `SERVER-OPS-2026-10-28.md`。
 
 ## 已知漂移（文档如实记录，尚未修复）
 

@@ -18,6 +18,7 @@
 | `AI_WIDGET.md` | `ai-widget` / `wasm-apps` | AI 悬浮球 + 隧道 + 部署漂移的唯一权威事实来源 |
 | `AI_WIDGET-FIX-RECORD.md` | `ai-widget` | Bug 修复记录，仍有效 |
 | `AI-BRIDGE-FIX-2026-10-27.md` | `ai-widget` | 2026-10-27 解析失败三层根因与修复；命令形状与 repaint 行为已并入 `ai-widget` spec |
+| `SERVER-OPS-2026-10-28.md` | （运维，不入 spec） | 部署链路四个缺陷（161MB harness 包 / heredoc 变量 / dsh 指向 / API_KEY 覆盖）与 fail2ban 上线 |
 | `ROADMAP.md` | 各能力 spec | 完成项与计划项混杂；以本文档为准 |
 | `REFERENCES.md` | （长期有效） | 三个外部仓库评估 + 哪些代码独立写的，未并入 spec，保留原文 |
 
