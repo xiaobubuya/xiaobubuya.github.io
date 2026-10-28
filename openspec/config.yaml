@@ -1,0 +1,36 @@
+schema: spec-driven
+
+context: |
+  Language: zh-CN
+  All artifacts must be written in zh-CN.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  仓库真实形态（muyaya 前端）：
+  - 两人自用的婚纱照相册前端，GitHub Pages 纯静态（muyaya.world），无 Electron 桌面端、无 Cloudflare Worker 后端。
+  - 后端是两个 VPS 上的 Node 服务：ai-agent-server(:3000) + muyaya-api(:3001)，经 ai.muyaya.world（Cloudflare 命名隧道）访问。
+  - 前端仓库是公开的：密钥、内部地址、个人信息一律不得进入。
+  - 能力划分别按「前端可观察行为」切分：auth-session / photo-browser / photo-upload / album / app-nav / pwa-shell / share-page / ai-widget / wasm-apps。
+  - 铁律：改静态外壳必须升 sw.js 的 SHELL 版本号；photocraft/ 的 wasm 只能由 deploy-apps.yml(build-wasm) 从打过 AI Bridge 补丁的源码构建；AI 后端地址只能是 https://ai.muyaya.world。
+  - 旧大文档归档在 openspec/changes/archive/legacy-docs/，含映射表。
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
