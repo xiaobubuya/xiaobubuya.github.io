@@ -265,8 +265,9 @@ const bridgeShim = `
     try {
         const KEY = 'photocraft.preferences';
         const raw = localStorage.getItem(KEY);
-        if (!raw) return;
-        const prefs = JSON.parse(raw);
+        // 新用户没有 prefs 也照样写：Preferences 结构体带 #[serde(default)]，
+        // 缺失字段由引擎用默认值填充，所以 {"interface":{"language":"zh-hans"}} 合法。
+        const prefs = raw ? JSON.parse(raw) : {};
         const cur = prefs && prefs.interface && prefs.interface.language;
         if (cur && cur !== 'auto') return; // 用户已显式选过，尊重它
         prefs.interface = prefs.interface || {};

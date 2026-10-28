@@ -20,17 +20,17 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 <script type="module">
 // pc-ui-language-preset: 引擎启动前预置界面语言。
 //
-// 引擎在启动时读 localStorage 的 photocraft.preferences（web.rs 的 load_prefs），
-// 所以必须在 wasm init 之前把 interface.language 改掉。execute_command 那条路
+// 引擎启动时读 localStorage 的 photocraft.preferences（web.rs 的 load_prefs），
+// 所以必须在 wasm init 之前改掉 interface.language。execute_command 那条路
 // 走不通：命令要等 WebShell::logic() 消费队列，而新页面加载后没有交互就不产帧。
 //
-// 只在已有完整 preferences 时改（新用户结构未知，交给下方的命令路径）。
+// Preferences 带 #[serde(default)]，缺失字段由引擎用默认值填充，所以新用户
+// 只写 {"interface":{"language":"zh-hans"}} 也合法。
 (function presetUiLanguage() {
     try {
         const KEY = 'photocraft.preferences';
         const raw = localStorage.getItem(KEY);
-        if (!raw) return;
-        const prefs = JSON.parse(raw);
+        const prefs = raw ? JSON.parse(raw) : {};
         const cur = prefs && prefs.interface && prefs.interface.language;
         if (cur && cur !== 'auto') return; // 用户已显式选过，尊重它
         prefs.interface = prefs.interface || {};
