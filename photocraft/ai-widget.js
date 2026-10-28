@@ -203,6 +203,40 @@
   }
 
   /**
+   * 取当前工作区画布，缩到长边 1024 后转 data URL。
+   * 供 /api/parse 做视觉分析（定位类需求）；画布被跨域污染时返回 null。
+   */
+  function grabWorkCanvas(maxEdge) {
+    maxEdge = maxEdge || 1024;
+    const canvas = editorType === 'photocraft'
+      ? document.getElementById('photocraft_canvas')
+      : editorType === 'lightcraft'
+        ? document.getElementById('lightcraft_canvas')
+        : null;
+    if (!canvas || !canvas.width || !canvas.height) return null;
+
+    const scale = Math.min(1, maxEdge / Math.max(canvas.width, canvas.height));
+    const w = Math.max(1, Math.round(canvas.width * scale));
+    const h = Math.max(1, Math.round(canvas.height * scale));
+
+    try {
+      const tmp = document.createElement('canvas');
+      tmp.width = w;
+      tmp.height = h;
+      tmp.getContext('2d').drawImage(canvas, 0, 0, w, h);
+      return {
+        dataUrl: tmp.toDataURL('image/png'),
+        // 画布内在分辨率 = 文档尺寸（与 CSS 显示缩放无关）
+        width: canvas.width,
+        height: canvas.height,
+      };
+    } catch (e) {
+      console.warn('[AI Widget] 画布跨域污染，跳过视觉分析:', e.message);
+      return null;
+    }
+  }
+
+  /**
    * Fallback: execute commands via Canvas 2D for PhotoCraft/LightCraft.
    * Limited but provides basic functionality when Studio is not available.
    */
@@ -555,10 +589,18 @@
       // Plan B: call /api/parse, no image upload needed
       addMsg('system', '🤖 AI 正在分析指令...');
 
+      // 带上当前画布：后端据此做视觉分析，定位类需求（选区/画笔/蒙版）才可用。
+      const payload = { message: text, tool: currentTool };
+      const shot = grabWorkCanvas();
+      if (shot) {
+        payload.imageBase64 = shot.dataUrl;
+        payload.docSize = { w: shot.width, h: shot.height };
+      }
+
       const res = await fetch(API_BASE + '/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
-        body: JSON.stringify({ message: text, tool: currentTool }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
