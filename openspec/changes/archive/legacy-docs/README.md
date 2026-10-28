@@ -17,6 +17,7 @@
 | `HANDOFF.md` | 各能力 spec 的约束 + `tests` 说明 | 描述 Electron/vault/studio 的章节已作废；「踩过的坑」仍有效 |
 | `AI_WIDGET.md` | `ai-widget` / `wasm-apps` | AI 悬浮球 + 隧道 + 部署漂移的唯一权威事实来源 |
 | `AI_WIDGET-FIX-RECORD.md` | `ai-widget` | Bug 修复记录，仍有效 |
+| `AI-BRIDGE-FIX-2026-10-27.md` | `ai-widget` | 2026-10-27 解析失败三层根因与修复；命令形状与 repaint 行为已并入 `ai-widget` spec |
 | `ROADMAP.md` | 各能力 spec | 完成项与计划项混杂；以本文档为准 |
 | `REFERENCES.md` | （长期有效） | 三个外部仓库评估 + 哪些代码独立写的，未并入 spec，保留原文 |
 
