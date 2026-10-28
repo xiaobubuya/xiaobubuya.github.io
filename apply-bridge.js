@@ -144,6 +144,16 @@ pub async fn execute_command(id: &str, params_json: &str) -> Result<String, Stri
         result.clone(),
     ));
 
+    // Wake the eframe loop. It only runs WebShell::logic() (which drains the
+    // queue) when a frame is scheduled, so on an idle page — no pointer/key
+    // events — this future would stay pending forever. Observed on the real
+    // page: execute_command('prefs.get', …) never resolved until the user moved
+    // the mouse. request_repaint() schedules that frame from JS side, but the
+    // bridge should not depend on callers remembering to do it.
+    if let Some(cb) = REPAINT.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        cb();
+    }
+
     // Poll the AtomicBool until the eframe loop sets it.
     poll_fn(|_cx: &mut Context<'_>| {
         if done.load(Ordering::Relaxed) {
@@ -259,34 +269,51 @@ window.addEventListener('TrunkApplicationStarted', () => {
         apiVersion: 'bridge'
     };
     initUiLanguage();
-    // pc-ui-language: 中文浏览器首次访问时把界面语言默认设为简体中文。
-    // 只在 interface.language 仍为 "auto"（用户没手动选过）时设置；
-    // prefs 持久化在 localStorage，成功后不会再改，用户之后手动改也不会被覆盖。
+    // pc-ui-language: 界面语言默认简体中文。
+    //
+    // 为什么不 await execute_command：bridge 的 execute_command 用 poll_fn 轮询
+    // 一个 AtomicBool，而 wasm 侧的 waker 不会重新 poll 它——实测该 Promise
+    // 永久 pending（即使 request_repaint 也一样）。但命令本身会入队，并在
+    // WebShell::logic() 下一次运行时执行。所以这里 fire-and-forget。
+    //
+    // 是否要设：直接读 localStorage 里的 preferences（引擎启动时也读它），
+    // 避开命令队列；用户显式选过其它语言就不动。
     function initUiLanguage() {
-        // 本站面向中文用户：不再判断浏览器语言，一律默认简体中文
-        // （用户手动改成别的语言后不会被覆盖，见下面 cur !== 'auto' 的判断）。
-        let tries = 40; // 无文档时 prefs.get 会失败，持续重试直到会话可用
-        const attempt = async () => {
-            if (!window.has_session || !window.has_session() || typeof window.execute_command !== 'function') {
-                if (--tries > 0) return setTimeout(attempt, 500);
-                return;
-            }
+        const PREF_KEY = 'photocraft.preferences';
+        const isDefault = () => {
             try {
-                const raw = await window.execute_command('prefs.get', '{"path":"interface.language"}');
-                let cur = raw;
-                try { cur = JSON.parse(raw); } catch (e) { /* 非 JSON 就按原样比较 */ }
-                cur = String(cur).replace(/^"(.*)"$/, '$1');
-                if (cur !== 'auto') return; // 用户已显式选过语言，尊重它
-                await window.execute_command('prefs.set', '{"path":"interface.language","value":"zh-hans"}');
-                if (window.request_repaint) window.request_repaint();
-                console.log('[i18n] 界面语言已默认设为简体中文');
+                const raw = localStorage.getItem(PREF_KEY);
+                const prefs = raw ? JSON.parse(raw) : null;
+                const cur = prefs && prefs.interface && prefs.interface.language;
+                return !cur || cur === 'auto';
             } catch (e) {
-                // 会话/文档还没就绪时读取会失败，继续等到超时
-                if (--tries > 0) return setTimeout(attempt, 500);
-                console.warn('[i18n] 默认语言设置失败:', e);
+                return true; // 读不出来就按默认处理，引擎会自己保底
             }
         };
-        setTimeout(attempt, 200);
+        const apply = () => {
+            if (!isDefault()) return;
+            try {
+                if (typeof window.execute_command !== 'function') return;
+                window.execute_command('prefs.set', '{"path":"interface.language","value":"zh-hans"}');
+                if (window.request_repaint) window.request_repaint();
+                console.log('[i18n] 界面语言已设为简体中文');
+            } catch (e) {
+                console.warn('[i18n] 设置语言失败:', e);
+            }
+        };
+        // 桥接就绪后先试一次（此时可能还没有帧，命令会等到下一次 logic）
+        let tries = 25;
+        const waitBridge = () => {
+            if (typeof window.execute_command === 'function' && window.has_session && window.has_session()) {
+                apply();
+                return;
+            }
+            if (--tries > 0) setTimeout(waitBridge, 200);
+        };
+        setTimeout(waitBridge, 200);
+        // 兜底：用户第一次交互必然产生帧，此时命令一定会被 logic() 消费
+        ['pointerdown', 'keydown'].forEach((ev) =>
+            window.addEventListener(ev, () => apply(), { once: true, passive: true }));
     }
 });
 </script>`;
