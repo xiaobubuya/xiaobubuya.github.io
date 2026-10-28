@@ -258,12 +258,41 @@ window.addEventListener('TrunkApplicationStarted', () => {
         hasImage: () => { try { return b.has_session ? b.has_session() : false; } catch(e) { return false; } },
         apiVersion: 'bridge'
     };
+    initUiLanguage();
+    // pc-ui-language: 中文浏览器首次访问时把界面语言默认设为简体中文。
+    // 只在 interface.language 仍为 "auto"（用户没手动选过）时设置；
+    // prefs 持久化在 localStorage，成功后不会再改，用户之后手动改也不会被覆盖。
+    function initUiLanguage() {
+        if (!/^zh(-|$)/i.test(navigator.language || '')) return;
+        let tries = 24;
+        const attempt = async () => {
+            if (!window.has_session || !window.has_session() || typeof window.execute_command !== 'function') {
+                if (--tries > 0) return setTimeout(attempt, 250);
+                return;
+            }
+            try {
+                const raw = await window.execute_command('prefs.get', '{"path":"interface.language"}');
+                let cur = raw;
+                try { cur = JSON.parse(raw); } catch (e) { /* 非 JSON 就按原样比较 */ }
+                cur = String(cur).replace(/^"(.*)"$/, '$1');
+                if (cur === 'auto') {
+                    await window.execute_command('prefs.set', '{"path":"interface.language","value":"zh-hans"}');
+                    if (window.request_repaint) window.request_repaint();
+                    console.log('[i18n] 界面语言已默认设为简体中文');
+                }
+            } catch (e) {
+                console.warn('[i18n] 默认语言设置失败:', e);
+            }
+        };
+        setTimeout(attempt, 200);
+    }
 });
 </script>`;
 
 // Check if the NEW shim (with TrunkApplicationStarted listener) is present.
 // If not, inject it (removing any old shim first).
-const hasNewShim = htmlContent.includes('TrunkApplicationStarted');
+// pc-ui-language 标记用于识别"含默认中文"的新版 shim；旧 shim 会被替换掉。
+const hasNewShim = htmlContent.includes('pc-ui-language');
 
 if (!hasNewShim) {
   // Remove old shim if present (check for the exact script tag start)
