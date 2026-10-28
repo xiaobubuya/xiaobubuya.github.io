@@ -120,6 +120,91 @@ API_KEY="${EXISTING_API_KEY:-${API_KEY}}"
 | `POST /api/chat` | `[Harness] agent 完成` → 任务完成并输出成片 |
 | `/api/health` | `{"status":"ok"}` |
 
+## 部署后自测（每次部署必走）
+
+自 2026-10-28 起，**每次 `deploy-ai-agent.yml` 部署成功后必须走一遍固定清单**，
+不再靠临时判断。完整清单（含可复制脚本与故障对照表）在后端仓库：
+
+> `deepseek-harness/apps/ai-agent-server/DEPLOY-SMOKE.md`
+
+包含四段：
+
+1. **环境自检** — `/api/health`、`.env` 关键项（`API_KEY=bubu`、`LLM_API_KEY` 与
+   `PHOTOCRAFT_SERVE_TOKEN` 非空）、`dsh` 指向全局完好版本、skill 预加载、进程状态。
+2. **功能验证（3 条）** — 旋转180度（变换类）、黑白+对比（多命令 + 默认参数）、
+   高斯模糊（滤镜类）。三条分别覆盖 skill 查询、sanitize 边界、新命令透传。
+3. **端到端** — `POST /api/chat` 真执行并产出 `*_result*.png`，日志不得出现
+   `harness 失败，回退单次 LLM`。
+4. **故障对照表** — 症状 → 根因 → 修复（401、dsh 缺 js-yaml、部署卡数小时、
+   serve token 丢失、命令被误丢等）。
+
+判断标准只有一条：**清单全绿才算部署成功**；任一项不合预期，按对照表排查后再决定回滚。
+
+## 命令清单：从 17 个扩展到引擎全量 920 个
+
+### 现象
+
+用户说「把照片旋转 180 度」，harness 回答：
+
+> ❌ 需求包含旋转180度操作，但旋转操作无法用现有命令表达（可用命令仅限图像调整类）
+
+### 根因
+
+不是引擎不支持。`photocraft-cli commands --json` 显示引擎有 **920 个命令**，
+其中旋转/翻转明确存在：
+
+```
+edit.transform.rotate180 / rotate90Cw / rotate90Ccw
+edit.transform.flipHorizontal / flipVertical
+image.imageRotation.flipCanvasHorizontal / flipCanvasVertical
+```
+
+问题在 `PHOTOCRAFT_COMMANDS` 只手工挑了 17 个 `image.adjustments.*`，
+prompt 里又硬编码「你只能使用下面这些命令 id」——模型严格照办，自然说做不到。
+
+### 方案：skill + 按需查询（而非全量塞 prompt）
+
+920 条命令原始 JSON 是 310KB，精简渲染仍约 25K tokens，每次解析都塞进 prompt 不现实。
+
+改为：
+
+1. 新增 dsh skill `photocraft-commands`，内容是「用
+   `photocraft-cli commands --json --filter <关键词>` 查真实命令与参数规格」，
+   agent 需要时自行加载并按关键词过滤查询。
+2. harness 以 **`DSH_PERMISSION_MODE=danger-full-access`** 启动。
+   依据：`dsh-base` 的 bundle 里写死了开关——
+   `policy: (process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'`。
+   headless 没有审批通道，不改这个开关，agent 执行任何 bash 都会被拒。
+3. `PHOTOCRAFT_AGENT_PROMPT` 不再带硬编码清单，只给查询方法与输出格式；
+   `PHOTOCRAFT_SYSTEM_PROMPT`（17 条内置清单）保留给**无工具的 LLM fallback**。
+4. `sanitizeCommands` 的 id 校验从「只认内置 17 个」放宽到「引擎全量集合」
+   （`getEngineCommandIds()` 调 `commands --json`，缓存 5 分钟）；
+   新增类命令参数原样透传，由引擎自身校验。
+5. 部署时把 skill 打包并预加载到 `/root/.dsh/skills/`，避免重新部署丢失。
+
+### 顺带修掉的 bug
+
+`sanitizeCommands` 原有「参数全丢光就没意义 → 丢弃整条命令」的逻辑。
+但 `blackWhite` 的参数都有默认值（`reds=40/yellows=60/...`），agent 省略参数是合法的，
+结果「改成黑白 + 提高对比度」只剩对比度一条（日志：`丢弃了 1 条无效命令:
+image.adjustments.blackWhite(参数无效)`）。已去掉该判断——真缺必填项时由引擎执行阶段报错。
+
+### 验证
+
+| 需求 | 结果 |
+|---|---|
+| 旋转180度 | `edit.transform.rotate180` + `{target:"pixels"}` |
+| 改成黑白并提高对比度 | `blackWhite` + `brightnessContrast`（2 条） |
+| 高斯模糊半径5 | `filter.blur.gaussianBlur` |
+| chat 端到端旋转 | 任务完成并产出 PNG |
+
+### 风险
+
+`danger-full-access` 意味着 agent 理论上可执行任意命令。prompt 里约束了
+「除 `photocraft-cli commands` 查询外不要执行其他命令」，但这是软约束。
+当前为内网服务、任务范围固定，风险可接受；若要更严，可给 dsh 配 bash 工具 guard
+只放行 `photocraft-cli`。
+
 ## fail2ban 上线（服务器安全）
 
 `/var/log/auth.log`（Debian 系统认证日志）显示当日 **14966 次** SSH 失败登录，
@@ -155,6 +240,17 @@ GitHub Actions runner，未被攻破。
    否则服务器会一直用旧版本。
 3. **`API_KEY` 现在以服务器现有值为准**，secret 里的 `API_KEY` 不再生效。
    若要统一，需同步修改 `ai-widget.js` 里的硬编码。
+4. **harness 以 `danger-full-access` 运行**：agent 能执行 bash 才能查引擎命令，
+   但这也意味着理论上可执行任意命令。当前靠 prompt 约束 + 内网环境控制风险；
+   若要硬隔离，需给 dsh 配 bash 工具 guard 只放行 `photocraft-cli`。
+5. **skill 内容与引擎版本耦合**：`photocraft-commands` skill 只是「怎么查」的说明，
+   命令清单本身实时来自引擎，因此引擎升级后无需改 skill；但若引擎改了
+   `commands` 子命令的用法/输出格式，需同步更新 skill。
+6. **命令参数区间以引擎为准**：内置 `PHOTOCRAFT_COMMANDS`（给 LLM fallback 用）里
+   `brightnessContrast.contrast` 写的是 `-100..100`，引擎实际为 `-50..100`。
+   仅影响无工具的 fallback 路径，harness 路径走实时引擎规格，不受影响。
+7. **`LLM_API_URL` 末尾多一个斜杠**（secret 值自带 `.../v1/`）。实测 OpenRouter 兼容
+   拼接正常，未改；介意可去 secret 里修正。
 
 ## 回滚
 
