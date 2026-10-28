@@ -53,16 +53,37 @@ pm2 restart ai-agent-server --update-env
 
 ## 数据流（回答「是不是 DSH 返回的 JSON」）
 
-不是 DeepSeek Harness。DSH 只用于排障，不参与线上链路：
+**⚠️ 2026-10-28 已切换**：以下「不是 DeepSeek Harness」为 10-27 当天记录，现已改变。
+
+### 10-27 当天（单次 LLM 解析）
+
+指令解析当时走**单次 LLM**（SiliconFlow /v1/chat/completions），DSH 只用于排障，不参与线上链路：
 
 ```
 浏览器 ai-widget.js
-  → POST https://ai.muyaya.world/api/parse   (X-API-Key: bubu, cloudflared 隧道)
+  → POST https://ai.muyaya.world/api/parse   (X-API-Key, cloudflared 隧道)
   → ai-agent-server :3000 (pm2, /opt/ai-agent-server)
   → SiliconFlow /v1/chat/completions (deepseek-ai/DeepSeek-V4-Flash)
   → {"commands":[{"id","params"}],"explanation","tool"}   ← JSON 由服务端返回
   → widget 渲染命令卡片 + window.execute_command(id, JSON.stringify(params))
   → wasm 引擎命令队列 (WebShell::logic 每帧消费) → 画布更新
+```
+
+### 10-28 切换后（harness agent，支持一句话多次修改）
+
+`/api/parse` 优先走 **DeepSeek Harness `dsh headless --json`**，用 SiliconFlow 做底模
+（`llm-pi-ai` 注入 OpenAI 兼容路由），一次推理可产出一组命令实现「一句话多次图片修改」；
+harness 不可用时仍回退单次 LLM：
+
+```
+用户对话 / 图片
+  → 浏览器 ai-widget.js（POST /api/parse, 或 ws /api/chat）
+  → ai-agent-server :3000 (pm2, /opt/ai-agent-server)
+       ↳ 优先 → dsh headless --json（DeepSeek Harness agent, SiliconFlow 底模）+ /api/parse
+       ↳ 兜底 → 单次 SiliconFlow /v1/chat/completions
+  → {"commands":[{"id","params"},…],"explanation","tool"}   ← 可能多条命令
+  → widget 提交命令 + request_repaint()
+  → wasm 引擎 / photocraft-cli serve gateway → PhotoCraft 引擎 → 画布更新
 ```
 
 图片从不上传，云端只处理文字。

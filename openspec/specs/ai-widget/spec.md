@@ -16,6 +16,10 @@ THEN 后端返回命令（原生 `{id:"adjust.saturation", params:{amount:-1}}` 
 WHEN 悬浮球提交一条命令
 THEN 必须在同一次调用里请求一帧重绘（`request_repaint`），且 SHALL NOT 等待 bridge promise 完成（它永不完结）。
 
+#### Scenario: 一句话返回多条命令
+WHEN 用户在悬浮球输入一句话但包含多次修改（如「改成黑白、再提高对比度」）
+THEN 后端 `/api/parse` 通过 harness agent（`dsh headless --json`，SiliconFlow 底模）一次返回 `commands` 数组里的多条原生命令，悬浮球 SHALL 按顺序逐条提交并各自触发重绘，编辑器依次应用全部改动。
+
 ### Requirement: 失败可排查
 悬浮球 SHALL 在「悬浮球不见了 / 显示已断开 / 说应用了但图片没变」三类故障上便于排查：显示已断开对应 `ai.muyaya.world` 不可达（隧道 down），说应用了但没变要么是命令映射表键名不匹配要么是执行未真实生效。系统 SHALL NOT 静默跳过任何未能映射的命令。
 
