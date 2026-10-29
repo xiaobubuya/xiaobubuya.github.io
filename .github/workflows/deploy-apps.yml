@@ -145,8 +145,12 @@ jobs:
           git config --global user.name "GitHub Actions"
 
           # 先同步到最新 main，避免 base 过期导致后面 push 被拒（non-fast-forward）
-          git pull --rebase --autostash origin main || {
-            echo "::error::pull --rebase 失败，main 已前进；重试自动会用最新 base"
+          # -X theirs：.web-versions.json 是生成物，两个 job 都会改它，冲突时以本次
+          # 构建的版本为准。失败则先 abort 退出 rebase（否则 HEAD 处于 detached，
+          # 后面的 git push 会直接 fatal: not currently on a branch）再重置。
+          git pull --rebase --autostash -X theirs origin main || {
+            echo "::error::pull --rebase 失败，回滚 rebase 并重置到最新 main"
+            git rebase --abort || true
             git fetch origin main && git reset --hard origin/main
           }
 
@@ -362,7 +366,10 @@ jobs:
           git add -f .web-versions.json lightcraft/
           git commit -m "deploy: update web apps (photocraft=$LOCAL_PC lightcraft=$LC)" || true
           # 上一 job 或别处可能刚 push 过 main，rebase 后再 push 避免 non-fast-forward
-          git pull --rebase --autostash origin main || true
+          git pull --rebase --autostash -X theirs origin main || {
+            git rebase --abort || true
+            git fetch origin main && git reset --hard origin/main
+          }
           git push
           echo "✅ Deployed: LightCraft $LC (PhotoCraft untouched, still $LOCAL_PC)"
 
