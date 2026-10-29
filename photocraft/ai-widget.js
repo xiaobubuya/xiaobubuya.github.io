@@ -397,12 +397,13 @@
 
   // ── CSS ──
   const css = `
-    #ai-widget-btn{position:fixed;bottom:20px;right:20px;z-index:99999;background:#2d8cf0;color:#fff;width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:transform .2s,box-shadow .2s}
+    #ai-widget-btn{position:fixed;z-index:99999;background:#2d8cf0;color:#fff;width:56px;height:56px;border-radius:50%;border:none;cursor:grab;font-size:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:transform .2s,box-shadow .2s;touch-action:none;user-select:none}
     #ai-widget-btn:hover{transform:scale(1.1);box-shadow:0 6px 20px rgba(0,0,0,.4)}
+    #ai-widget-btn.dragging{cursor:grabbing;transition:none;box-shadow:0 10px 26px rgba(0,0,0,.5)}
     #ai-widget-btn .badge{position:absolute;top:-2px;right:-2px;background:#e74c3c;color:#fff;font-size:10px;width:16px;height:16px;border-radius:50%;display:none;align-items:center;justify-content:center}
     #ai-widget-btn .badge.show{display:flex}
 
-    #ai-widget-panel{position:fixed;bottom:90px;right:20px;z-index:99998;width:400px;max-height:560px;background:#1a1a2e;border:1px solid #333;border-radius:12px;display:none;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden}
+    #ai-widget-panel{position:fixed;z-index:99998;width:400px;max-height:560px;background:#1a1a2e;border:1px solid #333;border-radius:12px;display:none;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden}
     #ai-widget-panel.open{display:flex}
 
     #ai-widget-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#16213e;border-bottom:1px solid #333;flex-shrink:0}
@@ -432,6 +433,56 @@
     #ai-widget-input button:disabled{opacity:.5;cursor:not-allowed}
     #ai-widget-input .clear-btn{background:#333;padding:8px 10px}
     #ai-widget-input .clear-btn:hover{background:#444}
+
+    /* ── 右侧抽屉（覆盖上面的浮动面板定位） ── */
+    #ai-widget-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-height:none;
+      background:#1e2126;border:none;border-left:1px solid #3a3f46;border-radius:0;
+      box-shadow:-10px 0 34px rgba(0,0,0,.45);transform:translateX(100%);
+      transition:transform .2s ease;overflow:hidden}
+    #ai-widget-panel.open{transform:none}
+    @media (max-width:760px){#ai-widget-panel{width:min(400px,92vw)}}
+
+    /* 收起状态的唤起手柄 */
+    #ai-widget-handle{position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:99999;
+      width:34px;height:120px;border:none;border-radius:10px 0 0 10px;
+      background:linear-gradient(180deg,#5a9bff,#3d7eff);color:#fff;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:-4px 0 14px rgba(0,0,0,.4);padding:0;font-family:inherit}
+    #ai-widget-handle:hover{width:40px}
+    #ai-widget-handle span{writing-mode:vertical-rl;font-size:11px;letter-spacing:2px;user-select:none}
+
+    /* 标签页 */
+    .ai-tabs{display:flex;gap:2px;padding:6px 8px 0;border-bottom:1px solid #3a3f46;flex-shrink:0}
+    .ai-tabs button{background:none;border:none;color:#8b929b;font-size:12.5px;
+      padding:7px 14px;border-radius:7px 7px 0 0;cursor:pointer;border-bottom:2px solid transparent}
+    .ai-tabs button.on{color:#fff;background:#262a31;border-bottom-color:#3d7eff}
+
+    .ai-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+    .ai-body[hidden]{display:none}
+
+    /* 预设网格 */
+    .ai-preset-wrap{flex:1;overflow-y:auto;padding:12px}
+    .ai-preset-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+    .ai-preset{border:1px solid #3a3f46;border-radius:9px;overflow:hidden;cursor:pointer;
+      background:#262a31;transition:border-color .15s}
+    .ai-preset:hover{border-color:#3d7eff}
+    .ai-preset.on{border-color:#3d7eff;box-shadow:0 0 0 1px #3d7eff inset}
+    .ai-preset .thumb{height:62px;background:linear-gradient(135deg,#2a3140,#1d2229);position:relative}
+    .ai-preset .thumb::after{content:"";position:absolute;inset:0;
+      background:linear-gradient(45deg,rgba(90,155,255,.22),transparent 60%)}
+    .ai-preset .nm{padding:7px 9px;font-size:11.5px;color:#cfd4da}
+
+    /* 调整滑块 */
+    .ai-slider-wrap{flex:1;overflow-y:auto;padding:14px 14px 18px;display:flex;flex-direction:column;gap:15px}
+    .ai-slider .row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+    .ai-slider .name{font-size:12px;color:#cfd4da}
+    .ai-slider .val{font-size:11.5px;color:#5a9bff;font-variant-numeric:tabular-nums}
+    .ai-slider input[type=range]{width:100%;-webkit-appearance:none;height:4px;border-radius:2px;
+      background:#3a3f46;outline:none;cursor:pointer}
+    .ai-slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+      border-radius:50%;background:#5a9bff;border:2px solid #1e2126;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+    .ai-slider input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+      background:#5a9bff;border:2px solid #1e2126}
   `;
 
   // ── Inject CSS ──
@@ -440,11 +491,12 @@
   document.head.appendChild(style);
 
   // ── Inject HTML ──
-  const btn = document.createElement('button');
-  btn.id = 'ai-widget-btn';
-  btn.title = 'AI 修图';
-  btn.innerHTML = '✨<span class="badge">!</span>';
-  document.body.appendChild(btn);
+  // 无悬浮球：抽屉收起时用右侧竖条手柄唤起
+  const handle = document.createElement('button');
+  handle.id = 'ai-widget-handle';
+  handle.title = '展开 AI 修图';
+  handle.innerHTML = '<span>AI 修图</span>';
+  document.body.appendChild(handle);
 
   const panel = document.createElement('div');
   panel.id = 'ai-widget-panel';
@@ -452,18 +504,34 @@
     <div id="ai-widget-header">
       <span class="title">✨ AI 修图</span>
       <span class="status"><span class="dot" id="ai-widget-dot"></span><span id="ai-widget-status-text">连接中</span></span>
-      <button id="ai-widget-close" title="关闭">✕</button>
+      <button id="ai-widget-close" title="收起">⟩</button>
     </div>
-    <div id="ai-widget-messages">
-      <div class="msg system">直接描述你想要的效果，AI 会在编辑器中实时调整</div>
+    <div class="ai-tabs">
+      <button data-tab="chat" class="on">对话</button>
+      <button data-tab="preset">预设</button>
+      <button data-tab="adjust">调整</button>
     </div>
-    <div id="ai-widget-input">
-      <input type="text" id="ai-msg-input" placeholder="描述修图需求..." disabled>
-      <button id="ai-clear-btn" class="clear-btn" title="重置调整" disabled>⟲</button>
-      <button id="ai-send-btn" disabled>发送</button>
+    <div class="ai-body" data-body="chat">
+      <div id="ai-widget-messages">
+        <div class="msg system">直接描述你想要的效果，AI 会在编辑器中实时调整</div>
+      </div>
+      <div id="ai-widget-input">
+        <input type="text" id="ai-msg-input" placeholder="描述修图需求..." disabled>
+        <button id="ai-clear-btn" class="clear-btn" title="重置调整" disabled>⟲</button>
+        <button id="ai-send-btn" disabled>发送</button>
+      </div>
+    </div>
+    <div class="ai-body" data-body="preset" hidden>
+      <div class="ai-preset-wrap"><div class="ai-preset-grid" id="ai-preset-grid"></div></div>
+    </div>
+    <div class="ai-body" data-body="adjust" hidden>
+      <div class="ai-slider-wrap" id="ai-slider-wrap"></div>
     </div>
   `;
   document.body.appendChild(panel);
+
+  // 抽屉固定右侧，无需定位（保留空函数供旧调用点）
+  function placePanel() {}
 
   // ── DOM refs ──
   const dot = document.getElementById('ai-widget-dot');
@@ -652,12 +720,13 @@
   });
 
   // ── Panel toggle ──
-  btn.addEventListener('click', async () => {
-    panelOpen = !panelOpen;
-    panel.classList.toggle('open', panelOpen);
-    btn.innerHTML = panelOpen ? '✕' : '✨<span class="badge">!</span>';
+  handle.addEventListener('click', async () => {
+    panelOpen = true;
+    panel.classList.add('open');
+    handle.style.display = 'none';
 
     if (panelOpen) {
+      placePanel();
       connectWS();
 
       // Detect editor
@@ -692,21 +761,86 @@
   document.getElementById('ai-widget-close').addEventListener('click', () => {
     panelOpen = false;
     panel.classList.remove('open');
-    btn.innerHTML = '✨<span class="badge">!</span>';
+    handle.style.display = '';
   });
 
   // ── Drag & drop ──
   panel.addEventListener('dragover', (e) => { e.preventDefault(); panel.style.borderColor = '#2d8cf0'; });
   panel.addEventListener('dragleave', () => { panel.style.borderColor = '#333'; });
 
+  // ── 抽屉：标签页 / 预设 / 滑块 ──
+  const PRESETS = [
+    { name: '电影感',   commands: [{ key: 'contrast', value: 15 }, { key: 'saturation', value: -10 }, { key: 'temperature', value: 5 }] },
+    { name: '日系清透', commands: [{ key: 'exposure', value: 8 }, { key: 'contrast', value: -6 }, { key: 'saturation', value: 6 }] },
+    { name: '复古胶片', commands: [{ key: 'contrast', value: 12 }, { key: 'saturation', value: -15 }, { key: 'temperature', value: 10 }] },
+    { name: '黑白',     commands: [{ key: 'saturation', value: -100 }] },
+    { name: '暖调',     commands: [{ key: 'temperature', value: 20 }, { key: 'exposure', value: 5 }] },
+    { name: '冷调',     commands: [{ key: 'temperature', value: -20 }] },
+  ];
+
+  const SLIDERS = [
+    { key: 'exposure',    label: '亮度',   min: -100, max: 100 },
+    { key: 'contrast',    label: '对比度', min: -100, max: 100 },
+    { key: 'saturation',  label: '饱和度', min: -100, max: 100 },
+    { key: 'temperature', label: '色温',   min: -100, max: 100 },
+    { key: 'vibrance',    label: '自然饱和度', min: -100, max: 100 },
+  ];
+
+  function initDrawer() {
+    const tabBtns = document.querySelectorAll('.ai-tabs button');
+    tabBtns.forEach((b) => {
+      b.addEventListener('click', () => {
+        tabBtns.forEach((x) => x.classList.toggle('on', x === b));
+        document.querySelectorAll('.ai-body').forEach((body) => {
+          body.hidden = body.dataset.body !== b.dataset.tab;
+        });
+      });
+    });
+
+    const grid = document.getElementById('ai-preset-grid');
+    if (grid) {
+      PRESETS.forEach((preset) => {
+        const card = document.createElement('div');
+        card.className = 'ai-preset';
+        card.innerHTML = '<div class="thumb"></div><div class="nm">' + preset.name + '</div>';
+        card.addEventListener('click', async () => {
+          grid.querySelectorAll('.ai-preset').forEach((x) => x.classList.toggle('on', x === card));
+          const ok = await executePhotoCraftCommands(preset.commands);
+          addMsg('system', ok ? '🎨 已应用预设「' + preset.name + '」' : '⚠️ 预设需在 PhotoCraft 中打开');
+        });
+        grid.appendChild(card);
+      });
+    }
+
+    const wrap = document.getElementById('ai-slider-wrap');
+    if (wrap) {
+      SLIDERS.forEach((spec) => {
+        const row = document.createElement('div');
+        row.className = 'ai-slider';
+        row.innerHTML =
+          '<div class="row"><span class="name">' + spec.label + '</span><span class="val">0</span></div>' +
+          '<input type="range" min="' + spec.min + '" max="' + spec.max + '" value="0">';
+        const input = row.querySelector('input');
+        const out = row.querySelector('.val');
+        input.addEventListener('input', () => {
+          out.textContent = (Number(input.value) > 0 ? '+' : '') + input.value;
+        });
+        input.addEventListener('change', () => {
+          const value = Number(input.value);
+          if (value === 0) return;
+          executePhotoCraftCommands([{ key: spec.key, value: value }]).then((ok) => {
+            if (!ok) addMsg('system', '⚠️ 调整需在 PhotoCraft 中打开');
+          });
+        });
+        wrap.appendChild(row);
+      });
+    }
+  }
+  initDrawer();
+
   // ── Init ──
   // Detect editor on load
-  const detectedEditor = detectEditor();
-  if (detectedEditor) {
-    // Show badge to indicate integration
-    const badge = btn.querySelector('.badge');
-    if (badge) badge.classList.add('show');
-  }
+  detectEditor();
 
   connectWS();
 })();
