@@ -17,11 +17,37 @@
   // 现在由服务器上的 cloudflared.service（muyaya-ai 隧道）提供：
   //   ai.muyaya.world → http://localhost:3000
   // HTTPS + WSS 都能用，绕开 GitHub Pages 的 mixed content 限制。
+  // 站内优先：相册站点（nginx 的 /ai/）已经把本机 AI 服务代理出来了，
+  // 同源、不需要域名解析 —— 备案期 ai.muyaya.world 的 DNS 是关的，走隧道必然「已断开」。
+  // 独立部署（GitHub Pages 那种，同源没有 /ai/）探测失败时，自动退回隧道。
+  const STATION_BASE = '/ai';
   const TUNNEL_URL = 'https://ai.muyaya.world';
 
-  const API_BASE = TUNNEL_URL;
-  const WS_URL = TUNNEL_URL.replace('https:', 'wss:') + '/ws?key=bubu';
+  let API_BASE = TUNNEL_URL;
+  let WS_URL = TUNNEL_URL.replace('https:', 'wss:') + '/ws?key=bubu';
   const API_KEY = 'bubu';
+
+  /** 探一下站内代理在不在；有就用同源 /ai（含 ws），没有就用隧道。 */
+  const baseReady = (function () {
+    const override = (typeof window !== 'undefined' && window.MUYAYA_AI_BASE) || null;
+    if (override) {
+      API_BASE = override;
+      WS_URL = override.replace(/^http/, 'ws') + '/ws?key=bubu';
+      return Promise.resolve(API_BASE);
+    }
+    if (typeof fetch !== 'function' || !/^https?:$/.test(location.protocol)) return Promise.resolve(API_BASE);
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctl ? setTimeout(function () { ctl.abort(); }, 900) : null;
+    return fetch(STATION_BASE + '/api/health', { signal: ctl ? ctl.signal : undefined })
+      .then(function (r) {
+        if (timer) clearTimeout(timer);
+        if (!r.ok) return API_BASE;
+        API_BASE = STATION_BASE;
+        WS_URL = (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + STATION_BASE + '/ws?key=bubu';
+        return API_BASE;
+      })
+      .catch(function () { if (timer) clearTimeout(timer); return API_BASE; });
+  })();
 
   // ── State ──
   let ws = null;
@@ -47,7 +73,9 @@
       currentTool = 'photocraft';
       return 'PhotoCraft';
     }
-    if (window.lightcraft && window.lightcraft.hasImage) {
+    // LightCraft 只挂了 { command }，没有 hasImage —— 以前这里是永远为假的判断，
+    // 所以 LightCraft 页面永远"未检测到编辑器"。有 command 就当是它。
+    if (window.lightcraft && typeof window.lightcraft.command === 'function') {
       editorType = 'lightcraft';
       currentTool = 'lightcraft';
       return 'LightCraft';
@@ -167,7 +195,199 @@
    * Execute adjustment commands in the editor.
    * Tries PhotoCraft AI Bridge first, then Studio (legacy), then Canvas 2D fallback.
    */
+  /* ────────────────────────────────────────────────────────────────
+   * LightCraft 执行器
+   *
+   * LightCraft 是另一套引擎：只有 `lightcraft.command(id, JSON字符串)`，
+   * 而且"调什么"叫 develop 控件（`develop.controls` 里有 id/范围/当前值），
+   * 一套控件改一次：`develop.set {"values":{"light.exposure":1.2}}`（绝对值）。
+   *
+   * AI 后端（/api/parse）不管 tool 传什么，吐的都是 **PhotoCraft 的命令 id**
+   * （image.adjustments.* / filter.*），所以这里把这些指令翻译成 LightCraft 的控件值：
+   *   - 参数按"相对调整"理解（用户说"亮一点"就是加一点，说两次就更亮）；
+   *   - 先读当前值，加完按控件的 min/max 夹住，再一次性 develop.set。
+   */
+
+  // PhotoCraft 命令 id → LightCraft 控件的增量。函数返回 {控件id: 增量}。
+  const PC_TO_LC = {
+    // 亮度是 EV（LightCraft -5..5），PhotoCraft 亮度是 -150..150 的"档"：除以 100 再乘 1.5 手感接近
+    'image.adjustments.brightnessContrast': (p) => ({
+      'light.exposure': num(p.brightness) / 100 * 1.5,
+      'light.contrast': num(p.contrast),
+    }),
+    'image.adjustments.exposure': (p) => ({
+      'light.exposure': num(p.exposure) || num(p.value) / 100 * 5,
+    }),
+    'image.adjustments.vibrance': (p) => ({
+      'color.vibrance': num(p.vibrance),
+      'color.saturation': num(p.saturation),
+    }),
+    'image.adjustments.hueSaturation': (p) => ({
+      'grading.global.hue': p.hue == null ? 0 : (num(p.hue) + 360) % 360,   // 色相是 0..360 的环
+      'color.saturation': num(p.saturation),
+      'grading.global.lum': num(p.lightness),
+    }),
+    'image.adjustments.desaturate': () => ({ 'color.saturation': -100 }),
+    'image.adjustments.blackWhite': () => ({ 'color.saturation': -100 }),   // 近似：整体去色
+    'image.adjustments.shadowsHighlights': (p) => ({
+      'light.shadows': num(p.shadowAmount) * (p.shadows == null ? 1 : num(p.shadows) / 50),
+      'light.highlights': -num(p.highlightAmount) * (p.highlights == null ? 1 : num(p.highlights) / 50),
+    }),
+    'image.adjustments.photoFilter': (p) => {
+      const t = PHOTO_FILTER_EV[p.filter];
+      if (!t) return null;
+      return { 'wb.temp': t.temp, 'wb.tint': t.tint || 0, 'color.saturation': t.sat || 0 };
+    },
+    'filter.sharpen.unsharpMask': (p) => {
+      const out = { 'detail.sharpenAmount': num(p.amount) || num(p.strength) };
+      // 半径和阈值是"设成多少"，不是"再加多少"（AI 给的是绝对值）
+      if (p.radius != null) out['detail.sharpenRadius'] = { abs: num(p.radius) };
+      if (p.threshold != null) out['detail.sharpenMasking'] = { abs: num(p.threshold) };
+      return out;
+    },
+    'filter.sharpen.smartSharpen': (p) => ({ 'detail.sharpenAmount': num(p.amount) || 60 }),
+    'filter.sharpen.sharpen': (p) => ({ 'detail.sharpenAmount': num(p.amount) || 40 }),
+    'filter.sharpen.sharpenMore': (p) => ({ 'detail.sharpenAmount': num(p.amount) || 70 }),
+    'filter.sharpen.sharpenEdges': (p) => ({ 'detail.sharpenAmount': num(p.amount) || 50 }),
+    'filter.noise.reduceNoise': (p) => ({
+      'detail.nrLuminance': num(p.strength) || num(p.amount) || 40,
+      'detail.nrColor': num(p.colorNoise) || 0,
+    }),
+    'filter.noise.median': (p) => ({ 'detail.nrLuminance': num(p.radius) * 8 }),
+    'filter.noise.despeckle': (p) => ({ 'detail.nrLuminance': num(p.strength) || 30 }),
+    'filter.gallery.grain': (p) => ({
+      'grain.amount': num(p.amount) || num(p.intensity) || 30,
+      'grain.size': num(p.size) || 0,
+    }),
+    'filter.gallery.filmGrain': (p) => ({ 'grain.amount': num(p.amount) || 25 }),
+    'image.adjustments.invert': null,
+    'image.crop': null,
+  };
+
+  // 常用暖/冷滤镜 → 色温/色调的偏移（LightCraft 色温是开尔文，6500 为中性）
+  const PHOTO_FILTER_EV = {
+    warming85: { temp: 900, tint: 6 },
+    warming81: { temp: 500, tint: 3 },
+    warmingLBA: { temp: 1100, tint: 10 },
+    cooling80: { temp: -900, tint: -6 },
+    coolingLBB: { temp: -1200, tint: -10 },
+    sepia: { temp: 600, tint: 8, sat: -35 },
+    deepRed: { temp: 800, tint: 18 },
+    underWater: { temp: -1200, tint: -14 },
+  };
+
+  function num(v) {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? n : 0;
+  }
+
+  const hasLightCraft = () => !!(window.lightcraft && typeof window.lightcraft.command === 'function');
+  const lightcraftUndo = Object.create(null);   // 控件id → 改动前的值
+
+  /** 把动过的 LightCraft 控件放回原样 */
+  async function undoLightCraft() {
+    const keys = Object.keys(lightcraftUndo);
+    if (!keys.length || !hasLightCraft()) return false;
+    const values = Object.create(null);
+    for (const k of keys) values[k] = lightcraftUndo[k];
+    try {
+      await window.lightcraft.command('develop.set', JSON.stringify({ values }));
+      for (const k of keys) delete lightcraftUndo[k];
+      return true;
+    } catch (e) {
+      console.warn('[AI Widget] LightCraft 撤销失败:', e && e.message);
+      return false;
+    }
+  }
+
+  /** 读一遍 develop 控件（id → {value,min,max}），失败返回空表 */
+  async function lightcraftControls() {
+    const out = Object.create(null);
+    try {
+      const txt = await window.lightcraft.command('develop.controls', '{}');
+      const arr = JSON.parse(txt);
+      for (const c of arr) out[c.id] = { value: num(c.value), min: num(c.min), max: num(c.max) };
+    } catch (e) {
+      console.warn('[AI Widget] 读不到 LightCraft 控件:', e && e.message);
+    }
+    return out;
+  }
+
+  /** 有没有打开的照片（library.info 有 photos 且有渲染中的） */
+  async function lightcraftHasImage() {
+    try {
+      const txt = await window.lightcraft.command('library.info', '{}');
+      const info = JSON.parse(txt);
+      return num(info.photos) > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function executeLightCraftCommands(commands) {
+    if (!hasLightCraft()) return false;
+    const controls = await lightcraftControls();
+    const controlCount = Object.keys(controls).length;
+    if (!controlCount) {
+      console.warn('[AI Widget] LightCraft 没读到控件表（先打开一张照片试试）');
+      return false;
+    }
+    const delta = Object.create(null);
+    const absolute = Object.create(null);
+    let mapped = 0;
+
+    for (const cmd of commands) {
+      if (!cmd || typeof cmd.id !== 'string') continue;
+      const fn = PC_TO_LC[cmd.id];
+      if (!fn) {
+        console.warn('[AI Widget] LightCraft 暂不支持这条命令:', cmd.id);
+        continue;
+      }
+      const part = fn(cmd.params || {});
+      if (!part) continue;
+      for (const k in part) {
+        if (!controls[k]) continue;
+        const spec = part[k];
+        if (spec && typeof spec === 'object') {
+          if (typeof spec.abs === 'number') absolute[k] = spec.abs;
+        } else {
+          delta[k] = (delta[k] || 0) + num(spec);
+        }
+      }
+      mapped++;
+    }
+    if (!mapped) return false;
+
+    const values = Object.create(null);
+    for (const k in delta) {
+      const c = controls[k];
+      let v = k in absolute ? absolute[k] : c.value + delta[k];
+      if (k === 'grading.global.hue') v = ((v % 360) + 360) % 360;
+      const lo = isFinite(c.min) ? c.min : -100, hi = isFinite(c.max) ? c.max : 100;
+      values[k] = Math.min(hi, Math.max(lo, Math.round(v * 100) / 100));
+    }
+    if (!Object.keys(values).length) return false;
+
+    try {
+      await window.lightcraft.command('develop.set', JSON.stringify({ values }));
+      // 记下改前的值，"重置调整"时按原样放回去
+      for (const k in values) {
+        if (!(k in lightcraftUndo)) lightcraftUndo[k] = controls[k] ? controls[k].value : 0;
+      }
+      console.log('[AI Widget] LightCraft 已应用:', JSON.stringify(values));
+      return true;
+    } catch (e) {
+      console.warn('[AI Widget] LightCraft develop.set 失败:', e && e.message);
+      return false;
+    }
+  }
+
   async function executeEditorCommands(commands) {
+    // 0. LightCraft：走它自己的 develop.set
+    if (editorType === 'lightcraft' && hasLightCraft()) {
+      return await executeLightCraftCommands(commands);
+    }
+
     // 1. Try PhotoCraft AI Bridge (new API)
     if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
       return await executePhotoCraftCommands(commands);
@@ -378,6 +598,11 @@
    * Tries PhotoCraft AI Bridge first, then Studio (legacy), then Canvas 2D fallback.
    */
   async function executeCommands(commands) {
+    // 0. LightCraft：它有自己的 develop.set，别走 Canvas 降级（那是给 Studio 的）
+    if (editorType === 'lightcraft' && hasLightCraft()) {
+      return await executeLightCraftCommands(commands);
+    }
+
     // 1. Try PhotoCraft AI Bridge (new API)
     if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
       return await executePhotoCraftCommands(commands);
@@ -542,8 +767,9 @@
   const clearBtn = document.getElementById('ai-clear-btn');
 
   // ── WebSocket ──
-  function connectWS() {
+  async function connectWS() {
     if (ws && ws.readyState <= 1) return;
+    await baseReady;   // 先定好走站内 /ai 还是走隧道，再连
 
     ws = new WebSocket(WS_URL);
 
@@ -665,6 +891,7 @@
         payload.docSize = { w: shot.width, h: shot.height };
       }
 
+      await baseReady;
       const res = await fetch(API_BASE + '/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
@@ -706,12 +933,15 @@
   });
 
   // ── Reset button ──
-  clearBtn.addEventListener('click', () => {
+  clearBtn.addEventListener('click', async () => {
     if (!activeCommands.length) return;
 
     if (editorType === 'studio' && window.Studio.resetAll) {
       window.Studio.resetAll();
       addMsg('system', '⟲ 已重置所有调整');
+    } else if (editorType === 'lightcraft' && hasLightCraft()) {
+      const ok = await undoLightCraft();
+      addMsg('system', ok ? '⟲ 已撤销刚才的调整' : '⟲ 没有可撤销的调整');
     } else {
       // Restore original image if available
       addMsg('system', '⟲ 请手动重置编辑器');
@@ -733,7 +963,12 @@
       const editorName = detectEditor();
       if (editorName) {
         // Check for PhotoCraft AI Bridge (new API)
-        if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
+        if (editorType === 'lightcraft') {
+          const ok = await lightcraftHasImage();
+          addMsg('system', ok
+            ? '🔗 已连接 LightCraft（develop.set）'
+            : '⚠️ LightCraft 里还没有打开的照片，先导一张进来再说话');
+        } else if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
           addMsg('system', '🔗 已连接 PhotoCraft AI Bridge（新 API）');
         } else if (editorType === 'photocraft') {
           addMsg('system', '🔗 已连接 PhotoCraft（Canvas 降级模式）');
