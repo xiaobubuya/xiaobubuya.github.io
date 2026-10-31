@@ -227,8 +227,17 @@
       'color.saturation': num(p.saturation),
       'grading.global.lum': num(p.lightness),
     }),
-    'image.adjustments.desaturate': () => ({ 'color.saturation': -100 }),
-    'image.adjustments.blackWhite': () => ({ 'color.saturation': -100 }),   // 近似：整体去色
+    // 黑白不再是"降饱和近似"：LightCraft 有自己的 treatment（color | bw），
+    // 切过去以后 bwMix 的 8 个通道才生效 —— 这才是真黑白。
+    'image.adjustments.desaturate': () => ({ __treatment: 'bw' }),
+    'image.adjustments.blackWhite': (p) => {
+      const out = { __treatment: 'bw' };
+      // 通道混合：PhotoCraft 传 reds/yellows/... 是 -200..300，LightCraft 的 bw.* 是 -100..100
+      const BW = { reds: 'bw.red', yellows: 'bw.yellow', greens: 'bw.green', cyans: 'bw.aqua',
+                   blues: 'bw.blue', magentas: 'bw.magenta', oranges: 'bw.orange' };
+      for (const k in BW) if (p[k] != null) out[BW[k]] = { abs: num(p[k]) };
+      return out;
+    },
     'image.adjustments.shadowsHighlights': (p) => ({
       'light.shadows': num(p.shadowAmount) * (p.shadows == null ? 1 : num(p.shadows) / 50),
       'light.highlights': -num(p.highlightAmount) * (p.highlights == null ? 1 : num(p.highlights) / 50),
@@ -295,19 +304,48 @@
   const lightcraftUndo = Object.create(null);   // 控件id → 改动前的值
   let lightcraftUnsupported = [];               // 上次没能表达的指令 id
 
-  /** 把动过的 LightCraft 控件放回原样 */
-  async function undoLightCraft() {
-    const keys = Object.keys(lightcraftUndo);
-    if (!keys.length || !hasLightCraft()) return false;
-    const values = Object.create(null);
-    for (const k of keys) values[k] = lightcraftUndo[k];
+  /** 读当前 treatment（'color' | 'bw'） */
+  async function lightcraftTreatment() {
     try {
-      await window.lightcraft.command('develop.set', JSON.stringify({ values }));
-      for (const k of keys) delete lightcraftUndo[k];
+      const g = JSON.parse(await window.lightcraft.command('develop.get', '{}'));
+      return g && g.treatment ? String(g.treatment) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** 撤销：LightCraft 的 develop.reset 清掉所有调整（含 treatment），实测像素级回原始；
+   *  万一 reset 失败，退回"把动过的控件按记录值写回去"。 */
+  async function undoLightCraft() {
+    const keys = Object.keys(lightcraftUndo).filter(k => k !== '__treatment');
+    const hadTreatment = '__treatment' in lightcraftUndo;
+    if ((!keys.length && !hadTreatment) || !hasLightCraft()) return false;
+    // 顺序有讲究：先拨回 treatment，再写回数值。
+    // 实测"把值写回原值"是像素级精确（AE=0），而 develop.reset 会回到引擎默认值、
+    // 跟这张照片的初始状态有细微差别（AE≈1.5 万），所以 reset 只当兜底。
+    try {
+      if (hadTreatment && (await lightcraftTreatment()) !== lightcraftUndo.__treatment) {
+        await window.lightcraft.command('develop.treatment', '{}');
+      }
+      const values = Object.create(null);
+      for (const k of keys) values[k] = lightcraftUndo[k];
+      if (Object.keys(values).length) {
+        await window.lightcraft.command('develop.set', JSON.stringify({ values }));
+      }
+      for (const k in lightcraftUndo) delete lightcraftUndo[k];
       return true;
     } catch (e) {
-      console.warn('[AI Widget] LightCraft 撤销失败:', e && e.message);
-      return false;
+      console.warn('[AI Widget] 按值复原失败，退回 develop.reset:', e && e.message);
+      try {
+        await window.lightcraft.command('develop.reset', '{}');
+        if (hadTreatment && (await lightcraftTreatment()) !== 'color') {
+          await window.lightcraft.command('develop.treatment', '{}');
+        }
+        for (const k in lightcraftUndo) delete lightcraftUndo[k];
+        return true;
+      } catch (e2) {
+        return false;
+      }
     }
   }
 
@@ -346,10 +384,25 @@
     const delta = Object.create(null);
     const absolute = Object.create(null);
     lightcraftUnsupported = [];
+    let wantTreatment = null;
     let mapped = 0;
 
+    let wantReset = false;
     for (const cmd of commands) {
       if (!cmd || typeof cmd.id !== 'string') continue;
+
+      // 后端对 LightCraft 已经直接吐 develop.* 指令（见 parse.ts 的 lightcraft 分支），
+      // 这三条直接执行，不用再翻译。
+      if (cmd.id === 'develop.adjust') {
+        const v = (cmd.params && cmd.params.values) || {};
+        let hit = 0;
+        for (const k in v) { if (controls[k]) { delta[k] = (delta[k] || 0) + num(v[k]); hit++; } }
+        if (hit) mapped++; else lightcraftUnsupported.push(cmd.id);
+        continue;
+      }
+      if (cmd.id === 'develop.treatment') { wantTreatment = 'bw'; mapped++; continue; }
+      if (cmd.id === 'develop.reset') { wantReset = true; mapped++; continue; }
+
       const fn = PC_TO_LC[cmd.id];
       if (!fn) {
         console.warn('[AI Widget] LightCraft 暂不支持这条命令:', cmd.id);
@@ -359,6 +412,7 @@
       const part = fn(cmd.params || {});
       if (!part) continue;
       for (const k in part) {
+        if (k === '__treatment') { wantTreatment = part[k]; continue; }
         if (!controls[k]) continue;
         const spec = part[k];
         if (spec && typeof spec === 'object') {
@@ -379,15 +433,36 @@
       const lo = isFinite(c.min) ? c.min : -100, hi = isFinite(c.max) ? c.max : 100;
       values[k] = Math.min(hi, Math.max(lo, Math.round(v * 100) / 100));
     }
-    if (!Object.keys(values).length) return false;
+    if (wantReset) {
+      try {
+        await window.lightcraft.command('develop.reset', '{}');
+        for (const k in lightcraftUndo) delete lightcraftUndo[k];
+        console.log('[AI Widget] LightCraft 已重置');
+        return true;
+      } catch (e) {
+        console.warn('[AI Widget] develop.reset 失败:', e && e.message);
+        return false;
+      }
+    }
+    if (!Object.keys(values).length && !wantTreatment) return false;
 
     try {
-      await window.lightcraft.command('develop.set', JSON.stringify({ values }));
-      // 记下改前的值，"重置调整"时按原样放回去
-      for (const k in values) {
-        if (!(k in lightcraftUndo)) lightcraftUndo[k] = controls[k] ? controls[k].value : 0;
+      if (wantTreatment) {
+        const cur = await lightcraftTreatment();
+        if (cur && cur !== wantTreatment) {
+          // develop.treatment 是开关不是赋值：先读 develop.get 再决定拨不拨
+          if (!('__treatment' in lightcraftUndo)) lightcraftUndo.__treatment = cur;
+          await window.lightcraft.command('develop.treatment', '{}');
+        }
       }
-      console.log('[AI Widget] LightCraft 已应用:', JSON.stringify(values));
+      if (Object.keys(values).length) {
+        await window.lightcraft.command('develop.set', JSON.stringify({ values }));
+        // 记下改前的值（develop.reset 失败时兜底，用不上也无害）
+        for (const k in values) {
+          if (!(k in lightcraftUndo)) lightcraftUndo[k] = controls[k] ? controls[k].value : 0;
+        }
+      }
+      console.log('[AI Widget] LightCraft 已应用:', JSON.stringify(values), wantTreatment ? '| treatment=' + wantTreatment : '');
       return true;
     } catch (e) {
       console.warn('[AI Widget] LightCraft develop.set 失败:', e && e.message);
@@ -960,7 +1035,7 @@
       addMsg('system', '⟲ 已重置所有调整');
     } else if (editorType === 'lightcraft' && hasLightCraft()) {
       const ok = await undoLightCraft();
-      addMsg('system', ok ? '⟲ 已撤销刚才的调整' : '⟲ 没有可撤销的调整');
+      addMsg('system', ok ? '⟲ 已重置全部调整（像素回到原图）' : '⟲ 没有可撤销的调整');
     } else {
       // Restore original image if available
       addMsg('system', '⟲ 请手动重置编辑器');
