@@ -316,37 +316,58 @@
 
   /** 撤销：LightCraft 的 develop.reset 清掉所有调整（含 treatment），实测像素级回原始；
    *  万一 reset 失败，退回"把动过的控件按记录值写回去"。 */
-  async function undoLightCraft() {
-    const keys = Object.keys(lightcraftUndo).filter(k => k !== '__treatment');
-    const hadTreatment = '__treatment' in lightcraftUndo;
-    if ((!keys.length && !hadTreatment) || !hasLightCraft()) return false;
-    // 顺序有讲究：先拨回 treatment，再写回数值。
-    // 实测"把值写回原值"是像素级精确（AE=0），而 develop.reset 会回到引擎默认值、
-    // 跟这张照片的初始状态有细微差别（AE≈1.5 万），所以 reset 只当兜底。
-    try {
-      if (hadTreatment && (await lightcraftTreatment()) !== lightcraftUndo.__treatment) {
-        await window.lightcraft.command('develop.treatment', '{}');
-      }
-      const values = Object.create(null);
-      for (const k of keys) values[k] = lightcraftUndo[k];
-      if (Object.keys(values).length) {
-        await window.lightcraft.command('develop.set', JSON.stringify({ values }));
-      }
-      for (const k in lightcraftUndo) delete lightcraftUndo[k];
-      return true;
-    } catch (e) {
-      console.warn('[AI Widget] 按值复原失败，退回 develop.reset:', e && e.message);
-      try {
-        await window.lightcraft.command('develop.reset', '{}');
-        if (hadTreatment && (await lightcraftTreatment()) !== 'color') {
-          await window.lightcraft.command('develop.treatment', '{}');
-        }
-        for (const k in lightcraftUndo) delete lightcraftUndo[k];
-        return true;
-      } catch (e2) {
-        return false;
-      }
+  /** 合成一次 Ctrl+Z（引擎认未受信任的 keydown，实测与真人按键同一条代码路径）。 */
+  function lightcraftSynthUndo() {
+    const canvas = document.querySelector('canvas');
+    // 先把焦点还给 canvas：用户这时焦点多半在输入框里，引擎只认焦点元素上的按键
+    if (canvas) {
+      try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+      try { canvas.focus(); } catch (e) {}
     }
+    const targets = [canvas, window, document].filter(Boolean);
+    for (const t of targets) {
+      t.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
+        ctrlKey: true, bubbles: true, cancelable: true,
+      }));
+    }
+  }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  /**
+   * 撤销 = 按 Ctrl+Z，跟用户自己撤回走同一条路径（不做"把值写回去"这种变相新编辑）。
+   * 为什么要这样：写值复原虽然数值对得上，但历史里又多出一条记录、像素也回不到原样
+   * （实测残差约 6% 像素）；而 Ctrl+Z 连撤到空历史后像素 AE=0。
+   */
+  async function undoLightCraft() {
+    if (!hasLightCraft()) return false;
+    let list = null;
+    try {
+      list = JSON.parse(await window.lightcraft.command('history.list', '{}'));
+    } catch (e) {
+      console.warn('[AI Widget] 读 history 失败:', e && e.message);
+    }
+    if (list && (list.cursor === null || list.cursor === undefined) && !(list.history || []).length) {
+      for (const k in lightcraftUndo) delete lightcraftUndo[k];
+      return false;                       // 引擎本来就没记录了
+    }
+    const guard = (lightcraftUndo.__steps || 1) + 3;
+    for (let i = 0; i < guard; i++) {
+      lightcraftSynthUndo();
+      await sleep(450);
+      try {
+        list = JSON.parse(await window.lightcraft.command('history.list', '{}'));
+      } catch (e) { list = null; }
+      if (list && (list.cursor === null || list.cursor === undefined) && !(list.history || []).length) break;
+    }
+    if (list && (list.cursor !== null && list.cursor !== undefined)) {
+      // 极少数情况 Ctrl+Z 没走到头，用引擎自己的 Reset 兜底（这条不是像素级精确，注释里说清楚）
+      console.warn('[AI Widget] Ctrl+Z 未撤到底，退回 develop.reset');
+      try { await window.lightcraft.command('develop.reset', '{}'); } catch (e) { return false; }
+    }
+    for (const k in lightcraftUndo) delete lightcraftUndo[k];
+    return true;
   }
 
   /** 读一遍 develop 控件（id → {value,min,max}），失败返回空表 */
@@ -457,7 +478,8 @@
       }
       if (Object.keys(values).length) {
         await window.lightcraft.command('develop.set', JSON.stringify({ values }));
-        // 记下改前的值（develop.reset 失败时兜底，用不上也无害）
+        lightcraftUndo.__steps = (lightcraftUndo.__steps || 0) + 1;   // 历史多了几步，撤销时按这个数按 Ctrl+Z
+        // 记下改前的值（Ctrl+Z 撤不动时兜底，用不上也无害）
         for (const k in values) {
           if (!(k in lightcraftUndo)) lightcraftUndo[k] = controls[k] ? controls[k].value : 0;
         }
@@ -1035,7 +1057,7 @@
       addMsg('system', '⟲ 已重置所有调整');
     } else if (editorType === 'lightcraft' && hasLightCraft()) {
       const ok = await undoLightCraft();
-      addMsg('system', ok ? '⟲ 已重置全部调整（像素回到原图）' : '⟲ 没有可撤销的调整');
+      addMsg('system', ok ? '⟲ 已撤销刚才的调整（与 Ctrl+Z 相同）' : '⟲ 没有可撤销的调整');
     } else {
       // Restore original image if available
       addMsg('system', '⟲ 请手动重置编辑器');
