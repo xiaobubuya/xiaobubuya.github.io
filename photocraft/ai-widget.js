@@ -233,6 +233,16 @@
       'light.shadows': num(p.shadowAmount) * (p.shadows == null ? 1 : num(p.shadows) / 50),
       'light.highlights': -num(p.highlightAmount) * (p.highlights == null ? 1 : num(p.highlights) / 50),
     }),
+    // 色彩平衡：[青-红, 洋红-绿, 黄-蓝] 三个通道。用红/蓝的差值推断"更暖还是更冷"，
+    // 绿的多寡推断洋红/绿偏移 —— LightCraft 侧没有逐带调整，落到色温/色调最稳。
+    'image.adjustments.colorBalance': (p) => {
+      const band = (a) => (Array.isArray(a) ? a : [0, 0, 0]);
+      const sums = [0, 1, 2].map(i =>
+        (num(band(p.shadows)[i]) + num(band(p.midtones)[i]) + num(band(p.highlights)[i])) / 3);
+      const [r, g, b] = sums;
+      if (!r && !g && !b) return null;
+      return { 'wb.temp': 600 * (r - b) / 100, 'wb.tint': 20 * g / 100 };
+    },
     'image.adjustments.photoFilter': (p) => {
       const t = PHOTO_FILTER_EV[p.filter];
       if (!t) return null;
@@ -283,6 +293,7 @@
 
   const hasLightCraft = () => !!(window.lightcraft && typeof window.lightcraft.command === 'function');
   const lightcraftUndo = Object.create(null);   // 控件id → 改动前的值
+  let lightcraftUnsupported = [];               // 上次没能表达的指令 id
 
   /** 把动过的 LightCraft 控件放回原样 */
   async function undoLightCraft() {
@@ -334,6 +345,7 @@
     }
     const delta = Object.create(null);
     const absolute = Object.create(null);
+    lightcraftUnsupported = [];
     let mapped = 0;
 
     for (const cmd of commands) {
@@ -341,6 +353,7 @@
       const fn = PC_TO_LC[cmd.id];
       if (!fn) {
         console.warn('[AI Widget] LightCraft 暂不支持这条命令:', cmd.id);
+        lightcraftUnsupported.push(cmd.id);
         continue;
       }
       const part = fn(cmd.params || {});
@@ -910,6 +923,12 @@
         const success = await executeCommands(data.commands);
         if (success) {
           addMsg('system', '✅ 已应用到编辑器，可撤销');
+          if (editorType === 'lightcraft' && lightcraftUnsupported.length) {
+            addMsg('system', 'ℹ️ LightCraft 没有对应控件，这几条跳过了：' + lightcraftUnsupported.join('、'));
+          }
+        } else if (editorType === 'lightcraft' && lightcraftUnsupported.length) {
+          addMsg('error', '⚠️ LightCraft 没有对应控件，这几条没执行：' + lightcraftUnsupported.join('、') +
+            '（能用的有：曝光/对比/高光/阴影/饱和/自然饱和/色温/黑白/清晰度/去雾/锐化/降噪/颗粒/暗角）');
         } else {
           addMsg('error', '⚠️ 无法应用到当前编辑器，请截图保存参数');
         }
