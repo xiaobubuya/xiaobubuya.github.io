@@ -174,6 +174,7 @@
           const params = cmd.params && typeof cmd.params === 'object' ? cmd.params : {};
           submit(cmd.id, params);
           applied++;
+          photocraftUndo.__steps = (photocraftUndo.__steps || 0) + 1;   // 一步 = 一条命令（撤销时按这个数撤）
           continue;
         }
         // Legacy Studio-style adjustment: { key, value }.
@@ -302,6 +303,7 @@
 
   const hasLightCraft = () => !!(window.lightcraft && typeof window.lightcraft.command === 'function');
   const lightcraftUndo = Object.create(null);   // 控件id → 改动前的值
+  const photocraftUndo = Object.create(null);   // __steps：本次对话往 PhotoCraft 历史里写了几步
   let lightcraftUnsupported = [];               // 上次没能表达的指令 id
 
   /** 读当前 treatment（'color' | 'bw'） */
@@ -317,15 +319,19 @@
   /** 撤销：LightCraft 的 develop.reset 清掉所有调整（含 treatment），实测像素级回原始；
    *  万一 reset 失败，退回"把动过的控件按记录值写回去"。 */
   /** 合成一次 Ctrl+Z（引擎认未受信任的 keydown，实测与真人按键同一条代码路径）。 */
-  function lightcraftSynthUndo() {
+  async function lightcraftSynthUndo() {
     const canvas = document.querySelector('canvas');
-    // 先把焦点还给 canvas：用户这时焦点多半在输入框里，引擎只认焦点元素上的按键
     if (canvas) {
+      // 引擎只处理 canvas 有焦点时的按键；canvas 默认没有 tabindex，focus() 落不下去
+      if (!canvas.hasAttribute('tabindex')) canvas.setAttribute('tabindex', '0');
       try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
       try { canvas.focus(); } catch (e) {}
+      await new Promise(r => setTimeout(r, 320));   // 焦点让出去、等引擎跑一帧再发键，否则第一下会被输入框吞掉
     }
-    const targets = [canvas, window, document].filter(Boolean);
-    for (const t of targets) {
+    if (window.__AI_WIDGET_DEBUG) {
+      console.log('[AI Widget][debug] 合成 Ctrl+Z，焦点=', document.activeElement && (document.activeElement.id || document.activeElement.tagName));
+    }
+    for (const t of [canvas, window, document].filter(Boolean)) {
       t.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'z', code: 'KeyZ', keyCode: 90, which: 90,
         ctrlKey: true, bubbles: true, cancelable: true,
@@ -336,38 +342,67 @@
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   /**
-   * 撤销 = 按 Ctrl+Z，跟用户自己撤回走同一条路径（不做"把值写回去"这种变相新编辑）。
-   * 为什么要这样：写值复原虽然数值对得上，但历史里又多出一条记录、像素也回不到原样
-   * （实测残差约 6% 像素）；而 Ctrl+Z 连撤到空历史后像素 AE=0。
+   * LightCraft 撤销：按本次对话写进去的步数按 Ctrl+Z（跟用户按键同一条路径）。
+   * 只撤这几步，不动用户更早的手动调整。
    */
   async function undoLightCraft() {
     if (!hasLightCraft()) return false;
-    let list = null;
-    try {
-      list = JSON.parse(await window.lightcraft.command('history.list', '{}'));
-    } catch (e) {
-      console.warn('[AI Widget] 读 history 失败:', e && e.message);
-    }
-    if (list && (list.cursor === null || list.cursor === undefined) && !(list.history || []).length) {
+    const steps = Math.max(1, lightcraftUndo.__steps || 1);
+    const readHist = async () => {
+      try { return JSON.parse(await window.lightcraft.command('history.list', '{}')); } catch (e) { return null; }
+    };
+    const press = async () => {
+      await lightcraftSynthUndo();
+      await sleep(600);
+      return readHist();
+    };
+
+    let h = await readHist();
+    const before = h ? (h.history || []).length : null;
+    if (h && before === 0 && (h.cursor === null || h.cursor === undefined)) {
       for (const k in lightcraftUndo) delete lightcraftUndo[k];
-      return false;                       // 引擎本来就没记录了
+      return false;                        // 引擎本来就没记录
     }
-    const guard = (lightcraftUndo.__steps || 1) + 3;
-    for (let i = 0; i < guard; i++) {
-      lightcraftSynthUndo();
-      await sleep(450);
-      try {
-        list = JSON.parse(await window.lightcraft.command('history.list', '{}'));
-      } catch (e) { list = null; }
-      if (list && (list.cursor === null || list.cursor === undefined) && !(list.history || []).length) break;
+    for (let i = 0; i < steps; i++) {
+      const prevLen = h ? (h.history || []).length : null;
+      h = await press();
+      if (h && !(h.history || []).length && (h.cursor === null || h.cursor === undefined)) break;   // 已撤到空
+      // 这一下没生效（或读不到历史）就再补一次，宁可多按一下也不误判成"撤不动"
+      if (!h || (prevLen !== null && (h.history || []).length === prevLen)) h = await press();
     }
-    if (list && (list.cursor !== null && list.cursor !== undefined)) {
-      // 极少数情况 Ctrl+Z 没走到头，用引擎自己的 Reset 兜底（这条不是像素级精确，注释里说清楚）
-      console.warn('[AI Widget] Ctrl+Z 未撤到底，退回 develop.reset');
+    const after = h ? (h.history || []).length : null;
+    // 只有确认一步都没撤掉时才退回引擎 Reset（Reset 会连用户更早的调整一起清掉，属最后手段）
+    if (before !== null && after !== null && before > 0 && after >= before) {
+      console.warn('[AI Widget] Ctrl+Z 没撤动，退回 develop.reset');
       try { await window.lightcraft.command('develop.reset', '{}'); } catch (e) { return false; }
     }
     for (const k in lightcraftUndo) delete lightcraftUndo[k];
     return true;
+  }
+
+  /**
+   * PhotoCraft 的撤销：调它自己的 edit.undo（跟用户 Ctrl+Z 是同一个动作），
+   * 按本次对话写进去的步数撤，不多撤用户更早的手动调整。
+   */
+  async function undoPhotoCraft() {
+    if (!hasPhotoCraftAIBridge()) return false;
+    const steps = Math.max(1, photocraftUndo.__steps || 1);
+    try {
+      for (let i = 0; i < steps; i++) {
+        // 注意：这个 bridge 的 promise 永不 settle（没有 waker），只能发出去再强制重绘一帧
+        const pending = window.execute_command('edit.undo', '{}');
+        if (pending && typeof pending.catch === 'function') {
+          pending.catch(function (e) { console.warn('[AI Widget] edit.undo rejected:', e && e.message); });
+        }
+        if (typeof window.request_repaint === 'function') window.request_repaint();
+        await sleep(350);
+      }
+      for (const k in photocraftUndo) delete photocraftUndo[k];
+      return true;
+    } catch (e) {
+      console.warn('[AI Widget] edit.undo 失败:', e && e.message);
+      return false;
+    }
   }
 
   /** 读一遍 develop 控件（id → {value,min,max}），失败返回空表 */
@@ -477,8 +512,16 @@
         }
       }
       if (Object.keys(values).length) {
+        const lcSteps = async () => {
+          try { const h = JSON.parse(await window.lightcraft.command('history.list', '{}')); return (h.history || []).length; }
+          catch (e) { return null; }
+        };
+        const h0 = await lcSteps();
         await window.lightcraft.command('develop.set', JSON.stringify({ values }));
-        lightcraftUndo.__steps = (lightcraftUndo.__steps || 0) + 1;   // 历史多了几步，撤销时按这个数按 Ctrl+Z
+        const h1 = await lcSteps();
+        // 撤销时按真实历史增量按 Ctrl+Z（treatment 开关也可能各算一步，所以读差值而不是固定 +1）
+        const added = (h0 === null || h1 === null) ? 1 : Math.max(1, h1 - h0);
+        lightcraftUndo.__steps = (lightcraftUndo.__steps || 0) + added;
         // 记下改前的值（Ctrl+Z 撤不动时兜底，用不上也无害）
         for (const k in values) {
           if (!(k in lightcraftUndo)) lightcraftUndo[k] = controls[k] ? controls[k].value : 0;
@@ -766,6 +809,8 @@
     #ai-widget-input input:focus{border-color:#2d8cf0}
     #ai-widget-input button{background:#2d8cf0;color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500}
     #ai-widget-input button:disabled{opacity:.5;cursor:not-allowed}
+    #ai-widget-hint{padding:0 14px 10px;font-size:11px;line-height:1.5;color:#8b93a7}
+    #ai-widget-hint kbd{font:inherit;padding:0 4px;border:1px solid #444a5a;border-radius:3px;background:#16213e;color:#c8cede}
     #ai-widget-input .clear-btn{background:#333;padding:8px 10px}
     #ai-widget-input .clear-btn:hover{background:#444}
 
@@ -852,9 +897,10 @@
       </div>
       <div id="ai-widget-input">
         <input type="text" id="ai-msg-input" placeholder="描述修图需求..." disabled>
-        <button id="ai-clear-btn" class="clear-btn" title="重置调整" disabled>⟲</button>
+        <button id="ai-clear-btn" class="clear-btn" title="撤销本次调整" disabled>⟲</button>
         <button id="ai-send-btn" disabled>发送</button>
       </div>
+      <div id="ai-widget-hint">💡 想回退：点 ⟲ 撤销本次调整，或直接按 <kbd>Ctrl</kbd>+<kbd>Z</kbd></div>
     </div>
     <div class="ai-body" data-body="preset" hidden>
       <div class="ai-preset-wrap"><div class="ai-preset-grid" id="ai-preset-grid"></div></div>
@@ -1019,7 +1065,7 @@
 
         const success = await executeCommands(data.commands);
         if (success) {
-          addMsg('system', '✅ 已应用到编辑器，可撤销');
+          addMsg('system', '✅ 已应用到编辑器，可点 ⟲ 撤销，或按 Ctrl+Z');
           if (editorType === 'lightcraft' && lightcraftUnsupported.length) {
             addMsg('system', 'ℹ️ LightCraft 没有对应控件，这几条跳过了：' + lightcraftUnsupported.join('、'));
           }
@@ -1050,6 +1096,9 @@
 
   // ── Reset button ──
   clearBtn.addEventListener('click', async () => {
+    if (window.__AI_WIDGET_DEBUG) {
+      console.log('[AI Widget][debug] 撤销点击：activeCommands=', activeCommands.length, 'editorType=', editorType);
+    }
     if (!activeCommands.length) return;
 
     if (editorType === 'studio' && window.Studio.resetAll) {
@@ -1057,7 +1106,10 @@
       addMsg('system', '⟲ 已重置所有调整');
     } else if (editorType === 'lightcraft' && hasLightCraft()) {
       const ok = await undoLightCraft();
-      addMsg('system', ok ? '⟲ 已撤销刚才的调整（与 Ctrl+Z 相同）' : '⟲ 没有可撤销的调整');
+      addMsg('system', ok ? '⟲ 已按步撤销本次调整（与 Ctrl+Z 相同）' : '⟲ 没有可撤销的调整');
+    } else if (editorType === 'photocraft' && hasPhotoCraftAIBridge()) {
+      const ok = await undoPhotoCraft();
+      addMsg('system', ok ? '⟲ 已按步撤销本次调整（与 Ctrl+Z 相同）' : '⟲ 没有可撤销的调整');
     } else {
       // Restore original image if available
       addMsg('system', '⟲ 请手动重置编辑器');
