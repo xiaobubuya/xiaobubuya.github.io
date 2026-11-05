@@ -6,8 +6,8 @@
   <title>PhotoCraft</title>
   
 <script type="module">
-import init, * as bindings from './photocraft-web-b1bdeda0f603dff8.js';
-const wasm = await init({ module_or_path: './photocraft-web-20034a750f4267c6_bg.wasm' });
+import init, * as bindings from './photocraft-web-efe215af47852b4a.js';
+const wasm = await init({ module_or_path: './photocraft-web-93c5ea3d2b5c199f_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -118,7 +118,7 @@ window.addEventListener('TrunkApplicationStarted', () => {
     #photocraft_stalled { color: #8c8c8c; visibility: hidden; animation: photocraft-stalled 0s 20s forwards; }
     @keyframes photocraft-stalled { to { visibility: visible; } }
   </style>
-<link rel="modulepreload" href="./photocraft-web-b1bdeda0f603dff8.js" crossorigin="anonymous" integrity="sha384-2/9G2tfIBJ8HLuZ0MJE/cjeXEsbpPxRPnEdECPHvpPv7vHGBArmzyinYZzA29PPG"><link rel="modulepreload" href="./snippets/eframe-d31a8450ea12dfc1/inline0.js" crossorigin="anonymous" integrity="sha384-uPZQ72BwgZ4v7Km6+UIFbkDDlt7ShGEsAVEHVN/+wZSGFhItJZB83iKMFQXauTSs"><link rel="preload" href="./photocraft-web-20034a750f4267c6_bg.wasm" crossorigin="anonymous" integrity="sha384-G5U0F6PAAaSbRJwgVoUDmVKtAWslKcU6IJ0j+IKjhZqYQ5Wue4N6Y5THqYrNqsh/" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./photocraft-web-efe215af47852b4a.js" crossorigin="anonymous" integrity="sha384-D0SffXmqDL051uFH1TmfFC+Ph4XKePKVIlPtQVZaX5lbg4zmxAWW+eY2hS/vJ7kS"><link rel="modulepreload" href="./snippets/eframe-d31a8450ea12dfc1/inline0.js" crossorigin="anonymous" integrity="sha384-uPZQ72BwgZ4v7Km6+UIFbkDDlt7ShGEsAVEHVN/+wZSGFhItJZB83iKMFQXauTSs"><link rel="preload" href="./photocraft-web-93c5ea3d2b5c199f_bg.wasm" crossorigin="anonymous" integrity="sha384-4dLgwroOxBmoRfH5+t7NmsvTQlLv7bbM8na9f8cTsHaBGItsCOCuqohz4vZAjFCI" as="fetch" type="application/wasm"></head>
 <body>
   <canvas id="photocraft_canvas"></canvas>
   <div id="photocraft_loading">
