@@ -5,13 +5,20 @@ context: |
   All artifacts must be written in zh-CN.
   Keep OpenSpec structural headings and SHALL/MUST keywords in English.
 
-  仓库真实形态（muyaya 前端）：
-  - 两人自用的婚纱照相册前端，GitHub Pages 纯静态（muyaya.world），无 Electron 桌面端、无 Cloudflare Worker 后端。
-  - 后端是两个 VPS 上的 Node 服务：ai-agent-server(:3000) + muyaya-api(:3001)，经 ai.muyaya.world（Cloudflare 命名隧道）访问。
-  - 前端仓库是公开的：密钥、内部地址、个人信息一律不得进入。
-  - 能力划分别按「前端可观察行为」切分：auth-session / photo-browser / photo-upload / album / app-nav / pwa-shell / share-page / ai-widget / wasm-apps。
-  - 铁律：改静态外壳必须升 sw.js 的 SHELL 版本号；photocraft/ 的 wasm 只能由 deploy-apps.yml(build-wasm) 从打过 AI Bridge 补丁的源码构建；AI 后端地址只能是 https://ai.muyaya.world。
-  - 旧大文档归档在 openspec/changes/archive/legacy-docs/，含映射表。
+  仓库真实形态（muyaya 静态应用）：
+  - 仓库名仍叫 xiaobubuya.github.io，但**已不用 GitHub Pages**（2026-11-13 起）。它现在只提供
+    muyaya.world 上那几个静态应用的源码与构建产物：photocraft/、lightcraft/、ai-widget.js。
+  - 线上由本机 nginx 直接托管（百度云北京 120.48.86.101，Let's Encrypt，DNS 在阿里云
+    dns1/dns2.hichina.com）。相册主站前端在另一个仓库 muyaya-web（rsync 到 /var/www/muyaya）。
+  - 后端：ai-agent-server(:3000) 走同源 /ai；album-api(:8082) 走 /api；account-api(:8081)
+    走 /auth 与 /oauth2。没有 Cloudflare 隧道，也没有 Cloudflare Worker。
+  - 仓库是公开的：密钥、内部地址、个人信息一律不得进入。
+  - 能力划分只保留仍在维护的两块：ai-widget（AI 悬浮球）/ wasm-apps（PhotoCraft·LightCraft 构建产物）。
+    旧前端（相册浏览/上传/导航/PWA/分享页）的规范已随代码删除，产品级文档看 muyaya-web 仓库。
+  - 铁律：photocraft/ 的 wasm 只能由打过 AI Bridge 补丁的源码构建（指纹锁 + 校验脚本）；
+    AI 后端走同源 /ai，不得写死任何域名；上线靠 scripts/deploy-static-apps.sh 手动 rsync。
+  - 旧大文档归档在 openspec/changes/archive/legacy-docs/，只作历史记录。
+
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

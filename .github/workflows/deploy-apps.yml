@@ -2,13 +2,20 @@ name: Deploy Apps (PhotoCraft build → LightCraft auto-deploy)
 
 # 由原 auto-deploy-web.yml 与 build-photocraft-wasm.yml 合并而来。
 #
-# 为什么合并：
+# 2026-11-13 注：站点已不再由 GitHub Pages 发布（改为本机 nginx 直接托管）。
+# 这个 workflow 现在只负责「构建并把产物提交进仓库」：
+#   build-wasm 构建带 AI Bridge 的 PhotoCraft → 提交 photocraft/
+#   deploy-web-apps 拉上游 LightCraft → 提交 lightcraft/
+# 提交后**不会自动上线**，要跑 scripts/deploy-static-apps.sh 同步到 /var/www。
+#
+# 为什么当初合并两个 workflow：
 #   原来两个 workflow 共用同一个 `0 */6 * * *` 定时，在同一个分钟各自独立触发，
 #   两个都往 main push（build 推 photocraft/，auto-deploy 推 lightcraft/）。
 #   1) 没有顺序保证 —— 谁先谁后全看运气；慢的 build(~8min) 和快的 auto-deploy(16s)
 #      在同分钟并发 push，build 用 8 分钟前 checkout 的旧 base 再 push 会
 #      non-fast-forward 被拒，产物没落盘（历史 run #34/#35 就是这么挂的）。
-#   2) pages-build-deployment 按每次 push 触发，顺序不定时最终产物会抖动。
+#   2) 每次 push 都会触发一次发布，顺序不定时最终产物会抖动。
+
 #
 # 合并后：一个 workflow 内先 build-wasm job（提交 photocraft），
 # 再由 deploy-web-apps job（needs=build-wasm，强制在 build 之后）处理 LightCraft，
@@ -117,13 +124,13 @@ jobs:
             ${{ steps.find_output.outputs.WASM_DIR }}/*
           if-no-files-found: error
 
-      # ── 部署到 xiaobubuya.github.io ──
-      - name: Deploy PhotoCraft build to repo
+      # ── 提交构建产物进本仓库（不再发布静态站；上线要另外 rsync）──
+      - name: Commit PhotoCraft build to repo
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          echo "=== Deploying to xiaobubuya.github.io ==="
+          echo "=== Committing build to xiaobubuya/xiaobubuya.github.io ==="
 
           WASM_DIR="${{ steps.find_output.outputs.WASM_DIR }}"
           WASM_DIR="${WASM_DIR#./}"

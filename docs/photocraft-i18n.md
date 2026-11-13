@@ -103,15 +103,27 @@ AI 悬浮球一直能用，正是因为它 fire-and-forget，不依赖返回值�
 
 ## 五、排查踩过的坑（下次动这块必看）
 
-### 坑 1：GitHub Pages 缓存 10 分钟，无痕模式也没用
+### 坑 1：静态资源缓存（2026-11-13 起改为 nginx 托管）
 
-线上是 GitHub Pages（`server: GitHub.com`），`photocraft/_headers` 是给 Netlify/Cloudflare Pages 的，**GitHub Pages 不认**。`index.html` 用默认头：
+**历史**：站点曾托管在 GitHub Pages（`server: GitHub.com`），那边 `index.html` 默认发
+`cache-control: max-age=600`，`photocraft/_headers` 是给 Netlify/Cloudflare Pages 的，
+GitHub Pages 不认。改了半天的文件 10 分钟内拿到的还是旧版；**无痕模式只清
+localStorage/cookie，不清 HTTP 缓存**。
 
+**现状**：`muyaya.world` 由本机 nginx 托管，规则在
+`/etc/nginx/snippets/muyaya-station.conf`：
+
+- `ai-widget.js` 单独 `add_header Cache-Control "no-cache"`——`/photocraft/`、`/lightcraft/`
+  这两个 `^~` 别名块会跳过文件级正则，不给这行就完全没有缓存头，浏览器按启发式缓存好几天
+- `.html` / `.js` / `.css` / `.svg` / `.json` 走 `no-cache`（靠 ETag/304 回源校验）
+- `.woff2` 命中即永久缓存；wasm 保持默认，靠 ETag 做 304
+
+验证换版是否真的生效：
+
+```bash
+curl -sI https://muyaya.world/photocraft/ai-widget.js | grep -i cache-control   # 应为 no-cache
+curl -s  https://muyaya.world/photocraft/ai-widget.js | grep -c image/jpeg      # 证明是新版
 ```
-cache-control: max-age=600
-```
-
-改了 `index.html` 后 10 分钟内拿到旧文件；**无痕模式只清 localStorage/cookie，不清 HTTP 缓存**。验证要用 `Ctrl+Shift+R` 或带参数的 URL（`?v=N`）。
 
 ### 坑 2：`photocraft/` 是构建产物，直接改会被 CI 覆盖
 
