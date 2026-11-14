@@ -12,10 +12,10 @@
 # 手改 = 把校验变成摆设。
 # 上游 v0.16.0 的 wasm 只有 98,880 字节；自建构建 26,445,909 字节。
 # 低于这个下限就说明被上游包覆盖了。
-wasm_file=photocraft-web-8b96e8a0527a4917_bg.wasm
-wasm_sha256=b24435a4fae5d12590c65f6f662ee52acc4ef469084fe2e66cbc9652263cbda8
-js_file=photocraft-web-64f99203ed038aeb.js
-js_sha256=f36442021d688c5eac9d55aceac9872746141efe9928154341558c0a141352e2
+wasm_file=photocraft-web-bcfa7e0df8ccff8e_bg.wasm
+wasm_sha256=67c0834d5eff75cacae79008d47ef7339de2a26057cdbea2c11f96a9710e497d
+js_file=photocraft-web-5a2147f605d72cde.js
+js_sha256=eba608b76fe231be34eeda676345abc3e0d259457b2677bac7d21fcfbc1e9668
 widget_sha256=e8be9d9bb7d78d8d01301d35ae8067d33dca4fb32d556f03cd32bc868e58ea73
 bridge_symbols=execute_command has_session request_repaint
 min_wasm_bytes=1048576
